@@ -1,0 +1,65 @@
+# Build output
+target/
+build/
+out/
+dependency-reduced-pom.xml
+
+# Java / Maven
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.zip
+*.tar.gz
+*.rar
+.mvn/timing.properties
+
+# IDE / Editor
+.idea/
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+.apt_generated/
+.springBeans
+.sts4-cache/
+*.iml
+*.ipr
+*.iws
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment / local config
+.env
+.env.*
+*.local
+
+# Logs
+*.log
+logs/
+
+# Auto-Manim pipeline outputs
+output/
+filedata/
+tmp/
+temp/
+
+# Manim-generated artifacts
+**/media/
+**/partial_movie_files/
+**/giffolder/
+**/scene_render.py
+*.mp4
+*.gif
+*.png
+
+# Python cache created by render workflow
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
