@@ -18,7 +18,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Stage 0: Concept Exploration — builds the knowledge prerequisite tree.
+ * Stage 0: Concept Exploration - builds the knowledge prerequisite tree.
  *
  * Sibling prerequisites are explored in parallel via ExecutorService.
  * The visited set uses atomic add to prevent TOCTOU races.
@@ -149,7 +149,10 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeNode, Stri
     private boolean checkFoundation(String concept) {
         try {
             String prompt = String.format(
-                    "最终教学目标：“%s”\n待判断概念：“%s”",
+                    "最终教学目标：%s\n"
+                    + "当前待判断概念：%s\n"
+                    + "请只围绕这个最终教学目标来判断该概念是否已经足够基础。\n"
+                    + "不要把概念泛化到无关主题，也不要脱离当前目标单独判断。",
                     targetConcept, concept);
             String response = aiClient.chat(prompt, PromptTemplates.FOUNDATION_CHECK_SYSTEM);
             apiCalls.incrementAndGet();
@@ -178,7 +181,11 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeNode, Stri
     private List<String> getPrerequisites(String concept) {
         try {
             String prompt = String.format(
-                    "最终教学目标：“%s”\n当前概念：“%s”",
+                    "最终教学目标：%s\n"
+                    + "当前概念：%s\n"
+                    + "请为这个当前概念找出前置概念。\n"
+                    + "要求这些前置概念必须直接服务于最终教学目标，不能过度偏离主题。\n"
+                    + "如果某个候选概念虽然相关，但过于宽泛、像旁支主题、或与目标链路距离太远，请不要返回。",
                     targetConcept, concept);
             String response = aiClient.chat(prompt, PromptTemplates.PREREQUISITES_SYSTEM);
             apiCalls.incrementAndGet();
@@ -203,7 +210,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeNode, Stri
         int treeMaxDepth = tree.getMaxDepth();
 
         if (nodeCount < 3) {
-            log.warn("Tree validation: only {} nodes for '{}' — tree may be too shallow.",
+            log.warn("Tree validation: only {} nodes for '{}' - tree may be too shallow.",
                     nodeCount, concept);
         }
         if (treeMaxDepth < minDepth) {

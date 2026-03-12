@@ -54,16 +54,18 @@ public class ManimRendererService {
      */
     public RenderAttemptResult render(String code, String sceneName, String quality, Path outputDir) {
         try {
+            Path normalizedOutputDir = outputDir.toAbsolutePath().normalize();
+
             // Write code to temp file
-            Path codeFile = outputDir.resolve("scene_render.py");
+            Path codeFile = normalizedOutputDir.resolve("scene_render.py");
             Files.writeString(codeFile, code);
 
             // Build manim command
-            List<String> cmd = buildManimCommand(codeFile, sceneName, quality, outputDir);
+            List<String> cmd = buildManimCommand(codeFile, sceneName, quality, normalizedOutputDir);
             log.info("Rendering: manim {} (quality={})", sceneName, quality);
 
             ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.directory(outputDir.toFile());
+            pb.directory(normalizedOutputDir.toFile());
             pb.redirectErrorStream(false);
             Process process = pb.start();
 
@@ -84,7 +86,7 @@ public class ManimRendererService {
             }
 
             // Find output video
-            String videoPath = findVideoFile(outputDir, sceneName);
+            String videoPath = findVideoFile(normalizedOutputDir, sceneName);
             log.info("Render successful: {}", videoPath);
             return new RenderAttemptResult(true, stdout, stderr, videoPath);
 
@@ -115,9 +117,9 @@ public class ManimRendererService {
         }
 
         cmd.add("--media_dir");
-        cmd.add(outputDir.resolve("media").toString());
+        cmd.add(outputDir.resolve("media").toAbsolutePath().normalize().toString());
         cmd.add("--disable_caching");
-        cmd.add(codeFile.toString());
+        cmd.add(codeFile.getFileName().toString());
         cmd.add(sceneName);
 
         return cmd;

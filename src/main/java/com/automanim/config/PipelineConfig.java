@@ -56,7 +56,7 @@ public class PipelineConfig {
 
     public static class Builder {
         private int maxDepth = 4;
-        private int minDepth = 2;
+        private int minDepth = 1;
         private boolean parallelMathEnrichment = true;
         private boolean parallelVisualDesign = true;
         private int maxConcurrent = 4;
