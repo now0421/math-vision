@@ -5,6 +5,7 @@ import com.automanim.model.CodeResult;
 import com.automanim.model.PipelineKeys;
 import com.automanim.model.RenderResult;
 import com.automanim.service.AiClient;
+import com.automanim.service.DeepSeekAiClient;
 import com.automanim.service.FileOutputService;
 import com.automanim.service.GeminiAiClient;
 import com.automanim.service.KimiAiClient;
@@ -25,7 +26,7 @@ import java.util.Map;
  *   java -jar auto-manim.jar <concept> [options]
  *
  * Options:
- *   --provider kimi|gemini     AI provider (default: kimi)
+ *   --provider kimi|gemini|deepseek AI provider (default: kimi)
  *   --quality low|medium|high  Render quality (default: low)
  *   --max-depth N              Exploration depth (default: 4)
  *   --output DIR               Output directory (default: ./output/<concept>)
@@ -135,6 +136,8 @@ public class AutoManimApplication {
         switch (provider.toLowerCase()) {
             case "gemini":
                 return new GeminiAiClient();
+            case "deepseek":
+                return new DeepSeekAiClient();
             case "kimi":
                 return new KimiAiClient();
             default:
@@ -185,7 +188,7 @@ public class AutoManimApplication {
                 "Usage: auto-manim <concept> [options]\n"
                 + "\n"
                 + "Options:\n"
-                + "  --provider kimi|gemini     AI provider (default: kimi)\n"
+                + "  --provider kimi|gemini|deepseek AI provider (default: kimi)\n"
                 + "  --quality low|medium|high  Render quality (default: low)\n"
                 + "  --max-depth N              Exploration depth (default: 4)\n"
                 + "  --output DIR               Output directory\n"
@@ -196,6 +199,7 @@ public class AutoManimApplication {
                 + "Environment variables:\n"
                 + "  MOONSHOT_API_KEY   Required for kimi provider\n"
                 + "  GEMINI_API_KEY     Required for gemini provider\n"
+                + "  DEEPSEEK_API_KEY   Required for deepseek provider\n"
         );
     }
 }

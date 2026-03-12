@@ -31,7 +31,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeNode, Stri
     private AiClient aiClient;
     private String targetConcept;
     private int maxDepth = 4;
-    private int minDepth = 1;
+    private int minDepth = 0;
     private final AtomicInteger apiCalls = new AtomicInteger(0);
     private final Set<String> visited = ConcurrentHashMap.newKeySet();
     private final Map<String, List<String>> prereqCache = new ConcurrentHashMap<>();
