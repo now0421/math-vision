@@ -149,11 +149,12 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeNode, Stri
     private boolean checkFoundation(String concept) {
         try {
             String prompt = String.format(
-                    "Final teaching target: \"%s\"\nConcept to evaluate: \"%s\"",
+                    "最终教学目标：“%s”\n待判断概念：“%s”",
                     targetConcept, concept);
             String response = aiClient.chat(prompt, PromptTemplates.FOUNDATION_CHECK_SYSTEM);
             apiCalls.incrementAndGet();
-            return response.trim().toLowerCase().startsWith("yes");
+            String normalized = response.trim().toLowerCase(Locale.ROOT);
+            return normalized.startsWith("是") || normalized.startsWith("yes");
         } catch (Exception e) {
             log.warn("Foundation check failed for '{}': {}", concept, e.getMessage());
             return false;
@@ -177,7 +178,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeNode, Stri
     private List<String> getPrerequisites(String concept) {
         try {
             String prompt = String.format(
-                    "Final teaching target: \"%s\"\nConcept: \"%s\"",
+                    "最终教学目标：“%s”\n当前概念：“%s”",
                     targetConcept, concept);
             String response = aiClient.chat(prompt, PromptTemplates.PREREQUISITES_SYSTEM);
             apiCalls.incrementAndGet();

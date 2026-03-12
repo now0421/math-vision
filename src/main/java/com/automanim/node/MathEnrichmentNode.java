@@ -31,14 +31,14 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeNode, Knowledge
             + "  \"type\": \"function\","
             + "  \"function\": {"
             + "    \"name\": \"write_mathematical_content\","
-            + "    \"description\": \"Return mathematical content for a concept.\","
+            + "    \"description\": \"返回某个概念对应的数学内容。\","
             + "    \"parameters\": {"
             + "      \"type\": \"object\","
             + "      \"properties\": {"
-            + "        \"equations\": { \"type\": \"array\", \"items\": { \"type\": \"string\" }, \"description\": \"LaTeX equation strings\" },"
-            + "        \"definitions\": { \"type\": \"object\", \"additionalProperties\": { \"type\": \"string\" }, \"description\": \"Symbol to meaning mapping\" },"
-            + "        \"interpretation\": { \"type\": \"string\", \"description\": \"Brief interpretation (optional, omit if obvious)\" },"
-            + "        \"examples\": { \"type\": \"array\", \"items\": { \"type\": \"string\" }, \"description\": \"Examples (optional, only if genuinely helpful)\" }"
+            + "        \"equations\": { \"type\": \"array\", \"items\": { \"type\": \"string\" }, \"description\": \"LaTeX 公式字符串\" },"
+            + "        \"definitions\": { \"type\": \"object\", \"additionalProperties\": { \"type\": \"string\" }, \"description\": \"符号到含义的映射\" },"
+            + "        \"interpretation\": { \"type\": \"string\", \"description\": \"简短解释（可选，若概念显然则省略）\" },"
+            + "        \"examples\": { \"type\": \"array\", \"items\": { \"type\": \"string\" }, \"description\": \"示例（可选，仅在确实有帮助时提供）\" }"
             + "      },"
             + "      \"required\": [\"equations\", \"definitions\"]"
             + "    }"
@@ -131,9 +131,9 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeNode, Knowledge
             return;
         }
 
-        String complexity = node.isFoundation() ? "junior-high level" : "upper-undergraduate level";
+        String complexity = node.isFoundation() ? "初中层级" : "高年级本科层级";
         String userPrompt = String.format(
-                "Concept: %s\nDepth: %d\nComplexity target: %s",
+                "概念：%s\n深度：%d\n复杂度目标：%s",
                 node.getConcept(), node.getDepth(), complexity);
 
         try {

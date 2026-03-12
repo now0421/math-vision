@@ -30,13 +30,13 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeNode, Narrative, Str
             + "  \"type\": \"function\","
             + "  \"function\": {"
             + "    \"name\": \"write_narrative\","
-            + "    \"description\": \"Return the narrative animation script for the concept progression.\","
+            + "    \"description\": \"返回该概念推进链路对应的动画叙事脚本。\","
             + "    \"parameters\": {"
             + "      \"type\": \"object\","
             + "      \"properties\": {"
-            + "        \"narrative\": { \"type\": \"string\", \"description\": \"The full narrative animation script, length adapted to concept complexity\" },"
-            + "        \"scene_count\": { \"type\": \"integer\", \"description\": \"Number of scenes\" },"
-            + "        \"estimated_duration\": { \"type\": \"integer\", \"description\": \"Total duration in seconds\" }"
+            + "        \"narrative\": { \"type\": \"string\", \"description\": \"完整动画叙事脚本，长度应与概念复杂度匹配\" },"
+            + "        \"scene_count\": { \"type\": \"integer\", \"description\": \"场景数量\" },"
+            + "        \"estimated_duration\": { \"type\": \"integer\", \"description\": \"总时长（秒）\" }"
             + "      },"
             + "      \"required\": [\"narrative\"]"
             + "    }"
@@ -101,11 +101,11 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeNode, Narrative, Str
             }
         } catch (Exception e) {
             log.error("Narrative composition failed: {}", e.getMessage());
-            narrativeText = "Narrative generation failed: " + e.getMessage();
+            narrativeText = "叙事生成失败：" + e.getMessage();
         }
 
         if (narrativeText == null || narrativeText.isBlank()) {
-            narrativeText = "Narrative generation returned empty content.";
+            narrativeText = "叙事生成返回了空内容。";
         }
 
         Narrative narrative = new Narrative(
@@ -180,29 +180,29 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeNode, Narrative, Str
 
     private String formatNodeContext(int index, KnowledgeNode node) {
         StringBuilder sb = new StringBuilder();
-        sb.append(String.format("\n--- Concept %d: %s (depth=%d) ---\n",
+        sb.append(String.format("\n--- 概念 %d：%s（depth=%d）---\n",
                 index, node.getConcept(), node.getDepth()));
 
         if (node.getEquations() != null && !node.getEquations().isEmpty()) {
-            sb.append("Equations:\n");
+            sb.append("公式：\n");
             for (String eq : node.getEquations()) {
                 sb.append("  ").append(eq).append("\n");
             }
         }
 
         if (node.getDefinitions() != null && !node.getDefinitions().isEmpty()) {
-            sb.append("Definitions:\n");
+            sb.append("定义：\n");
             node.getDefinitions().forEach((sym, def) ->
                     sb.append("  ").append(sym).append(": ").append(def).append("\n")
             );
         }
 
         if (node.getInterpretation() != null && !node.getInterpretation().isBlank()) {
-            sb.append("Interpretation: ").append(node.getInterpretation()).append("\n");
+            sb.append("解释：").append(node.getInterpretation()).append("\n");
         }
 
         if (node.getExamples() != null && !node.getExamples().isEmpty()) {
-            sb.append("Examples:\n");
+            sb.append("示例：\n");
             for (String ex : node.getExamples()) {
                 sb.append("  - ").append(ex).append("\n");
             }
@@ -210,7 +210,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeNode, Narrative, Str
 
         Map<String, Object> spec = node.getVisualSpec();
         if (spec != null && !spec.isEmpty()) {
-            sb.append("Visual spec:\n");
+            sb.append("视觉规格：\n");
             for (String key : Arrays.asList("visual_description", "color_scheme", "layout",
                     "animation_description", "duration")) {
                 if (spec.containsKey(key)) {

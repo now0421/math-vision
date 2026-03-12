@@ -20,7 +20,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Stage 2: Code Generation — generates executable Manim Python code
+ * Stage 2: Code Generation - generates executable Manim Python code
  * from the narrative prompt.
  */
 public class CodeGenerationNode extends PocketFlow.Node<Narrative, CodeResult, String> {
@@ -33,13 +33,13 @@ public class CodeGenerationNode extends PocketFlow.Node<Narrative, CodeResult, S
             + "  \"type\": \"function\","
             + "  \"function\": {"
             + "    \"name\": \"write_manim_code\","
-            + "    \"description\": \"Return the complete Manim Python code for the animation.\","
+            + "    \"description\": \"返回完整的 Manim Python 动画代码。\","
             + "    \"parameters\": {"
             + "      \"type\": \"object\","
             + "      \"properties\": {"
-            + "        \"code\": { \"type\": \"string\", \"description\": \"Complete Manim Python code\" },"
-            + "        \"scene_name\": { \"type\": \"string\", \"description\": \"Main scene class name\" },"
-            + "        \"description\": { \"type\": \"string\", \"description\": \"Brief description\" }"
+            + "        \"code\": { \"type\": \"string\", \"description\": \"完整的 Manim Python 代码\" },"
+            + "        \"scene_name\": { \"type\": \"string\", \"description\": \"主场景类名\" },"
+            + "        \"description\": { \"type\": \"string\", \"description\": \"简短说明\" }"
             + "      },"
             + "      \"required\": [\"code\"]"
             + "    }"
@@ -81,7 +81,7 @@ public class CodeGenerationNode extends PocketFlow.Node<Narrative, CodeResult, S
         String expectedSceneName = conceptToClassName(narrative.getTargetConcept());
 
         String userPrompt = narrative.getVerbosePrompt()
-                + "\n\nScene class name: " + expectedSceneName;
+                + "\n\nScene 类名：" + expectedSceneName;
 
         String code = null;
         String sceneName = expectedSceneName;
@@ -192,28 +192,26 @@ public class CodeGenerationNode extends PocketFlow.Node<Narrative, CodeResult, S
     private List<String> validateCode(String code) {
         List<String> violations = new ArrayList<>();
         if (code == null || code.isBlank()) {
-            violations.add("Code is empty");
+            violations.add("代码为空");
             return violations;
         }
 
         if (!code.contains("from manim import")) {
-            violations.add("Missing 'from manim import' statement");
+            violations.add("缺少 'from manim import' 语句");
         }
         if (!code.contains("class ") || !code.contains("Scene")) {
-            violations.add("Missing Scene class definition");
+            violations.add("缺少 Scene 类定义");
         }
         if (!code.contains("def construct(")) {
-            violations.add("Missing construct() method");
+            violations.add("缺少 construct() 方法");
         }
 
-        // Rule 1: Scene isolation — no cross-scene mobject storage
         if (RULE1_VIOLATION.matcher(code).find()) {
-            violations.add("Rule 1 violation: cross-scene mobject instance attribute storage");
+            violations.add("规则 1 违规：通过实例属性跨场景存储 mobject");
         }
 
-        // Rule 3: No hard-coded MathTex submobject indices (eq[0][11:13])
         if (RULE3_VIOLATION.matcher(code).find()) {
-            violations.add("Rule 3 violation: hard-coded MathTex submobject indices");
+            violations.add("规则 3 违规：硬编码 MathTex 子对象下标");
         }
 
         return violations;
@@ -223,9 +221,9 @@ public class CodeGenerationNode extends PocketFlow.Node<Narrative, CodeResult, S
         try {
             String violationList = String.join("\n- ", violations);
             String fixPrompt = String.format(
-                    "Code with validation errors:\n\n"
+                    "下面的代码存在校验错误：\n\n"
                     + "```python\n%s\n```\n\n"
-                    + "Violations found:\n- %s",
+                    + "发现的问题：\n- %s",
                     code, violationList);
 
             String response = aiClient.chat(fixPrompt, PromptTemplates.RENDER_FIX_SYSTEM);
