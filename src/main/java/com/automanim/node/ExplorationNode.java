@@ -151,8 +151,9 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeNode, Stri
             String prompt = String.format(
                     "最终教学目标：%s\n"
                     + "当前待判断概念：%s\n"
-                    + "请只围绕这个最终教学目标来判断该概念是否已经足够基础。\n"
-                    + "不要把概念泛化到无关主题，也不要脱离当前目标单独判断。",
+                    + "这个探索结果后续会组成前置知识树，并经过拓扑排序后直接用于生成动画。\n"
+                    + "请只围绕最终教学目标判断该概念是否已经足够基础。\n"
+                    + "要求节点定义精确、单一、无冗余；不要把概念泛化到无关主题，也不要输出会与其他节点重复的模糊概念。",
                     targetConcept, concept);
             String response = aiClient.chat(prompt, PromptTemplates.FOUNDATION_CHECK_SYSTEM);
             apiCalls.incrementAndGet();
@@ -184,8 +185,10 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeNode, Stri
                     "最终教学目标：%s\n"
                     + "当前概念：%s\n"
                     + "请为这个当前概念找出前置概念。\n"
-                    + "要求这些前置概念必须直接服务于最终教学目标，不能过度偏离主题。\n"
-                    + "如果某个候选概念虽然相关，但过于宽泛、像旁支主题、或与目标链路距离太远，请不要返回。",
+                    + "这些前置概念后续会被组织成知识树，并经过拓扑排序后用于生成动画顺序。\n"
+                    + "因此要求返回结果必须精确、低冗余、便于排序。\n"
+                    + "请只返回真正必要、直接服务于最终教学目标的概念。\n"
+                    + "不要返回同义概念、近义改写、父子重复概念、宽泛标签或旁支主题。",
                     targetConcept, concept);
             String response = aiClient.chat(prompt, PromptTemplates.PREREQUISITES_SYSTEM);
             apiCalls.incrementAndGet();

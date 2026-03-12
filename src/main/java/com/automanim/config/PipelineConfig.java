@@ -59,7 +59,7 @@ public class PipelineConfig {
         private int minDepth = 1;
         private boolean parallelMathEnrichment = true;
         private boolean parallelVisualDesign = true;
-        private int maxConcurrent = 4;
+        private int maxConcurrent = 8;
         private int codeGenMaxRetries = 2;
         private boolean renderEnabled = true;
         private String renderQuality = "low";
