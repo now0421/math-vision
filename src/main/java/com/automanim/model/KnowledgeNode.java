@@ -10,8 +10,16 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class KnowledgeNode {
 
+    public static final String NODE_TYPE_CONCEPT = "concept";
+    public static final String NODE_TYPE_PROBLEM = "problem";
+    public static final String NODE_TYPE_OBSERVATION = "observation";
+    public static final String NODE_TYPE_CONSTRUCTION = "construction";
+    public static final String NODE_TYPE_DERIVATION = "derivation";
+    public static final String NODE_TYPE_CONCLUSION = "conclusion";
+
     private String id;
     private String concept;
+    private String nodeType = NODE_TYPE_CONCEPT;
 
     @JsonProperty("min_depth")
     private int minDepth = -1;
@@ -57,6 +65,9 @@ public class KnowledgeNode {
     public String getConcept() { return concept; }
     public void setConcept(String concept) { this.concept = concept; }
 
+    public String getNodeType() { return nodeType; }
+    public void setNodeType(String nodeType) { this.nodeType = nodeType; }
+
     public int getMinDepth() { return minDepth; }
     public void setMinDepth(int minDepth) { this.minDepth = minDepth; }
 
@@ -81,6 +92,6 @@ public class KnowledgeNode {
     @Override
     public String toString() {
         return "KnowledgeNode{id='" + id + "', concept='" + concept + "', minDepth=" + minDepth
-                + ", foundation=" + foundation + "}";
+                + ", nodeType='" + nodeType + "', foundation=" + foundation + "}";
     }
 }

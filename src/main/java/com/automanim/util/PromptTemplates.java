@@ -52,6 +52,56 @@ public final class PromptTemplates {
             + "\n"
             + "Return only a JSON array of concept names.";
 
+    public static final String INPUT_MODE_CLASSIFIER_SYSTEM =
+            "You are a routing classifier for a math-animation pipeline.\n"
+            + "\n"
+            + "Given a single user input, decide whether the pipeline should treat it as:\n"
+            + "- concept: a concept, theorem, formula, topic, or idea to explain\n"
+            + "- problem: a concrete math problem, exercise, proof task, optimization task,"
+            + " or question to solve\n"
+            + "\n"
+            + "Choose problem when the input asks for a result, proof, minimization,"
+            + " construction, derivation, or contains detailed givens and a target to find.\n"
+            + "Choose concept when the input is mainly the name of a topic or formula to introduce.\n"
+            + "\n"
+            + "Reply with only one word: concept or problem.";
+
+    public static final String PROBLEM_STEP_GRAPH_SYSTEM =
+            "You are a mathematical problem-solving planner preparing a Manim animation pipeline.\n"
+            + "\n"
+            + "The user will provide a full math problem statement.\n"
+            + "Decompose it into a compact dependency graph of solving steps, not a prerequisite"
+            + " knowledge graph.\n"
+            + "\n"
+            + "Rules:\n"
+            + "1. Focus on the actual route to the solution.\n"
+            + "2. Each node must be an atomic solving step, observation, construction, derivation,"
+            + " or conclusion.\n"
+            + "3. Use node_type chosen from: problem, observation, construction, derivation,"
+            + " conclusion.\n"
+            + "4. Include exactly one root problem node representing the original problem statement.\n"
+            + "5. Prefer 4 to 8 nodes total unless the problem truly needs more.\n"
+            + "6. Dependencies must point only to earlier steps that are required first.\n"
+            + "7. Avoid generic textbook topics such as 'geometry' or 'algebra basics'.\n"
+            + "8. Use concise English labels that work well as scene titles later.\n"
+            + "\n"
+            + "Return a JSON object with this exact top-level shape:\n"
+            + "{\n"
+            + "  \"root_id\": \"problem\",\n"
+            + "  \"nodes\": [\n"
+            + "    {\"id\": \"problem\", \"concept\": \"Original problem statement\","
+            + " \"node_type\": \"problem\", \"min_depth\": 0, \"is_foundation\": false},\n"
+            + "    {\"id\": \"step_1\", \"concept\": \"Reflect point B across line l\","
+            + " \"node_type\": \"construction\", \"min_depth\": 1, \"is_foundation\": false}\n"
+            + "  ],\n"
+            + "  \"prerequisite_edges\": {\n"
+            + "    \"problem\": [\"step_1\", \"step_2\"],\n"
+            + "    \"step_3\": [\"step_1\"]\n"
+            + "  }\n"
+            + "}\n"
+            + "\n"
+            + "The edge direction must remain node -> direct dependencies needed before it.";
+
     // =====================================================================
     // Stage 1a: Mathematical Enrichment
     // =====================================================================
@@ -59,8 +109,9 @@ public final class PromptTemplates {
     public static final String MATH_ENRICHMENT_SYSTEM =
             "You are a mathematics and physics educator preparing content for a Manim animation.\n"
             + "\n"
-            + "The user will provide a concept name, depth, and target complexity level."
-            + " Return only the mathematical content that genuinely improves teaching quality.\n"
+            + "The user will provide a concept or problem-step name, node type, depth, and target"
+            + " complexity level. Return only the mathematical content that genuinely improves"
+            + " teaching quality.\n"
             + "\n"
             + "MathTex / LaTeX rules:\n"
             + "- Use raw LaTeX strings without dollar signs.\n"
@@ -83,9 +134,9 @@ public final class PromptTemplates {
     public static final String VISUAL_DESIGN_SYSTEM =
             "You are a visual designer for Manim-based math animations.\n"
             + "\n"
-            + "The user will provide concept details, parent visual context, and the current color"
-            + " palette state. Describe the visual objects, color scheme, animation feel, and"
-            + " layout.\n"
+            + "The user will provide concept or problem-step details, node type, prerequisite"
+            + " visual context, and the current color palette state. Describe the visual objects,"
+            + " color scheme, animation feel, and layout.\n"
             + "\n"
             + "Canvas constraints for a 16:9 frame (roughly 14x8 units):\n"
             + "- Keep important content within x in [-6.5, 6.5] and y in [-3.5, 3.5].\n"
@@ -119,6 +170,15 @@ public final class PromptTemplates {
             + "- explains foundations before advanced content\n"
             + "- preserves provided LaTeX formulas exactly when referenced\n"
             + "- naturally integrates the visual design and transitions\n"
+            + "- keeps the animation focused on the main teaching goal rather than trying to use"
+            + " every available detail\n"
+            + "\n"
+            + "Important selection rule:\n"
+            + "- Mathematical enrichment fields such as equations, definitions, interpretations,"
+            + " and examples are optional supporting material.\n"
+            + "- Use them only when they sharpen the explanation, the proof, or the visual focus.\n"
+            + "- It is correct to ignore optional math details that would make the animation"
+            + " redundant, overcrowded, or unfocused.\n"
             + "\n"
             + "Length rules:\n"
             + "- Match the true complexity of the concept.\n"
@@ -132,6 +192,16 @@ public final class PromptTemplates {
         return String.format(
                 "Target concept: %s\n\nConcept progression chain:\n%s",
                 targetConcept, conceptContext);
+    }
+
+    public static String problemNarrativeUserPrompt(String problemStatement, String solvingContext) {
+        return String.format(
+                "Math problem to solve: %s\n\nOrdered solution-step graph context:\n%s\n\n"
+                        + "Write the animation as a problem-solving narrative. Start by stating the"
+                        + " problem clearly, then move through the key observation/construction/"
+                        + " derivation steps in solving order, and end with the final answer and"
+                        + " why it is correct or optimal.",
+                problemStatement, solvingContext);
     }
 
     // =====================================================================

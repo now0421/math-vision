@@ -6,6 +6,10 @@ package com.automanim.config;
  */
 public class PipelineConfig {
 
+    public static final String INPUT_MODE_AUTO = "auto";
+    public static final String INPUT_MODE_CONCEPT = "concept";
+    public static final String INPUT_MODE_PROBLEM = "problem";
+
     // Exploration
     private final int maxDepth;
     private final int minDepth;
@@ -25,6 +29,7 @@ public class PipelineConfig {
 
     // AI
     private final String aiProvider;      // "kimi" or "gemini"
+    private final String inputMode;       // "auto", "concept", or "problem"
 
     private PipelineConfig(Builder b) {
         this.maxDepth = b.maxDepth;
@@ -37,6 +42,7 @@ public class PipelineConfig {
         this.renderQuality = b.renderQuality;
         this.renderMaxRetries = b.renderMaxRetries;
         this.aiProvider = b.aiProvider;
+        this.inputMode = b.inputMode;
     }
 
     public static Builder builder() { return new Builder(); }
@@ -53,6 +59,7 @@ public class PipelineConfig {
     public String getRenderQuality() { return renderQuality; }
     public int getRenderMaxRetries() { return renderMaxRetries; }
     public String getAiProvider() { return aiProvider; }
+    public String getInputMode() { return inputMode; }
 
     public static class Builder {
         private int maxDepth = 4;
@@ -65,6 +72,7 @@ public class PipelineConfig {
         private String renderQuality = "low";
         private int renderMaxRetries = 4;
         private String aiProvider = "kimi";
+        private String inputMode = INPUT_MODE_AUTO;
 
         public Builder maxDepth(int v) { this.maxDepth = v; return this; }
         public Builder minDepth(int v) { this.minDepth = v; return this; }
@@ -76,6 +84,7 @@ public class PipelineConfig {
         public Builder renderQuality(String v) { this.renderQuality = v; return this; }
         public Builder renderMaxRetries(int v) { this.renderMaxRetries = v; return this; }
         public Builder aiProvider(String v) { this.aiProvider = v; return this; }
+        public Builder inputMode(String v) { this.inputMode = v; return this; }
 
         public PipelineConfig build() { return new PipelineConfig(this); }
     }

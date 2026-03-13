@@ -163,8 +163,8 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
     private CompletableFuture<JsonNode> fetchMathContentAsync(KnowledgeNode node) {
         String complexity = node.isFoundation() ? "middle-school level" : "upper-undergraduate level";
         String userPrompt = String.format(
-                "Concept: %s\nDepth: %d\nTarget complexity: %s",
-                node.getConcept(), node.getMinDepth(), complexity);
+                "Concept: %s\nNode type: %s\nDepth: %d\nTarget complexity: %s",
+                node.getConcept(), node.getNodeType(), node.getMinDepth(), complexity);
 
         return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonObjectAsync(
                 aiClient,

@@ -29,6 +29,7 @@ import java.util.Map;
  *
  * Options:
  *   --provider kimi|gemini|deepseek AI provider (default: kimi)
+ *   --mode auto|concept|problem Input mode (default: auto)
  *   --quality low|medium|high  Render quality (default: low)
  *   --max-depth N              Exploration depth (default: 4)
  *   --output DIR               Output directory (default: ./output/<concept>)
@@ -55,6 +56,9 @@ public class AutoManimApplication {
             switch (args[i]) {
                 case "--provider":
                     configBuilder.aiProvider(args[++i]);
+                    break;
+                case "--mode":
+                    configBuilder.inputMode(args[++i]);
                     break;
                 case "--quality":
                     configBuilder.renderQuality(args[++i]);
@@ -93,6 +97,7 @@ public class AutoManimApplication {
         log.info("============================================================");
         log.info("  Auto-Manim Pipeline");
         log.info("  Concept:  {}", concept);
+        log.info("  Mode:     {}", config.getInputMode());
         log.info("  Provider: {}", config.getAiProvider());
         log.info("  Quality:  {}", config.getRenderQuality());
         log.info("  Output:   {}", outputDir);
@@ -156,6 +161,7 @@ public class AutoManimApplication {
         apiCalls += (int) ctx.getOrDefault(PipelineKeys.ENRICHMENT_TOOL_CALLS, 0);
 
         summary.put("concept", ctx.get(PipelineKeys.CONCEPT));
+        summary.put("input_mode", ((PipelineConfig) ctx.get(PipelineKeys.CONFIG)).getInputMode());
         summary.put("ai_provider", ((PipelineConfig) ctx.get(PipelineKeys.CONFIG)).getAiProvider());
         summary.put("elapsed_seconds", elapsed.getSeconds());
 
@@ -220,6 +226,7 @@ public class AutoManimApplication {
                 + "\n"
                 + "Options:\n"
                 + "  --provider kimi|gemini|deepseek AI provider (default: kimi)\n"
+                + "  --mode auto|concept|problem Input mode (default: auto)\n"
                 + "  --quality low|medium|high  Render quality (default: low)\n"
                 + "  --max-depth N              Exploration depth (default: 4)\n"
                 + "  --output DIR               Output directory\n"

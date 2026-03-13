@@ -1,5 +1,6 @@
 package com.automanim.node;
 
+import com.automanim.config.PipelineConfig;
 import com.automanim.model.KnowledgeGraph;
 import com.automanim.model.KnowledgeNode;
 import com.automanim.model.Narrative;
@@ -15,8 +16,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -52,6 +55,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
     private AiClient aiClient;
     private int toolCalls = 0;
+    private String inputMode = PipelineConfig.INPUT_MODE_AUTO;
 
     public NarrativeNode() {
         super(1, 0);
@@ -60,6 +64,10 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
     @Override
     public KnowledgeGraph prep(Map<String, Object> ctx) {
         this.aiClient = (AiClient) ctx.get(PipelineKeys.AI_CLIENT);
+        PipelineConfig config = (PipelineConfig) ctx.get(PipelineKeys.CONFIG);
+        if (config != null) {
+            this.inputMode = config.getInputMode();
+        }
         return (KnowledgeGraph) ctx.get(PipelineKeys.KNOWLEDGE_GRAPH);
     }
 
@@ -68,18 +76,23 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         log.info("=== Stage 1c: Narrative Composition ===");
         toolCalls = 0;
 
-        List<KnowledgeNode> ordered = graph.topologicalOrder();
+        String resolvedMode = resolveInputMode(graph);
+        List<KnowledgeNode> ordered = PipelineConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)
+                ? solutionOrder(graph)
+                : graph.topologicalOrder();
         List<String> conceptOrder = ordered.stream()
                 .map(KnowledgeNode::getConcept)
                 .collect(java.util.stream.Collectors.toList());
 
-        log.info("  Concept order: {}", conceptOrder);
+        log.info("  Narrative mode: {}, order: {}", resolvedMode, conceptOrder);
 
         String context = buildTruncatedContext(ordered);
-        String userPrompt = PromptTemplates.narrativeUserPrompt(graph.getTargetConcept(), context);
+        String userPrompt = PipelineConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)
+                ? PromptTemplates.problemNarrativeUserPrompt(graph.getTargetConcept(), context)
+                : PromptTemplates.narrativeUserPrompt(graph.getTargetConcept(), context);
 
         int sceneCount = Math.max(1, conceptOrder.size());
-        int totalDuration = sceneCount * 30;
+        int totalDuration = sceneCount * 10;
         String narrativeText;
 
         try {
@@ -169,6 +182,12 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
     private String buildTruncatedContext(List<KnowledgeNode> orderedNodes) {
         StringBuilder sb = new StringBuilder();
+        sb.append("Narrative context rules:\n");
+        sb.append("- Treat visual specifications as primary staging guidance.\n");
+        sb.append("- Treat mathematical enrichment as optional supporting material.\n");
+        sb.append("- Use equations, definitions, interpretations, and examples only when they help the main point.\n");
+        sb.append("- It is acceptable to ignore optional math details that would make scenes crowded or repetitive.\n");
+        sb.append("\n");
         int remaining = MAX_CONTEXT_CHARS;
 
         for (int i = 0; i < orderedNodes.size(); i++) {
@@ -192,37 +211,16 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
     private String formatNodeContext(int index, KnowledgeNode node) {
         StringBuilder sb = new StringBuilder();
-        sb.append(String.format("%n--- Concept %d: %s (depth=%d) ---%n",
-                index, node.getConcept(), node.getMinDepth()));
+        sb.append(String.format("%n--- Node %d: %s (type=%s, depth=%d) ---%n",
+                index, node.getConcept(), node.getNodeType(), node.getMinDepth()));
 
-        if (node.getEquations() != null && !node.getEquations().isEmpty()) {
-            sb.append("Equations:\n");
-            for (String eq : node.getEquations()) {
-                sb.append("  ").append(eq).append("\n");
-            }
-        }
-
-        if (node.getDefinitions() != null && !node.getDefinitions().isEmpty()) {
-            sb.append("Definitions:\n");
-            node.getDefinitions().forEach((sym, def) ->
-                    sb.append("  ").append(sym).append(": ").append(def).append("\n")
-            );
-        }
-
-        if (node.getInterpretation() != null && !node.getInterpretation().isBlank()) {
-            sb.append("Interpretation: ").append(node.getInterpretation()).append("\n");
-        }
-
-        if (node.getExamples() != null && !node.getExamples().isEmpty()) {
-            sb.append("Examples:\n");
-            for (String ex : node.getExamples()) {
-                sb.append("  - ").append(ex).append("\n");
-            }
-        }
+        sb.append("Core node identity:\n");
+        sb.append("  concept: ").append(node.getConcept()).append("\n");
+        sb.append("  node_type: ").append(node.getNodeType()).append("\n");
 
         Map<String, Object> spec = node.getVisualSpec();
         if (spec != null && !spec.isEmpty()) {
-            sb.append("Visual spec:\n");
+            sb.append("Primary visual guidance:\n");
             for (String key : Arrays.asList("visual_description", "color_scheme", "layout",
                     "animation_description", "duration")) {
                 if (spec.containsKey(key)) {
@@ -231,7 +229,71 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
             }
         }
 
+        boolean hasOptionalMath = (node.getEquations() != null && !node.getEquations().isEmpty())
+                || (node.getDefinitions() != null && !node.getDefinitions().isEmpty())
+                || (node.getInterpretation() != null && !node.getInterpretation().isBlank())
+                || (node.getExamples() != null && !node.getExamples().isEmpty());
+
+        if (hasOptionalMath) {
+            sb.append("Optional mathematical enrichment (use only if helpful):\n");
+        }
+
+        if (node.getEquations() != null && !node.getEquations().isEmpty()) {
+            sb.append("  equations:\n");
+            for (String eq : node.getEquations()) {
+                sb.append("    ").append(eq).append("\n");
+            }
+        }
+
+        if (node.getDefinitions() != null && !node.getDefinitions().isEmpty()) {
+            sb.append("  definitions:\n");
+            node.getDefinitions().forEach((sym, def) ->
+                    sb.append("    ").append(sym).append(": ").append(def).append("\n")
+            );
+        }
+
+        if (node.getInterpretation() != null && !node.getInterpretation().isBlank()) {
+            sb.append("  interpretation: ").append(node.getInterpretation()).append("\n");
+        }
+
+        if (node.getExamples() != null && !node.getExamples().isEmpty()) {
+            sb.append("  examples:\n");
+            for (String ex : node.getExamples()) {
+                sb.append("    - ").append(ex).append("\n");
+            }
+        }
+
         return sb.toString();
+    }
+
+    private List<KnowledgeNode> solutionOrder(KnowledgeGraph graph) {
+        List<KnowledgeNode> topo = graph.topologicalOrder();
+        KnowledgeNode root = graph.getRootNode();
+        if (root == null) {
+            return topo;
+        }
+
+        List<KnowledgeNode> ordered = new ArrayList<>();
+        ordered.add(root);
+        for (KnowledgeNode node : topo) {
+            if (!root.getId().equals(node.getId())) {
+                ordered.add(node);
+            }
+        }
+        return ordered;
+    }
+
+    private String resolveInputMode(KnowledgeGraph graph) {
+        if (PipelineConfig.INPUT_MODE_CONCEPT.equalsIgnoreCase(inputMode)
+                || PipelineConfig.INPUT_MODE_PROBLEM.equalsIgnoreCase(inputMode)) {
+            return inputMode.toLowerCase(Locale.ROOT);
+        }
+
+        KnowledgeNode root = graph.getRootNode();
+        if (root != null && KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(root.getNodeType())) {
+            return PipelineConfig.INPUT_MODE_PROBLEM;
+        }
+        return PipelineConfig.INPUT_MODE_CONCEPT;
     }
 
     private static final class NarrativeDraft {

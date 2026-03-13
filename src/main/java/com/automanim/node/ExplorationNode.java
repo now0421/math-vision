@@ -11,6 +11,7 @@ import com.automanim.util.ConcurrencyUtils;
 import com.automanim.util.JsonUtils;
 import com.automanim.util.PromptTemplates;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +50,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private int maxDepth = 4;
     private int minDepth = 0;
     private int maxConcurrent = 4;
+    private String inputMode = PipelineConfig.INPUT_MODE_AUTO;
 
     private final AtomicInteger apiCalls = new AtomicInteger(0);
     private final AtomicInteger cacheHits = new AtomicInteger(0);
@@ -69,25 +71,29 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             this.maxDepth = config.getMaxDepth();
             this.minDepth = config.getMinDepth();
             this.maxConcurrent = config.getMaxConcurrent();
+            this.inputMode = config.getInputMode();
         }
         return (String) ctx.get(PipelineKeys.CONCEPT);
     }
 
     @Override
     public KnowledgeGraph exec(String concept) {
-        log.info("=== Stage 0: Concept Exploration ===");
-        log.info("Target concept: {}, max depth: {}, min depth: {}, concurrency: {}",
-                concept, maxDepth, minDepth, maxConcurrent);
-
-        this.targetConcept = concept;
         this.aiCallLimiter = new ConcurrencyUtils.AsyncLimiter(maxConcurrent);
+        this.targetConcept = concept;
         apiCalls.set(0);
         cacheHits.set(0);
         prereqCache.clear();
         foundationCache.clear();
+        String resolvedMode = resolveInputMode(concept);
+        log.info("=== Stage 0: {} Exploration ===",
+                PipelineConfig.INPUT_MODE_PROBLEM.equals(resolvedMode) ? "Problem" : "Concept");
+        log.info("Target input: {}, mode: {}, max depth: {}, min depth: {}, concurrency: {}",
+                concept, resolvedMode, maxDepth, minDepth, maxConcurrent);
 
         try {
-            KnowledgeGraph graph = buildGraph(concept);
+            KnowledgeGraph graph = PipelineConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)
+                    ? buildProblemGraph(concept)
+                    : buildConceptGraph(concept);
             validateGraph(graph);
 
             log.info("Exploration complete: {} nodes, {} edges, {} API calls, {} cache hits",
@@ -114,6 +120,10 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     }
 
     private KnowledgeGraph buildGraph(String concept) {
+        return buildConceptGraph(concept);
+    }
+
+    private KnowledgeGraph buildConceptGraph(String concept) {
         String rootConcept = concept == null ? "" : concept.trim();
         String rootId = ConceptUtils.normalizeConcept(rootConcept);
         ExplorationState state = new ExplorationState(rootId, rootConcept);
@@ -127,6 +137,131 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
             throw new RuntimeException("Exploration failed: " + cause.getMessage(), cause);
         }
+    }
+
+    private KnowledgeGraph buildProblemGraph(String problemStatement) {
+        String normalizedProblem = problemStatement == null ? "" : problemStatement.trim();
+        String prompt = "Math problem:\n" + normalizedProblem + "\n\n"
+                + "Build a compact solution-step dependency graph for this problem.";
+
+        try {
+            String response = aiCallLimiter.submit(() ->
+                    aiClient.chatAsync(prompt, PromptTemplates.PROBLEM_STEP_GRAPH_SYSTEM)).join();
+            apiCalls.incrementAndGet();
+
+            JsonNode payload = JsonUtils.parseTree(JsonUtils.extractJsonObject(response));
+            return parseProblemGraphPayload(payload, normalizedProblem);
+        } catch (CompletionException e) {
+            Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
+            throw new RuntimeException("Problem graph generation failed: " + cause.getMessage(), cause);
+        }
+    }
+
+    private KnowledgeGraph parseProblemGraphPayload(JsonNode payload, String problemStatement) {
+        String rootId = payload.hasNonNull("root_id")
+                ? ConceptUtils.normalizeConcept(payload.get("root_id").asText())
+                : "problem";
+
+        Map<String, KnowledgeNode> nodes = new LinkedHashMap<>();
+        JsonNode nodesArray = payload.get("nodes");
+        if (nodesArray != null && nodesArray.isArray()) {
+            for (JsonNode nodeJson : nodesArray) {
+                String rawId = nodeJson.hasNonNull("id")
+                        ? nodeJson.get("id").asText()
+                        : nodeJson.path("concept").asText();
+                String nodeId = ConceptUtils.normalizeConcept(rawId);
+                if (nodeId.isBlank()) {
+                    continue;
+                }
+
+                String concept = nodeJson.hasNonNull("concept")
+                        ? nodeJson.get("concept").asText().trim()
+                        : rawId.trim();
+                int depth = nodeJson.has("min_depth") ? nodeJson.get("min_depth").asInt(0) : 0;
+                boolean foundation = nodeJson.has("is_foundation")
+                        && nodeJson.get("is_foundation").asBoolean(false);
+
+                KnowledgeNode node = new KnowledgeNode(nodeId, concept, depth, foundation);
+                String nodeType = nodeJson.hasNonNull("node_type")
+                        ? nodeJson.get("node_type").asText()
+                        : (nodeId.equals(rootId) ? KnowledgeNode.NODE_TYPE_PROBLEM
+                        : KnowledgeNode.NODE_TYPE_DERIVATION);
+                node.setNodeType(nodeType);
+                nodes.put(nodeId, node);
+            }
+        }
+
+        if (!nodes.containsKey(rootId)) {
+            KnowledgeNode rootNode = new KnowledgeNode(rootId, problemStatement, 0, false);
+            rootNode.setNodeType(KnowledgeNode.NODE_TYPE_PROBLEM);
+            nodes.put(rootId, rootNode);
+        }
+
+        Map<String, List<String>> edges = new LinkedHashMap<>();
+        JsonNode edgeObject = payload.get("prerequisite_edges");
+        if (edgeObject != null && edgeObject.isObject()) {
+            edgeObject.fields().forEachRemaining(entry -> {
+                String sourceId = ConceptUtils.normalizeConcept(entry.getKey());
+                if (!nodes.containsKey(sourceId)) {
+                    return;
+                }
+
+                List<String> dependencies = new ArrayList<>();
+                JsonNode dependencyArray = entry.getValue();
+                if (dependencyArray != null && dependencyArray.isArray()) {
+                    for (JsonNode dependencyJson : dependencyArray) {
+                        String dependencyId = ConceptUtils.normalizeConcept(dependencyJson.asText());
+                        if (!dependencyId.isBlank()
+                                && !dependencyId.equals(sourceId)
+                                && nodes.containsKey(dependencyId)
+                                && !dependencies.contains(dependencyId)) {
+                            dependencies.add(dependencyId);
+                        }
+                    }
+                }
+                if (!dependencies.isEmpty()) {
+                    edges.put(sourceId, dependencies);
+                }
+            });
+        }
+
+        rootId = sanitizeProblemRoot(rootId, nodes, edges, problemStatement);
+        return new KnowledgeGraph(rootId, problemStatement, orderNodes(nodes), orderProblemEdges(edges, nodes));
+    }
+
+    private String sanitizeProblemRoot(String currentRootId,
+                                       Map<String, KnowledgeNode> nodes,
+                                       Map<String, List<String>> edges,
+                                       String problemStatement) {
+        if (nodes.containsKey(currentRootId)) {
+            KnowledgeNode currentRoot = nodes.get(currentRootId);
+            currentRoot.setConcept(problemStatement);
+            currentRoot.setNodeType(KnowledgeNode.NODE_TYPE_PROBLEM);
+            currentRoot.setFoundation(false);
+            currentRoot.updateMinDepth(0);
+            return currentRootId;
+        }
+
+        KnowledgeNode rootNode = new KnowledgeNode("problem", problemStatement, 0, false);
+        rootNode.setNodeType(KnowledgeNode.NODE_TYPE_PROBLEM);
+        nodes.put(rootNode.getId(), rootNode);
+        return rootNode.getId();
+    }
+
+    private Map<String, List<String>> orderProblemEdges(Map<String, List<String>> edgeIndex,
+                                                        Map<String, KnowledgeNode> nodes) {
+        Map<String, List<String>> ordered = new LinkedHashMap<>();
+        List<String> sourceIds = new ArrayList<>(edgeIndex.keySet());
+        sourceIds.sort(Comparator.comparingInt((String id) -> nodes.get(id).getMinDepth())
+                .thenComparing(id -> nodes.get(id).getConcept(), String.CASE_INSENSITIVE_ORDER));
+
+        for (String sourceId : sourceIds) {
+            List<String> dependencies = new ArrayList<>(edgeIndex.getOrDefault(sourceId, Collections.emptyList()));
+            dependencies.sort(Comparator.comparingInt((String id) -> nodes.get(id).getMinDepth())
+                    .thenComparing(id -> nodes.get(id).getConcept(), String.CASE_INSENSITIVE_ORDER));
+            ordered.put(sourceId, dependencies);
+        }
+        return ordered;
     }
 
     private void scheduleAnalysis(ExplorationState state, NodeRef nodeRef) {
@@ -186,6 +321,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 ignored -> new KnowledgeNode(nodeRef.id(), nodeRef.concept(), nodeRef.depth(), false)
         );
         node.setConcept(nodeRef.concept());
+        node.setNodeType(KnowledgeNode.NODE_TYPE_CONCEPT);
         node.updateMinDepth(nodeRef.depth());
 
         return new DepthDecision(accepted.get(), previousDepth.get() >= 0 ? previousDepth.get() : null);
@@ -204,6 +340,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 ignored -> new KnowledgeNode(result.nodeId(), result.concept(), result.depth(), false)
         );
         node.setConcept(result.concept());
+        node.setNodeType(KnowledgeNode.NODE_TYPE_CONCEPT);
         node.updateMinDepth(result.depth());
         node.setFoundation(result.foundation());
 
@@ -246,6 +383,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                     ignored -> new KnowledgeNode(prereqId, trimmedConcept, childDepth, false)
             );
             child.setConcept(trimmedConcept);
+            child.setNodeType(KnowledgeNode.NODE_TYPE_CONCEPT);
             child.updateMinDepth(childDepth);
             state.edgeIndex.computeIfAbsent(result.nodeId(), ignored -> ConcurrentHashMap.newKeySet())
                     .add(prereqId);
@@ -486,6 +624,65 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private void failExploration(ExplorationState state, Throwable error) {
         Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
         state.completion.completeExceptionally(cause);
+    }
+
+    private String resolveInputMode(String input) {
+        if (PipelineConfig.INPUT_MODE_CONCEPT.equalsIgnoreCase(inputMode)
+                || PipelineConfig.INPUT_MODE_PROBLEM.equalsIgnoreCase(inputMode)) {
+            return inputMode.toLowerCase(Locale.ROOT);
+        }
+
+        String llmDecision = classifyInputModeWithLlm(input);
+        if (PipelineConfig.INPUT_MODE_CONCEPT.equals(llmDecision)
+                || PipelineConfig.INPUT_MODE_PROBLEM.equals(llmDecision)) {
+            return llmDecision;
+        }
+
+        log.warn("Falling back to heuristic auto-mode classification for input: {}", input);
+        return classifyInputModeHeuristically(input);
+    }
+
+    private String classifyInputModeWithLlm(String input) {
+        String normalizedInput = input == null ? "" : input.trim();
+        String prompt = "User input:\n" + normalizedInput + "\n\n"
+                + "Classify the routing mode for this pipeline input.";
+
+        try {
+            String response = aiCallLimiter.submit(() ->
+                    aiClient.chatAsync(prompt, PromptTemplates.INPUT_MODE_CLASSIFIER_SYSTEM)).join();
+            apiCalls.incrementAndGet();
+
+            String normalized = response == null ? "" : response.trim().toLowerCase(Locale.ROOT);
+            if (normalized.startsWith(PipelineConfig.INPUT_MODE_PROBLEM)) {
+                log.info("Auto mode classified by LLM as problem");
+                return PipelineConfig.INPUT_MODE_PROBLEM;
+            }
+            if (normalized.startsWith(PipelineConfig.INPUT_MODE_CONCEPT)) {
+                log.info("Auto mode classified by LLM as concept");
+                return PipelineConfig.INPUT_MODE_CONCEPT;
+            }
+
+            log.warn("LLM returned unexpected input mode classification: {}", response);
+            return "";
+        } catch (CompletionException e) {
+            Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
+            log.warn("LLM input-mode classification failed: {}", cause.getMessage());
+            return "";
+        }
+    }
+
+    private String classifyInputModeHeuristically(String input) {
+        String normalized = input == null ? "" : input.trim().toLowerCase(Locale.ROOT);
+        int wordCount = normalized.isBlank() ? 0 : normalized.split("\\s+").length;
+        boolean looksLikeProblem = normalized.contains("?")
+                || normalized.contains("prove")
+                || normalized.contains("show that")
+                || normalized.contains("find")
+                || normalized.contains("determine")
+                || normalized.contains("given")
+                || normalized.contains("let ")
+                || wordCount > 12;
+        return looksLikeProblem ? PipelineConfig.INPUT_MODE_PROBLEM : PipelineConfig.INPUT_MODE_CONCEPT;
     }
 
     private static final class ExplorationState {

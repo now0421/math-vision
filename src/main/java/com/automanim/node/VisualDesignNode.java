@@ -162,9 +162,9 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                   + ". Prefer harmonious contrast and avoid unnecessary repetition.";
 
         String userPrompt = String.format(
-                "Concept: %s\nDepth: %d\nFoundation concept: %s\nRelevant equations: %s\n\n"
+                "Concept: %s\nNode type: %s\nDepth: %d\nFoundation concept: %s\nRelevant equations: %s\n\n"
                 + "Global style guide:\n%s\n\n%s\n%s",
-                node.getConcept(), node.getMinDepth(), node.isFoundation(),
+                node.getConcept(), node.getNodeType(), node.getMinDepth(), node.isFoundation(),
                 equationsInfo, globalStyleGuide, prerequisiteSpecContext, paletteContext);
 
         return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonObjectAsync(

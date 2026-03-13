@@ -163,6 +163,9 @@ public class KnowledgeGraph {
             sb.append("- ").append(node.getConcept())
                     .append(" [id=").append(node.getId())
                     .append(", depth=").append(node.getMinDepth());
+            if (node.getNodeType() != null && !node.getNodeType().isBlank()) {
+                sb.append(", type=").append(node.getNodeType());
+            }
             if (node.isFoundation()) {
                 sb.append(", foundation");
             }
