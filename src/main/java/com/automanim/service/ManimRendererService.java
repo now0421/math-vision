@@ -11,7 +11,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Executes the Manim CLI to render Manim Python code into video.
@@ -70,16 +75,31 @@ public class ManimRendererService {
             pb.environment().put("PYTHONIOENCODING", "utf-8");
             Process process = pb.start();
 
-            String stdout = readStream(process.getInputStream());
-            String stderr = readStream(process.getErrorStream());
+            ExecutorService streamReaders = Executors.newFixedThreadPool(2);
+            Future<String> stdoutFuture = streamReaders.submit(
+                    () -> readStream(process.getInputStream(), "stdout", false)
+            );
+            Future<String> stderrFuture = streamReaders.submit(
+                    () -> readStream(process.getErrorStream(), "stderr", true)
+            );
 
             boolean finished = process.waitFor(RENDER_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+            if (!finished) {
+                log.warn("Render timed out after {} minutes; terminating process", RENDER_TIMEOUT_MINUTES);
+                process.destroyForcibly();
+                process.waitFor(5, TimeUnit.SECONDS);
+            }
+
+            String stdout = awaitCapturedOutput(stdoutFuture, "stdout");
+            String stderr = awaitCapturedOutput(stderrFuture, "stderr");
+            streamReaders.shutdown();
+
             if (!finished) {
                 process.destroyForcibly();
                 return new RenderAttemptResult(
                         false,
                         stdout,
-                        "Render timed out after " + RENDER_TIMEOUT_MINUTES + " minutes",
+                        appendMessage(stderr, "Render timed out after " + RENDER_TIMEOUT_MINUTES + " minutes"),
                         null
                 );
             }
@@ -146,14 +166,43 @@ public class ManimRendererService {
         }
     }
 
-    private String readStream(java.io.InputStream is) throws IOException {
+    private String readStream(java.io.InputStream is, String streamName, boolean errorStream) throws IOException {
         StringBuilder sb = new StringBuilder();
         try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
             String line;
             while ((line = br.readLine()) != null) {
                 sb.append(line).append("\n");
+                if (errorStream) {
+                    log.warn("[manim:{}] {}", streamName, line);
+                } else {
+                    log.info("[manim:{}] {}", streamName, line);
+                }
             }
         }
         return sb.toString();
+    }
+
+    private String awaitCapturedOutput(Future<String> future, String streamName) {
+        try {
+            return future.get(5, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            log.warn("Timed out while waiting for {} stream reader to finish", streamName);
+            return "";
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Interrupted while waiting for {} stream reader", streamName);
+            return "";
+        } catch (ExecutionException e) {
+            log.warn("Failed to capture {} output: {}", streamName, e.getCause().getMessage());
+            return "";
+        }
+    }
+
+    private String appendMessage(String existing, String message) {
+        if (existing == null || existing.isBlank()) {
+            return message;
+        }
+        return existing.strip() + "\n" + message;
     }
 }

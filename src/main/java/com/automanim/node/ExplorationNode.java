@@ -19,10 +19,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -79,7 +80,10 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeNode, Stri
 
         KnowledgeNode tree;
         try {
-            tree = explore(concept, 0);
+            tree = exploreAsync(concept, 0).join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            throw new RuntimeException("Exploration failed: " + cause.getMessage(), cause);
         } finally {
             executor.shutdown();
         }
@@ -105,14 +109,43 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeNode, Stri
         return null;
     }
 
-    private KnowledgeNode explore(String concept, int depth) {
+    private CompletableFuture<KnowledgeNode> exploreAsync(String concept, int depth) {
         String key = concept.toLowerCase().trim();
 
         // Atomic visited check: add returns false if already present, preventing TOCTOU race
         if (!visited.add(key) || depth > maxDepth) {
-            return new KnowledgeNode(concept, depth, true);
+            return CompletableFuture.completedFuture(new KnowledgeNode(concept, depth, true));
         }
 
+        return CompletableFuture
+                .supplyAsync(() -> analyzeConcept(concept, depth), executor)
+                .thenCompose(step -> {
+                    if (step.terminal()) {
+                        return CompletableFuture.completedFuture(step.node());
+                    }
+
+                    List<CompletableFuture<KnowledgeNode>> childFutures = new ArrayList<>();
+                    for (String prereqConcept : step.prerequisites()) {
+                        childFutures.add(exploreAsync(prereqConcept, depth + 1));
+                    }
+
+                    if (childFutures.isEmpty()) {
+                        return CompletableFuture.completedFuture(step.node());
+                    }
+
+                    CompletableFuture<Void> allChildren = CompletableFuture.allOf(
+                            childFutures.toArray(new CompletableFuture[0])
+                    );
+                    return allChildren.thenApply(ignored -> {
+                        for (CompletableFuture<KnowledgeNode> childFuture : childFutures) {
+                            step.node().getPrerequisites().add(childFuture.join());
+                        }
+                        return step.node();
+                    });
+                });
+    }
+
+    private ExplorationStep analyzeConcept(String concept, int depth) {
         boolean isFoundation;
         if (depth < minDepth) {
             isFoundation = false;
@@ -123,35 +156,38 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeNode, Stri
         }
 
         KnowledgeNode node = new KnowledgeNode(concept, depth, isFoundation);
-
         if (isFoundation || depth >= maxDepth) {
             log.debug("  {} (depth={}) -> foundation={}", concept, depth, isFoundation);
-            return node;
+            return new ExplorationStep(node, Collections.emptyList(), true);
         }
 
         List<String> prereqs = getCachedPrerequisites(concept);
         log.info("  {} (depth={}) -> prerequisites: {}", concept, depth, prereqs);
+        return new ExplorationStep(node, prereqs, false);
+    }
 
-        if (prereqs.size() > 1 && executor != null && !executor.isShutdown()) {
-            List<Future<KnowledgeNode>> futures = new ArrayList<>();
-            for (String prereqConcept : prereqs) {
-                futures.add(executor.submit(() -> explore(prereqConcept, depth + 1)));
-            }
-            for (Future<KnowledgeNode> future : futures) {
-                try {
-                    node.getPrerequisites().add(future.get());
-                } catch (Exception e) {
-                    log.warn("  Parallel exploration failed for a prerequisite of '{}': {}",
-                            concept, e.getMessage());
-                }
-            }
-        } else {
-            for (String prereqConcept : prereqs) {
-                node.getPrerequisites().add(explore(prereqConcept, depth + 1));
-            }
+    private static final class ExplorationStep {
+        private final KnowledgeNode node;
+        private final List<String> prerequisites;
+        private final boolean terminal;
+
+        private ExplorationStep(KnowledgeNode node, List<String> prerequisites, boolean terminal) {
+            this.node = node;
+            this.prerequisites = prerequisites;
+            this.terminal = terminal;
         }
 
-        return node;
+        private KnowledgeNode node() {
+            return node;
+        }
+
+        private List<String> prerequisites() {
+            return prerequisites;
+        }
+
+        private boolean terminal() {
+            return terminal;
+        }
     }
 
     private boolean checkFoundation(String concept) {
@@ -176,16 +212,13 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeNode, Stri
 
     private List<String> getCachedPrerequisites(String concept) {
         String key = concept.toLowerCase().trim();
-        List<String> cached = prereqCache.get(key);
-        if (cached != null) {
+        List<String> existing = prereqCache.get(key);
+        if (existing != null) {
             cacheHits.incrementAndGet();
             log.debug("  Cache hit for '{}'", concept);
-            return cached;
+            return existing;
         }
-
-        List<String> prereqs = getPrerequisites(concept);
-        prereqCache.put(key, prereqs);
-        return prereqs;
+        return prereqCache.computeIfAbsent(key, ignored -> getPrerequisites(concept));
     }
 
     private List<String> getPrerequisites(String concept) {
