@@ -1,10 +1,10 @@
 package com.automanim.node;
 
-import com.automanim.config.PipelineConfig;
+import com.automanim.config.WorkflowConfig;
 import com.automanim.model.KnowledgeGraph;
 import com.automanim.model.KnowledgeNode;
 import com.automanim.model.Narrative;
-import com.automanim.model.PipelineKeys;
+import com.automanim.model.WorkflowKeys;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
 import com.automanim.util.ConcurrencyUtils;
@@ -16,10 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -31,8 +29,10 @@ import java.util.concurrent.CompletionException;
 public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, String> {
 
     private static final Logger log = LoggerFactory.getLogger(NarrativeNode.class);
-
-    private static final int MAX_CONTEXT_CHARS = 18000;
+    private static final int TOKEN_UNIT_DIVISOR = 4;
+    private static final int ASCII_TOKEN_UNITS = 1;
+    private static final int NON_ASCII_TOKEN_UNITS = 2;
+    private static final String TRUNCATION_MARKER = "\n[...truncated...]\n";
 
     private static final String NARRATIVE_TOOL = "["
             + "{"
@@ -55,7 +55,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
     private AiClient aiClient;
     private int toolCalls = 0;
-    private String inputMode = PipelineConfig.INPUT_MODE_AUTO;
+    private WorkflowConfig workflowConfig;
 
     public NarrativeNode() {
         super(1, 0);
@@ -63,12 +63,12 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
     @Override
     public KnowledgeGraph prep(Map<String, Object> ctx) {
-        this.aiClient = (AiClient) ctx.get(PipelineKeys.AI_CLIENT);
-        PipelineConfig config = (PipelineConfig) ctx.get(PipelineKeys.CONFIG);
+        this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
+        WorkflowConfig config = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
         if (config != null) {
-            this.inputMode = config.getInputMode();
+            this.workflowConfig = config;
         }
-        return (KnowledgeGraph) ctx.get(PipelineKeys.KNOWLEDGE_GRAPH);
+        return (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
     }
 
     @Override
@@ -77,22 +77,19 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         toolCalls = 0;
 
         String resolvedMode = resolveInputMode(graph);
-        List<KnowledgeNode> ordered = PipelineConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)
-                ? solutionOrder(graph)
-                : graph.topologicalOrder();
+        boolean problemMode = WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode);
+        List<KnowledgeNode> ordered = graph.topologicalOrder();
         List<String> conceptOrder = ordered.stream()
                 .map(KnowledgeNode::getConcept)
                 .collect(java.util.stream.Collectors.toList());
 
         log.info("  Narrative mode: {}, order: {}", resolvedMode, conceptOrder);
 
-        String context = buildTruncatedContext(ordered);
-        String userPrompt = PipelineConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)
-                ? PromptTemplates.problemNarrativeUserPrompt(graph.getTargetConcept(), context)
-                : PromptTemplates.narrativeUserPrompt(graph.getTargetConcept(), context);
+        int sceneCount = estimateSceneCount(ordered, problemMode);
+        String context = buildTruncatedContext(graph.getTargetConcept(), ordered, problemMode, sceneCount);
+        String userPrompt = buildUserPrompt(graph.getTargetConcept(), context, sceneCount, problemMode);
 
-        int sceneCount = Math.max(1, conceptOrder.size());
-        int totalDuration = sceneCount * 10;
+        int totalDuration = estimateTotalDuration(sceneCount, problemMode);
         String narrativeText;
 
         try {
@@ -167,12 +164,12 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
     @Override
     public String post(Map<String, Object> ctx, KnowledgeGraph prepRes, Narrative narrative) {
-        ctx.put(PipelineKeys.NARRATIVE, narrative);
+        ctx.put(WorkflowKeys.NARRATIVE, narrative);
 
-        int prevCalls = (int) ctx.getOrDefault(PipelineKeys.ENRICHMENT_TOOL_CALLS, 0);
-        ctx.put(PipelineKeys.ENRICHMENT_TOOL_CALLS, prevCalls + toolCalls);
+        int prevCalls = (int) ctx.getOrDefault(WorkflowKeys.ENRICHMENT_TOOL_CALLS, 0);
+        ctx.put(WorkflowKeys.ENRICHMENT_TOOL_CALLS, prevCalls + toolCalls);
 
-        Path outputDir = (Path) ctx.get(PipelineKeys.OUTPUT_DIR);
+        Path outputDir = (Path) ctx.get(WorkflowKeys.OUTPUT_DIR);
         if (outputDir != null) {
             FileOutputService.saveNarrative(outputDir, narrative);
         }
@@ -180,36 +177,64 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         return null;
     }
 
-    private String buildTruncatedContext(List<KnowledgeNode> orderedNodes) {
+    private String buildUserPrompt(String targetConcept,
+                                   String context,
+                                   int sceneCount,
+                                   boolean problemMode) {
+        return problemMode
+                ? PromptTemplates.problemNarrativeUserPrompt(targetConcept, context, sceneCount)
+                : PromptTemplates.narrativeUserPrompt(targetConcept, context);
+    }
+
+    private String buildTruncatedContext(String targetConcept,
+                                         List<KnowledgeNode> orderedNodes,
+                                         boolean problemMode,
+                                         int sceneCount) {
+        String fullContext = buildContext(orderedNodes, problemMode);
+        int fullContextTokens = estimateTokens(fullContext);
+        int maxInputTokens = workflowConfig.getModelConfig().getMaxInputTokens();
+        int promptOverheadTokens = estimateTokens(PromptTemplates.NARRATIVE_SYSTEM)
+                + estimateTokens(buildUserPrompt(targetConcept, "", sceneCount, problemMode));
+        int availableContextTokens = Math.max(0, maxInputTokens - promptOverheadTokens);
+
+        if (fullContextTokens <= availableContextTokens) {
+            return fullContext;
+        }
+
+        String truncatedContext = truncateToTokenBudget(fullContext, availableContextTokens, TRUNCATION_MARKER);
+        log.warn("Narrative context truncated for model {}: ~{} -> ~{} tokens (max_input_token={}, prompt_overhead={})",
+                workflowConfig.getModelConfig().getModel(),
+                fullContextTokens,
+                estimateTokens(truncatedContext),
+                maxInputTokens,
+                promptOverheadTokens);
+        return truncatedContext;
+    }
+
+    private String buildContext(List<KnowledgeNode> orderedNodes, boolean problemMode) {
         StringBuilder sb = new StringBuilder();
         sb.append("Narrative context rules:\n");
         sb.append("- Treat visual specifications as primary staging guidance.\n");
         sb.append("- Treat mathematical enrichment as optional supporting material.\n");
         sb.append("- Use equations, definitions, interpretations, and examples only when they help the main point.\n");
         sb.append("- It is acceptable to ignore optional math details that would make scenes crowded or repetitive.\n");
+        if (problemMode) {
+            sb.append("- Keep the story centered on solving the stated problem, not on surveying related theory.\n");
+            sb.append("- Reuse one stable diagram and add only the smallest necessary change per scene.\n");
+            sb.append("- The root problem node is for the opening setup only; do not use it to preload the full solution.\n");
+            sb.append("- Merge nearby steps when they belong to the same solving move.\n");
+        }
         sb.append("\n");
-        int remaining = MAX_CONTEXT_CHARS;
 
         for (int i = 0; i < orderedNodes.size(); i++) {
             KnowledgeNode node = orderedNodes.get(i);
-            String nodeContext = formatNodeContext(i + 1, node);
-
-            if (nodeContext.length() > remaining) {
-                if (remaining > 100) {
-                    sb.append(nodeContext, 0, remaining - 20);
-                    sb.append("\n[...truncated...]\n");
-                }
-                break;
-            }
-
-            sb.append(nodeContext);
-            remaining -= nodeContext.length();
+            sb.append(formatNodeContext(i + 1, node, problemMode));
         }
 
         return sb.toString();
     }
 
-    private String formatNodeContext(int index, KnowledgeNode node) {
+    private String formatNodeContext(int index, KnowledgeNode node, boolean problemMode) {
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("%n--- Node %d: %s (type=%s, depth=%d) ---%n",
                 index, node.getConcept(), node.getNodeType(), node.getMinDepth()));
@@ -218,15 +243,35 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         sb.append("  concept: ").append(node.getConcept()).append("\n");
         sb.append("  node_type: ").append(node.getNodeType()).append("\n");
 
+        boolean rootProblemNode = problemMode
+                && KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(node.getNodeType());
+
+        if (rootProblemNode) {
+            sb.append("Narrative role:\n");
+            sb.append("  Use this node only to introduce the problem setup, givens, and goal.\n");
+            sb.append("  Do not reveal the reflection trick, final formula, or optimality proof yet.\n");
+        } else if (problemMode) {
+            sb.append("Narrative role:\n");
+            sb.append("  Use this node only if it advances the main solution path.\n");
+            sb.append("  Prefer brief support over a standalone detour when possible.\n");
+        }
+
         Map<String, Object> spec = node.getVisualSpec();
         if (spec != null && !spec.isEmpty()) {
             sb.append("Primary visual guidance:\n");
-            for (String key : Arrays.asList("visual_description", "color_scheme", "layout",
-                    "animation_description", "duration")) {
+            List<String> visualKeys = rootProblemNode
+                    ? Arrays.asList("visual_description", "layout")
+                    : Arrays.asList("visual_description", "color_scheme", "layout",
+                    "animation_description", "duration");
+            for (String key : visualKeys) {
                 if (spec.containsKey(key)) {
                     sb.append("  ").append(key).append(": ").append(spec.get(key)).append("\n");
                 }
             }
+        }
+
+        if (rootProblemNode) {
+            return sb.toString();
         }
 
         boolean hasOptionalMath = (node.getEquations() != null && !node.getEquations().isEmpty())
@@ -266,34 +311,100 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         return sb.toString();
     }
 
-    private List<KnowledgeNode> solutionOrder(KnowledgeGraph graph) {
-        List<KnowledgeNode> topo = graph.topologicalOrder();
-        KnowledgeNode root = graph.getRootNode();
-        if (root == null) {
-            return topo;
+    private int estimateSceneCount(List<KnowledgeNode> orderedNodes, boolean problemMode) {
+        if (!problemMode) {
+            return Math.max(1, orderedNodes.size());
         }
 
-        List<KnowledgeNode> ordered = new ArrayList<>();
-        ordered.add(root);
-        for (KnowledgeNode node : topo) {
-            if (!root.getId().equals(node.getId())) {
-                ordered.add(node);
-            }
+        int nonRootSteps = Math.max(0, orderedNodes.size() - 1);
+        if (nonRootSteps <= 2) {
+            return 3;
         }
-        return ordered;
+        if (nonRootSteps <= 4) {
+            return 4;
+        }
+        return 5;
+    }
+
+    private int estimateTotalDuration(int sceneCount, boolean problemMode) {
+        return problemMode ? sceneCount * 7 : sceneCount * 10;
+    }
+
+    private int estimateTokens(String text) {
+        return (estimateTokenUnits(text) + TOKEN_UNIT_DIVISOR - 1) / TOKEN_UNIT_DIVISOR;
+    }
+
+    private int estimateTokenUnits(String text) {
+        if (text == null || text.isEmpty()) {
+            return 0;
+        }
+
+        int units = 0;
+        for (int i = 0; i < text.length();) {
+            int codePoint = text.codePointAt(i);
+            units += estimateTokenUnits(codePoint);
+            i += Character.charCount(codePoint);
+        }
+        return units;
+    }
+
+    private int estimateTokenUnits(int codePoint) {
+        if (Character.isWhitespace(codePoint)) {
+            return 0;
+        }
+        return codePoint <= 0x7F ? ASCII_TOKEN_UNITS : NON_ASCII_TOKEN_UNITS;
+    }
+
+    private String truncateToTokenBudget(String text, int maxTokens, String marker) {
+        if (text == null || text.isEmpty() || maxTokens <= 0) {
+            return "";
+        }
+
+        int maxUnits = maxTokens * TOKEN_UNIT_DIVISOR;
+        if (estimateTokenUnits(text) <= maxUnits) {
+            return text;
+        }
+
+        int markerUnits = estimateTokenUnits(marker);
+        int contentBudget = Math.max(0, maxUnits - markerUnits);
+        String truncatedContent = truncateToUnitBudget(text, contentBudget).stripTrailing();
+        if (truncatedContent.isEmpty() || markerUnits > maxUnits) {
+            return truncateToUnitBudget(text, maxUnits).stripTrailing();
+        }
+        return truncatedContent + marker;
+    }
+
+    private String truncateToUnitBudget(String text, int maxUnits) {
+        if (text == null || text.isEmpty() || maxUnits <= 0) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        int usedUnits = 0;
+        for (int i = 0; i < text.length();) {
+            int codePoint = text.codePointAt(i);
+            int codePointUnits = estimateTokenUnits(codePoint);
+            if (usedUnits + codePointUnits > maxUnits) {
+                break;
+            }
+            sb.appendCodePoint(codePoint);
+            usedUnits += codePointUnits;
+            i += Character.charCount(codePoint);
+        }
+        return sb.toString();
     }
 
     private String resolveInputMode(KnowledgeGraph graph) {
-        if (PipelineConfig.INPUT_MODE_CONCEPT.equalsIgnoreCase(inputMode)
-                || PipelineConfig.INPUT_MODE_PROBLEM.equalsIgnoreCase(inputMode)) {
-            return inputMode.toLowerCase(Locale.ROOT);
+        String configuredInputMode = workflowConfig.getInputMode();
+        if (WorkflowConfig.isExplicitInputMode(configuredInputMode)) {
+            return WorkflowConfig.normalizeInputMode(configuredInputMode);
         }
 
         KnowledgeNode root = graph.getRootNode();
         if (root != null && KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(root.getNodeType())) {
-            return PipelineConfig.INPUT_MODE_PROBLEM;
+            return WorkflowConfig.INPUT_MODE_PROBLEM;
         }
-        return PipelineConfig.INPUT_MODE_CONCEPT;
+        return WorkflowConfig.INPUT_MODE_CONCEPT;
     }
 
     private static final class NarrativeDraft {

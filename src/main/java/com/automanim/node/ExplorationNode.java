@@ -1,9 +1,9 @@
 package com.automanim.node;
 
-import com.automanim.config.PipelineConfig;
+import com.automanim.config.WorkflowConfig;
 import com.automanim.model.KnowledgeGraph;
 import com.automanim.model.KnowledgeNode;
-import com.automanim.model.PipelineKeys;
+import com.automanim.model.WorkflowKeys;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
 import com.automanim.util.ConceptUtils;
@@ -50,7 +50,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private int maxDepth = 4;
     private int minDepth = 0;
     private int maxConcurrent = 4;
-    private String inputMode = PipelineConfig.INPUT_MODE_AUTO;
+    private String inputMode = WorkflowConfig.INPUT_MODE_AUTO;
 
     private final AtomicInteger apiCalls = new AtomicInteger(0);
     private final AtomicInteger cacheHits = new AtomicInteger(0);
@@ -65,15 +65,15 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
     @Override
     public String prep(Map<String, Object> ctx) {
-        this.aiClient = (AiClient) ctx.get(PipelineKeys.AI_CLIENT);
-        PipelineConfig config = (PipelineConfig) ctx.get(PipelineKeys.CONFIG);
+        this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
+        WorkflowConfig config = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
         if (config != null) {
             this.maxDepth = config.getMaxDepth();
             this.minDepth = config.getMinDepth();
             this.maxConcurrent = config.getMaxConcurrent();
             this.inputMode = config.getInputMode();
         }
-        return (String) ctx.get(PipelineKeys.CONCEPT);
+        return (String) ctx.get(WorkflowKeys.CONCEPT);
     }
 
     @Override
@@ -86,12 +86,12 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         foundationCache.clear();
         String resolvedMode = resolveInputMode(concept);
         log.info("=== Stage 0: {} Exploration ===",
-                PipelineConfig.INPUT_MODE_PROBLEM.equals(resolvedMode) ? "Problem" : "Concept");
+                WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode) ? "Problem" : "Concept");
         log.info("Target input: {}, mode: {}, max depth: {}, min depth: {}, concurrency: {}",
                 concept, resolvedMode, maxDepth, minDepth, maxConcurrent);
 
         try {
-            KnowledgeGraph graph = PipelineConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)
+            KnowledgeGraph graph = WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)
                     ? buildProblemGraph(concept)
                     : buildConceptGraph(concept);
             validateGraph(graph);
@@ -106,10 +106,10 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
     @Override
     public String post(Map<String, Object> ctx, String concept, KnowledgeGraph graph) {
-        ctx.put(PipelineKeys.KNOWLEDGE_GRAPH, graph);
-        ctx.put(PipelineKeys.EXPLORATION_API_CALLS, apiCalls.get());
+        ctx.put(WorkflowKeys.KNOWLEDGE_GRAPH, graph);
+        ctx.put(WorkflowKeys.EXPLORATION_API_CALLS, apiCalls.get());
 
-        Path outputDir = (Path) ctx.get(PipelineKeys.OUTPUT_DIR);
+        Path outputDir = (Path) ctx.get(WorkflowKeys.OUTPUT_DIR);
         if (outputDir != null) {
             FileOutputService.saveKnowledgeGraph(outputDir, graph);
         }
@@ -117,10 +117,6 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         log.info("Knowledge graph: {} nodes, {} edges, max depth {}",
                 graph.countNodes(), graph.countEdges(), graph.getMaxDepth());
         return null;
-    }
-
-    private KnowledgeGraph buildGraph(String concept) {
-        return buildConceptGraph(concept);
     }
 
     private KnowledgeGraph buildConceptGraph(String concept) {
@@ -505,7 +501,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 "Final teaching goal: %s\n"
                 + "Current concept: %s\n"
                 + "List the direct prerequisite concepts needed to understand the current"
-                + " concept in a teaching animation pipeline. Keep the result precise,"
+                + " concept in a teaching animation workflow. Keep the result precise,"
                 + " ordered, and free of duplicates or overly broad topics.",
                 targetConcept, concept);
 
@@ -627,14 +623,13 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     }
 
     private String resolveInputMode(String input) {
-        if (PipelineConfig.INPUT_MODE_CONCEPT.equalsIgnoreCase(inputMode)
-                || PipelineConfig.INPUT_MODE_PROBLEM.equalsIgnoreCase(inputMode)) {
-            return inputMode.toLowerCase(Locale.ROOT);
+        if (WorkflowConfig.isExplicitInputMode(inputMode)) {
+            return WorkflowConfig.normalizeInputMode(inputMode);
         }
 
         String llmDecision = classifyInputModeWithLlm(input);
-        if (PipelineConfig.INPUT_MODE_CONCEPT.equals(llmDecision)
-                || PipelineConfig.INPUT_MODE_PROBLEM.equals(llmDecision)) {
+        if (WorkflowConfig.INPUT_MODE_CONCEPT.equals(llmDecision)
+                || WorkflowConfig.INPUT_MODE_PROBLEM.equals(llmDecision)) {
             return llmDecision;
         }
 
@@ -645,7 +640,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private String classifyInputModeWithLlm(String input) {
         String normalizedInput = input == null ? "" : input.trim();
         String prompt = "User input:\n" + normalizedInput + "\n\n"
-                + "Classify the routing mode for this pipeline input.";
+                + "Classify the routing mode for this workflow input.";
 
         try {
             String response = aiCallLimiter.submit(() ->
@@ -653,13 +648,13 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             apiCalls.incrementAndGet();
 
             String normalized = response == null ? "" : response.trim().toLowerCase(Locale.ROOT);
-            if (normalized.startsWith(PipelineConfig.INPUT_MODE_PROBLEM)) {
+            if (normalized.startsWith(WorkflowConfig.INPUT_MODE_PROBLEM)) {
                 log.info("Auto mode classified by LLM as problem");
-                return PipelineConfig.INPUT_MODE_PROBLEM;
+                return WorkflowConfig.INPUT_MODE_PROBLEM;
             }
-            if (normalized.startsWith(PipelineConfig.INPUT_MODE_CONCEPT)) {
+            if (normalized.startsWith(WorkflowConfig.INPUT_MODE_CONCEPT)) {
                 log.info("Auto mode classified by LLM as concept");
-                return PipelineConfig.INPUT_MODE_CONCEPT;
+                return WorkflowConfig.INPUT_MODE_CONCEPT;
             }
 
             log.warn("LLM returned unexpected input mode classification: {}", response);
@@ -682,7 +677,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 || normalized.contains("given")
                 || normalized.contains("let ")
                 || wordCount > 12;
-        return looksLikeProblem ? PipelineConfig.INPUT_MODE_PROBLEM : PipelineConfig.INPUT_MODE_CONCEPT;
+        return looksLikeProblem ? WorkflowConfig.INPUT_MODE_PROBLEM : WorkflowConfig.INPUT_MODE_CONCEPT;
     }
 
     private static final class ExplorationState {

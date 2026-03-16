@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Handles persisting intermediate pipeline results to disk.
+ * Handles persisting intermediate workflow results to disk.
  */
 public class FileOutputService {
 
@@ -96,9 +96,9 @@ public class FileOutputService {
         }
     }
 
-    public static void savePipelineSummary(Path outputDir, Map<String, Object> summary) {
-        writeJson(outputDir.resolve("6_pipeline_summary.json"),
-                sanitizeForJson(summary), "pipeline summary");
+    public static void saveWorkflowSummary(Path outputDir, Map<String, Object> summary) {
+        writeJson(outputDir.resolve("6_workflow_summary.json"),
+                sanitizeForJson(summary), "workflow summary");
     }
 
     private static void writeJson(Path path, Object data, String description) {

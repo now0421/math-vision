@@ -1,0 +1,43 @@
+{
+  "providers": {
+    "moonshot": {
+      "api_key_env": "MOONSHOT_API_KEY",
+      "base_url_env": "MOONSHOT_BASE_URL",
+      "base_url": "https://api.moonshot.cn/v1"
+    },
+    "deepseek": {
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "base_url_env": "DEEPSEEK_BASE_URL",
+      "base_url": "https://api.deepseek.com/v1"
+    },
+    "gemini": {
+      "api_key_env": "GEMINI_API_KEY",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/models"
+    }
+  },
+  "models": {
+    "kimi-k2-turbo-preview": {
+      "model": "kimi-k2-turbo-preview",
+      "provider": "moonshot",
+      "reasoning_content_fallback": true,
+      "temperature": 0.6,
+      "max_output_tokens": 8192,
+      "max_input_tokens": 131072
+    },
+    "deepseek-reasoner": {
+      "model": "deepseek-reasoner",
+      "reasoning_content_fallback": true,
+      "temperature": 0.6,
+      "max_output_tokens": 8192,
+      "max_input_tokens": 131072
+    },
+    "gemini-2.0-flash": {
+      "model": "gemini-2.0-flash",
+      "provider": "gemini",
+      "reasoning_content_fallback": false,
+      "temperature": 0.6,
+      "max_output_tokens": 8192,
+      "max_input_tokens": 131072
+    }
+  }
+}

@@ -11,19 +11,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Assembles the full 6-node linear pipeline:
+ * Assembles the full 6-node linear workflow:
  *
  *   ExplorationNode -> MathEnrichmentNode -> VisualDesignNode
  *       -> NarrativeNode -> CodeGenerationNode -> RenderNode
  *
- * Each node communicates via the shared context Map using PipelineKeys constants.
+ * Each node communicates via the shared context map using WorkflowKeys constants.
  */
-public class PipelineFlow {
+public class WorkflowFlow {
 
-    private static final Logger log = LoggerFactory.getLogger(PipelineFlow.class);
+    private static final Logger log = LoggerFactory.getLogger(WorkflowFlow.class);
 
     /**
-     * Creates the full pipeline flow with all 6 stages wired together.
+     * Creates the full workflow with all 6 stages wired together.
      */
     public static PocketFlow.Flow<?> create() {
         ExplorationNode exploration = new ExplorationNode();
@@ -33,7 +33,6 @@ public class PipelineFlow {
         CodeGenerationNode codeGen = new CodeGenerationNode();
         RenderNode render = new RenderNode();
 
-        // Wire linear chain: each node's default action -> next node
         exploration.next(mathEnrich);
         mathEnrich.next(visualDesign);
         visualDesign.next(narrative);
@@ -42,12 +41,12 @@ public class PipelineFlow {
 
         PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(exploration);
 
-        log.info("Pipeline assembled: Exploration -> MathEnrichment -> VisualDesign -> Narrative -> CodeGeneration -> Render");
+        log.info("Workflow assembled: Exploration -> MathEnrichment -> VisualDesign -> Narrative -> CodeGeneration -> Render");
         return flow;
     }
 
     /**
-     * Creates a pipeline that skips rendering (exploration -> enrichment -> code only).
+     * Creates a workflow that skips rendering (exploration -> enrichment -> code only).
      */
     public static PocketFlow.Flow<?> createWithoutRender() {
         ExplorationNode exploration = new ExplorationNode();
@@ -63,7 +62,7 @@ public class PipelineFlow {
 
         PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(exploration);
 
-        log.info("Pipeline assembled (no render): Exploration -> MathEnrichment -> VisualDesign -> Narrative -> CodeGeneration");
+        log.info("Workflow assembled (no render): Exploration -> MathEnrichment -> VisualDesign -> Narrative -> CodeGeneration");
         return flow;
     }
 }

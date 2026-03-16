@@ -1,0 +1,13 @@
+{
+  "max_depth": 4,
+  "min_depth": 1,
+  "parallel_math_enrichment": true,
+  "parallel_visual_design": true,
+  "max_concurrent": 8,
+  "code_gen_max_retries": 2,
+  "render_enabled": true,
+  "render_quality": "low",
+  "render_max_retries": 4,
+  "input_mode": "auto",
+  "model": "kimi-k2-turbo-preview"
+}

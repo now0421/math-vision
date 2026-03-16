@@ -2,7 +2,7 @@ package com.automanim.node;
 
 import com.automanim.model.CodeResult;
 import com.automanim.model.Narrative;
-import com.automanim.model.PipelineKeys;
+import com.automanim.model.WorkflowKeys;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
 import com.automanim.util.ConcurrencyUtils;
@@ -67,8 +67,8 @@ public class CodeGenerationNode extends PocketFlow.Node<Narrative, CodeResult, S
 
     @Override
     public Narrative prep(Map<String, Object> ctx) {
-        this.aiClient = (AiClient) ctx.get(PipelineKeys.AI_CLIENT);
-        return (Narrative) ctx.get(PipelineKeys.NARRATIVE);
+        this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
+        return (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
     }
 
     @Override
@@ -176,9 +176,9 @@ public class CodeGenerationNode extends PocketFlow.Node<Narrative, CodeResult, S
 
     @Override
     public String post(Map<String, Object> ctx, Narrative narrative, CodeResult codeResult) {
-        ctx.put(PipelineKeys.CODE_RESULT, codeResult);
+        ctx.put(WorkflowKeys.CODE_RESULT, codeResult);
 
-        Path outputDir = (Path) ctx.get(PipelineKeys.OUTPUT_DIR);
+        Path outputDir = (Path) ctx.get(WorkflowKeys.OUTPUT_DIR);
         if (outputDir != null) {
             FileOutputService.saveCodeResult(outputDir, codeResult);
         }

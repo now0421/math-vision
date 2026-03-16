@@ -53,9 +53,9 @@ public final class PromptTemplates {
             + "Return only a JSON array of concept names.";
 
     public static final String INPUT_MODE_CLASSIFIER_SYSTEM =
-            "You are a routing classifier for a math-animation pipeline.\n"
+            "You are a routing classifier for a math-animation workflow.\n"
             + "\n"
-            + "Given a single user input, decide whether the pipeline should treat it as:\n"
+            + "Given a single user input, decide whether the workflow should treat it as:\n"
             + "- concept: a concept, theorem, formula, topic, or idea to explain\n"
             + "- problem: a concrete math problem, exercise, proof task, optimization task,"
             + " or question to solve\n"
@@ -67,7 +67,7 @@ public final class PromptTemplates {
             + "Reply with only one word: concept or problem.";
 
     public static final String PROBLEM_STEP_GRAPH_SYSTEM =
-            "You are a mathematical problem-solving planner preparing a Manim animation pipeline.\n"
+            "You are a mathematical problem-solving planner preparing a Manim animation workflow.\n"
             + "\n"
             + "The user will provide a full math problem statement.\n"
             + "Decompose it into a compact dependency graph of solving steps, not a prerequisite"
@@ -172,6 +172,7 @@ public final class PromptTemplates {
             + "- naturally integrates the visual design and transitions\n"
             + "- keeps the animation focused on the main teaching goal rather than trying to use"
             + " every available detail\n"
+            + "- feels like one connected visual argument, not a stack of unrelated mini-lessons\n"
             + "\n"
             + "Important selection rule:\n"
             + "- Mathematical enrichment fields such as equations, definitions, interpretations,"
@@ -186,6 +187,16 @@ public final class PromptTemplates {
             + "- Do not pad for length.\n"
             + "- Every sentence must do real work.\n"
             + "\n"
+            + "Problem-solving focus rules:\n"
+            + "- If the target is a math problem, every scene must directly advance the solution.\n"
+            + "- Do not give secondary facts, historical remarks, or theorem side-quests their own"
+            + " standalone scenes unless they are indispensable.\n"
+            + "- Merge nearby steps when they serve one reasoning move.\n"
+            + "- Prefer 3 to 5 strong scenes over many thin scenes.\n"
+            + "- Keep one stable diagram and evolve it with small changes from scene to scene.\n"
+            + "- Auxiliary facts such as equal-angle laws should appear as brief support, not as"
+            + " the main headline, unless the whole problem is about that law.\n"
+            + "\n"
             + "If tools are available, call them. Otherwise return plain narrative text.";
 
     public static String narrativeUserPrompt(String targetConcept, String conceptContext) {
@@ -194,14 +205,21 @@ public final class PromptTemplates {
                 targetConcept, conceptContext);
     }
 
-    public static String problemNarrativeUserPrompt(String problemStatement, String solvingContext) {
+    public static String problemNarrativeUserPrompt(String problemStatement,
+                                                    String solvingContext,
+                                                    int targetSceneCount) {
         return String.format(
                 "Math problem to solve: %s\n\nOrdered solution-step graph context:\n%s\n\n"
                         + "Write the animation as a problem-solving narrative. Start by stating the"
                         + " problem clearly, then move through the key observation/construction/"
                         + " derivation steps in solving order, and end with the final answer and"
-                        + " why it is correct or optimal.",
-                problemStatement, solvingContext);
+                        + " why it is correct or optimal.\n"
+                        + "Target about %d scenes total.\n"
+                        + "Do not force one scene per node; merge nodes whenever that improves"
+                        + " focus and continuity.\n"
+                        + "Keep the viewer oriented around one persistent diagram, with only the"
+                        + " essential new element introduced in each scene.",
+                problemStatement, solvingContext, targetSceneCount);
     }
 
     // =====================================================================
@@ -258,6 +276,18 @@ public final class PromptTemplates {
             + "- Prefer `VGroup(...).arrange(...)` for multi-element layouts.\n"
             + "- Use `.scale_to_fit_width()` or `.scale_to_fit_height()` to prevent overflow.\n"
             + "- Keep simultaneous main visual elements roughly within 6 to 8.\n"
+            + "- Treat the animation as one connected visual story with a stable coordinate system.\n"
+            + "- Reuse the same anchor positions for recurring objects across scene methods.\n"
+            + "- When a new scene begins, rebuild the same base diagram first, then change only"
+            + " one or two key layers.\n"
+            + "- Keep the center of the frame reserved for the main geometry or motion.\n"
+            + "- Prefer small corner titles over giant centered headings.\n"
+            + "- Keep at most one title line and one formula block visible at a time.\n"
+            + "- Title text should usually stay at font size 28 to 36 and occupy no more than"
+            + " about 70%% of the frame width.\n"
+            + "- Formula blocks should usually occupy no more than about 45%% of the frame width"
+            + " and should be placed near the edge, not over the main geometry.\n"
+            + "- Use nearby labels for points and segments instead of large explanatory paragraphs.\n"
             + "\n"
             + "Return only Python code inside a ```python ... ``` block.";
 

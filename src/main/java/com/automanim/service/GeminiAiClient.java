@@ -1,5 +1,6 @@
 package com.automanim.service;
 
+import com.automanim.config.ModelConfig;
 import com.automanim.util.ConcurrencyUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,12 +30,12 @@ public class GeminiAiClient implements AiClient {
     private static final ObjectMapper mapper = new ObjectMapper();
 
     private final String apiKey;
-    private final String model;
+    private final ModelConfig modelConfig;
     private final HttpClient http;
 
-    public GeminiAiClient() {
-        this.apiKey = requireEnv("GEMINI_API_KEY");
-        this.model = envOrDefault("GEMINI_MODEL", "gemini-2.0-flash");
+    public GeminiAiClient(ModelConfig modelConfig) {
+        this.apiKey = requireEnv(modelConfig.getApiKeyEnv());
+        this.modelConfig = modelConfig;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
                 .build();
@@ -56,8 +57,8 @@ public class GeminiAiClient implements AiClient {
     @Override
     public CompletableFuture<String> chatAsync(String userMessage, String systemPrompt) {
         try {
-            String url = "https://generativelanguage.googleapis.com/v1beta/models/"
-                    + model + ":generateContent?key=" + apiKey;
+            String url = modelConfig.resolveBaseUrl().replaceAll("/+$", "")
+                    + "/" + modelConfig.getModel() + ":generateContent?key=" + apiKey;
 
             ObjectNode body = mapper.createObjectNode();
 
@@ -73,6 +74,10 @@ public class GeminiAiClient implements AiClient {
             ArrayNode parts = userContent.putArray("parts");
             parts.addObject().put("text", userMessage);
 
+            ObjectNode generationConfig = body.putObject("generationConfig");
+            generationConfig.put("temperature", modelConfig.getTemperature());
+            generationConfig.put("maxOutputTokens", modelConfig.getMaxOutputTokens());
+
             String jsonBody = mapper.writeValueAsString(body);
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -82,7 +87,7 @@ public class GeminiAiClient implements AiClient {
                     .timeout(Duration.ofMinutes(5))
                     .build();
 
-            log.debug("Gemini request: model={}", model);
+            log.debug("Gemini request: model={}", modelConfig.getModel());
             return http.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                     .thenApply(response -> {
                         if (response.statusCode() != 200) {
@@ -129,7 +134,7 @@ public class GeminiAiClient implements AiClient {
     }
 
     @Override
-    public String providerName() { return "gemini"; }
+    public String providerName() { return modelConfig.resolveProvider() + ":" + modelConfig.getModel(); }
 
     private static String requireEnv(String key) {
         String val = System.getenv(key);
@@ -137,11 +142,6 @@ public class GeminiAiClient implements AiClient {
             throw new IllegalStateException("Environment variable " + key + " is required");
         }
         return val;
-    }
-
-    private static String envOrDefault(String key, String defaultVal) {
-        String val = System.getenv(key);
-        return (val != null && !val.isBlank()) ? val : defaultVal;
     }
 
     private JsonNode wrapTextResponse(String text) {

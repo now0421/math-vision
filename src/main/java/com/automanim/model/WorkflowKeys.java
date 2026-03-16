@@ -1,17 +1,17 @@
 package com.automanim.model;
 
 /**
- * Shared context key constants used by pipeline nodes to read/write
+ * Shared context key constants used by workflow nodes to read and write
  * data from the PocketFlow shared context map.
  *
  * Using constants avoids magic strings scattered across node classes
- * and provides a single place to see the full pipeline data contract.
+ * and provides a single place to see the full workflow data contract.
  */
-public final class PipelineKeys {
+public final class WorkflowKeys {
 
-    private PipelineKeys() {}
+    private WorkflowKeys() {}
 
-    // ---- Configuration (set before pipeline runs) ----
+    // ---- Configuration (set before workflow runs) ----
     public static final String CONFIG = "config";
     public static final String AI_CLIENT = "aiClient";
     public static final String OUTPUT_DIR = "outputDir";

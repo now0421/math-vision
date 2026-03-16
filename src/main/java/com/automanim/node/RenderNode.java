@@ -1,8 +1,8 @@
 package com.automanim.node;
 
-import com.automanim.config.PipelineConfig;
+import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeResult;
-import com.automanim.model.PipelineKeys;
+import com.automanim.model.WorkflowKeys;
 import com.automanim.model.RenderResult;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
@@ -63,33 +63,33 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
      */
     public static class RenderInput {
         private final CodeResult codeResult;
-        private final PipelineConfig config;
+        private final WorkflowConfig config;
         private final Path outputDir;
 
-        public RenderInput(CodeResult codeResult, PipelineConfig config, Path outputDir) {
+        public RenderInput(CodeResult codeResult, WorkflowConfig config, Path outputDir) {
             this.codeResult = codeResult;
             this.config = config;
             this.outputDir = outputDir;
         }
 
         public CodeResult codeResult() { return codeResult; }
-        public PipelineConfig config() { return config; }
+        public WorkflowConfig config() { return config; }
         public Path outputDir() { return outputDir; }
     }
 
     @Override
     public RenderInput prep(Map<String, Object> ctx) {
-        this.aiClient = (AiClient) ctx.get(PipelineKeys.AI_CLIENT);
-        CodeResult codeResult = (CodeResult) ctx.get(PipelineKeys.CODE_RESULT);
-        PipelineConfig config = (PipelineConfig) ctx.get(PipelineKeys.CONFIG);
-        Path outputDir = (Path) ctx.get(PipelineKeys.OUTPUT_DIR);
+        this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
+        CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
+        WorkflowConfig config = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
+        Path outputDir = (Path) ctx.get(WorkflowKeys.OUTPUT_DIR);
         return new RenderInput(codeResult, config, outputDir);
     }
 
     @Override
     public RenderResult exec(RenderInput input) {
         CodeResult codeResult = input.codeResult();
-        PipelineConfig config = input.config();
+        WorkflowConfig config = input.config();
         Path outputDir = input.outputDir();
 
         log.info("=== Stage 3: Code Rendering ===");
@@ -202,7 +202,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
 
     @Override
     public String post(Map<String, Object> ctx, RenderInput input, RenderResult result) {
-        ctx.put(PipelineKeys.RENDER_RESULT, result);
+        ctx.put(WorkflowKeys.RENDER_RESULT, result);
 
         Path outputDir = input.outputDir();
         if (outputDir != null) {

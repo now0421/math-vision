@@ -1,9 +1,9 @@
 package com.automanim.node;
 
-import com.automanim.config.PipelineConfig;
+import com.automanim.config.WorkflowConfig;
 import com.automanim.model.KnowledgeGraph;
 import com.automanim.model.KnowledgeNode;
-import com.automanim.model.PipelineKeys;
+import com.automanim.model.WorkflowKeys;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
 import com.automanim.util.AiRequestUtils;
@@ -75,13 +75,13 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
 
     @Override
     public KnowledgeGraph prep(Map<String, Object> ctx) {
-        this.aiClient = (AiClient) ctx.get(PipelineKeys.AI_CLIENT);
-        PipelineConfig config = (PipelineConfig) ctx.get(PipelineKeys.CONFIG);
+        this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
+        WorkflowConfig config = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
         if (config != null) {
             this.parallelEnabled = config.isParallelVisualDesign();
             this.maxConcurrent = config.getMaxConcurrent();
         }
-        return (KnowledgeGraph) ctx.get(PipelineKeys.KNOWLEDGE_GRAPH);
+        return (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
     }
 
     @Override
@@ -104,11 +104,11 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
 
     @Override
     public String post(Map<String, Object> ctx, KnowledgeGraph prepRes, KnowledgeGraph graph) {
-        ctx.put(PipelineKeys.KNOWLEDGE_GRAPH, graph);
-        int prevCalls = (int) ctx.getOrDefault(PipelineKeys.ENRICHMENT_TOOL_CALLS, 0);
-        ctx.put(PipelineKeys.ENRICHMENT_TOOL_CALLS, prevCalls + toolCalls.get());
+        ctx.put(WorkflowKeys.KNOWLEDGE_GRAPH, graph);
+        int prevCalls = (int) ctx.getOrDefault(WorkflowKeys.ENRICHMENT_TOOL_CALLS, 0);
+        ctx.put(WorkflowKeys.ENRICHMENT_TOOL_CALLS, prevCalls + toolCalls.get());
 
-        Path outputDir = (Path) ctx.get(PipelineKeys.OUTPUT_DIR);
+        Path outputDir = (Path) ctx.get(WorkflowKeys.OUTPUT_DIR);
         if (outputDir != null) {
             FileOutputService.saveEnrichedGraph(outputDir, graph);
         }

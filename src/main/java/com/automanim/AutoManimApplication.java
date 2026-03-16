@@ -1,15 +1,16 @@
 package com.automanim;
 
-import com.automanim.config.PipelineConfig;
+import com.automanim.config.ConfigLoader;
+import com.automanim.config.ModelConfig;
+import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeResult;
 import com.automanim.model.KnowledgeGraph;
-import com.automanim.model.PipelineKeys;
 import com.automanim.model.RenderResult;
+import com.automanim.model.WorkflowKeys;
 import com.automanim.service.AiClient;
-import com.automanim.service.DeepSeekAiClient;
 import com.automanim.service.FileOutputService;
 import com.automanim.service.GeminiAiClient;
-import com.automanim.service.KimiAiClient;
+import com.automanim.service.OpenAiCompatibleAiClient;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,19 +23,15 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * CLI entry point for the Auto-Manim pipeline.
+ * CLI entry point for the Auto-Manim workflow.
  *
  * Usage:
  *   java -jar auto-manim.jar <concept> [options]
  *
  * Options:
- *   --provider kimi|gemini|deepseek AI provider (default: kimi)
- *   --mode auto|concept|problem Input mode (default: auto)
- *   --quality low|medium|high  Render quality (default: low)
- *   --max-depth N              Exploration depth (default: 4)
+ *   --workflow-config FILE     Workflow JSON config path
+ *   --model-config FILE        Model JSON config path
  *   --output DIR               Output directory (default: ./output/<concept>)
- *   --no-render                Skip rendering stage
- *   --render-retries N         Max render retries (default: 4)
  */
 public class AutoManimApplication {
 
@@ -48,32 +45,21 @@ public class AutoManimApplication {
         }
 
         String concept = args[0];
-        PipelineConfig.Builder configBuilder = PipelineConfig.builder();
+        String workflowConfigPath = null;
+        String modelConfigPath = null;
         String outputDirOverride = null;
 
         // Parse CLI flags
         for (int i = 1; i < args.length; i++) {
             switch (args[i]) {
-                case "--provider":
-                    configBuilder.aiProvider(args[++i]);
+                case "--workflow-config":
+                    workflowConfigPath = args[++i];
                     break;
-                case "--mode":
-                    configBuilder.inputMode(args[++i]);
-                    break;
-                case "--quality":
-                    configBuilder.renderQuality(args[++i]);
-                    break;
-                case "--max-depth":
-                    configBuilder.maxDepth(Integer.parseInt(args[++i]));
+                case "--model-config":
+                    modelConfigPath = args[++i];
                     break;
                 case "--output":
                     outputDirOverride = args[++i];
-                    break;
-                case "--no-render":
-                    configBuilder.renderEnabled(false);
-                    break;
-                case "--render-retries":
-                    configBuilder.renderMaxRetries(Integer.parseInt(args[++i]));
                     break;
                 default:
                     log.warn("Unknown option: {}", args[i]);
@@ -81,10 +67,10 @@ public class AutoManimApplication {
             }
         }
 
-        PipelineConfig config = configBuilder.build();
+        WorkflowConfig config = ConfigLoader.load(workflowConfigPath, modelConfigPath);
 
         // Create AI client
-        AiClient aiClient = createAiClient(config.getAiProvider());
+        AiClient aiClient = createAiClient(config);
 
         // Create output directory
         Path outputDir;
@@ -95,27 +81,28 @@ public class AutoManimApplication {
         }
 
         log.info("============================================================");
-        log.info("  Auto-Manim Pipeline");
+        log.info("  Auto-Manim Workflow");
         log.info("  Concept:  {}", concept);
         log.info("  Mode:     {}", config.getInputMode());
-        log.info("  Provider: {}", config.getAiProvider());
+        log.info("  Model:    {}", config.getModel());
+        log.info("  Provider: {}", config.getModelConfig().resolveProvider());
         log.info("  Quality:  {}", config.getRenderQuality());
         log.info("  Output:   {}", outputDir);
         log.info("============================================================");
 
         // Build shared context
         Map<String, Object> ctx = new HashMap<>();
-        ctx.put(PipelineKeys.CONCEPT, concept);
-        ctx.put(PipelineKeys.CONFIG, config);
-        ctx.put(PipelineKeys.AI_CLIENT, aiClient);
-        ctx.put(PipelineKeys.OUTPUT_DIR, outputDir);
+        ctx.put(WorkflowKeys.CONCEPT, concept);
+        ctx.put(WorkflowKeys.CONFIG, config);
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.OUTPUT_DIR, outputDir);
 
-        // Create and run pipeline
+        // Create and run workflow
         PocketFlow.Flow<?> flow;
         if (config.isRenderEnabled()) {
-            flow = PipelineFlow.create();
+            flow = WorkflowFlow.create();
         } else {
-            flow = PipelineFlow.createWithoutRender();
+            flow = WorkflowFlow.createWithoutRender();
         }
 
         Instant start = Instant.now();
@@ -123,7 +110,7 @@ public class AutoManimApplication {
         try {
             flow.run(ctx);
         } catch (Exception e) {
-            log.error("Pipeline failed: {}", e.getMessage(), e);
+            log.error("Workflow failed: {}", e.getMessage(), e);
             System.exit(2);
             return;
         }
@@ -132,37 +119,41 @@ public class AutoManimApplication {
 
         Map<String, Object> summary = buildSummary(ctx, elapsed);
         printSummary(summary);
-        FileOutputService.savePipelineSummary(outputDir, summary);
+        FileOutputService.saveWorkflowSummary(outputDir, summary);
 
-        log.info("Pipeline completed in {}", formatDuration(elapsed));
+        log.info("Workflow completed in {}", formatDuration(elapsed));
     }
 
-    private static AiClient createAiClient(String provider) {
-        switch (provider.toLowerCase()) {
+    private static AiClient createAiClient(WorkflowConfig config) {
+        ModelConfig modelConfig = config.getModelConfig();
+        String provider = modelConfig.resolveProvider();
+        switch (provider) {
             case "gemini":
-                return new GeminiAiClient();
+                return new GeminiAiClient(modelConfig);
+            case "moonshot":
             case "deepseek":
-                return new DeepSeekAiClient();
-            case "kimi":
-                return new KimiAiClient();
+            case "openai":
+                return new OpenAiCompatibleAiClient(modelConfig);
             default:
-                log.warn("Unknown provider '{}', using kimi", provider);
-                return new KimiAiClient();
+                throw new IllegalStateException("Unsupported provider '" + provider
+                        + "' for model '" + modelConfig.getModel() + "'");
         }
     }
 
     private static Map<String, Object> buildSummary(Map<String, Object> ctx, Duration elapsed) {
         Map<String, Object> summary = new LinkedHashMap<>();
-        KnowledgeGraph graph = (KnowledgeGraph) ctx.get(PipelineKeys.KNOWLEDGE_GRAPH);
+        KnowledgeGraph graph = (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
         log.info("");
-        CodeResult codeResult = (CodeResult) ctx.get(PipelineKeys.CODE_RESULT);
-        RenderResult renderResult = (RenderResult) ctx.get(PipelineKeys.RENDER_RESULT);
-        int apiCalls = (int) ctx.getOrDefault(PipelineKeys.EXPLORATION_API_CALLS, 0);
-        apiCalls += (int) ctx.getOrDefault(PipelineKeys.ENRICHMENT_TOOL_CALLS, 0);
+        CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
+        RenderResult renderResult = (RenderResult) ctx.get(WorkflowKeys.RENDER_RESULT);
+        int apiCalls = (int) ctx.getOrDefault(WorkflowKeys.EXPLORATION_API_CALLS, 0);
+        apiCalls += (int) ctx.getOrDefault(WorkflowKeys.ENRICHMENT_TOOL_CALLS, 0);
 
-        summary.put("concept", ctx.get(PipelineKeys.CONCEPT));
-        summary.put("input_mode", ((PipelineConfig) ctx.get(PipelineKeys.CONFIG)).getInputMode());
-        summary.put("ai_provider", ((PipelineConfig) ctx.get(PipelineKeys.CONFIG)).getAiProvider());
+        WorkflowConfig workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
+        summary.put("concept", ctx.get(WorkflowKeys.CONCEPT));
+        summary.put("input_mode", workflowConfig.getInputMode());
+        summary.put("model", workflowConfig.getModel());
+        summary.put("provider", workflowConfig.getModelConfig().resolveProvider());
         summary.put("elapsed_seconds", elapsed.getSeconds());
 
         if (graph != null) {
@@ -190,7 +181,7 @@ public class AutoManimApplication {
     }
 
     private static void printSummary(Map<String, Object> summary) {
-        log.info("==================== PIPELINE SUMMARY ====================");
+        log.info("==================== WORKFLOW SUMMARY ====================");
         if (summary.containsKey("graph_nodes")) {
             log.info("  Graph: {} nodes, {} edges, max depth {}",
                     summary.get("graph_nodes"), summary.get("graph_edges"), summary.get("graph_max_depth"));
@@ -225,19 +216,13 @@ public class AutoManimApplication {
                 "Usage: auto-manim <concept> [options]\n"
                 + "\n"
                 + "Options:\n"
-                + "  --provider kimi|gemini|deepseek AI provider (default: kimi)\n"
-                + "  --mode auto|concept|problem Input mode (default: auto)\n"
-                + "  --quality low|medium|high  Render quality (default: low)\n"
-                + "  --max-depth N              Exploration depth (default: 4)\n"
+                + "  --workflow-config FILE     Workflow JSON config path\n"
+                + "  --model-config FILE        Model JSON config path\n"
                 + "  --output DIR               Output directory\n"
-                + "  --no-render                Skip rendering stage\n"
-                + "  --render-retries N         Max render retries (default: 4)\n"
                 + "  -h, --help                 Show this help\n"
                 + "\n"
                 + "Environment variables:\n"
-                + "  MOONSHOT_API_KEY   Required for kimi provider\n"
-                + "  GEMINI_API_KEY     Required for gemini provider\n"
-                + "  DEEPSEEK_API_KEY   Required for deepseek provider\n"
+                + "  API keys are still read from env vars referenced by model-config.json\n"
         );
     }
 }

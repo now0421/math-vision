@@ -44,7 +44,7 @@ public interface AiClient {
     }
 
     /**
-     * Returns the provider name (e.g., "kimi", "gemini").
+     * Returns a client identifier for logging.
      */
     String providerName();
 }
