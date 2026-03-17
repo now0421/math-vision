@@ -6,6 +6,7 @@ import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeResult;
 import com.automanim.model.KnowledgeGraph;
 import com.automanim.model.RenderResult;
+import com.automanim.model.CodeEvaluationResult;
 import com.automanim.model.WorkflowKeys;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
@@ -196,6 +197,8 @@ public class AutoManimApplication {
         KnowledgeGraph graph = (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
         log.info("");
         CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
+        CodeEvaluationResult codeEvaluationResult =
+                (CodeEvaluationResult) ctx.get(WorkflowKeys.CODE_EVALUATION_RESULT);
         RenderResult renderResult = (RenderResult) ctx.get(WorkflowKeys.RENDER_RESULT);
         int apiCalls = (int) ctx.getOrDefault(WorkflowKeys.EXPLORATION_API_CALLS, 0);
         apiCalls += (int) ctx.getOrDefault(WorkflowKeys.ENRICHMENT_TOOL_CALLS, 0);
@@ -219,6 +222,23 @@ public class AutoManimApplication {
             summary.put("code_lines", codeResult.codeLineCount());
         }
 
+        if (codeEvaluationResult != null) {
+            apiCalls += codeEvaluationResult.getToolCalls();
+            summary.put("code_evaluation_approved", codeEvaluationResult.isApprovedForRender());
+            summary.put("code_revision_triggered", codeEvaluationResult.isRevisionTriggered());
+            summary.put("code_revision_attempts", codeEvaluationResult.getRevisionAttempts());
+            summary.put("code_gate_reason", codeEvaluationResult.getGateReason());
+
+            CodeEvaluationResult.ReviewSnapshot finalReview = codeEvaluationResult.getFinalReview();
+            if (finalReview != null) {
+                summary.put("layout_score", finalReview.getLayoutScore());
+                summary.put("continuity_score", finalReview.getContinuityScore());
+                summary.put("pacing_score", finalReview.getPacingScore());
+                summary.put("clutter_risk", finalReview.getClutterRisk());
+                summary.put("likely_offscreen_risk", finalReview.getLikelyOffscreenRisk());
+            }
+        }
+
         if (renderResult != null) {
             apiCalls += renderResult.getToolCalls();
             summary.put("render_success", renderResult.isSuccess());
@@ -240,6 +260,23 @@ public class AutoManimApplication {
         if (summary.containsKey("code_lines")) {
             log.info("  Code: {} lines, scene={}",
                     summary.get("code_lines"), summary.get("scene_name"));
+        }
+        if (summary.containsKey("code_evaluation_approved")) {
+            log.info("  Code Evaluation: {} (revision_triggered={}, attempts={})",
+                    Boolean.TRUE.equals(summary.get("code_evaluation_approved")) ? "APPROVED" : "BLOCKED",
+                    summary.get("code_revision_triggered"),
+                    summary.get("code_revision_attempts"));
+            if (summary.containsKey("layout_score")) {
+                log.info("  Scores: layout={}, continuity={}, pacing={}, clutter_risk={}, offscreen_risk={}",
+                        summary.get("layout_score"),
+                        summary.get("continuity_score"),
+                        summary.get("pacing_score"),
+                        summary.get("clutter_risk"),
+                        summary.get("likely_offscreen_risk"));
+            }
+            if (summary.get("code_gate_reason") != null) {
+                log.info("  Gate:   {}", summary.get("code_gate_reason"));
+            }
         }
         if (summary.containsKey("render_success")) {
             if (Boolean.TRUE.equals(summary.get("render_success"))) {

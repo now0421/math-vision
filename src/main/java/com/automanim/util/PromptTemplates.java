@@ -9,7 +9,8 @@ public final class PromptTemplates {
 
     private static final String WORKFLOW_OVERVIEW =
             "Stage 0 Exploration -> Stage 1a Mathematical Enrichment -> Stage 1b Visual Design"
-            + " -> Stage 1c Narrative Composition -> Stage 2 Code Generation -> Stage 3 Render Fix";
+            + " -> Stage 1c Narrative Composition -> Stage 2 Code Generation"
+            + " -> Stage 3 Code Evaluation -> Stage 4 Render Fix";
 
     private static String sanitizePromptText(String value, String fallback) {
         if (value == null) {
@@ -137,9 +138,27 @@ public final class PromptTemplates {
         ) + CODE_GENERATION_SYSTEM;
     }
 
+    public static String codeEvaluationSystemPrompt(String targetTitle, String targetDescription) {
+        return buildWorkflowSystemPrefix(
+                "Stage 3 / Code Evaluation",
+                "Review code for layout, continuity, pacing, and clutter risk",
+                targetTitle,
+                targetDescription
+        ) + CODE_EVALUATION_SYSTEM;
+    }
+
+    public static String codeRevisionSystemPrompt(String targetTitle, String targetDescription) {
+        return buildWorkflowSystemPrefix(
+                "Stage 3 / Code Evaluation",
+                "Revise Manim code after code evaluation before render",
+                targetTitle,
+                targetDescription
+        ) + CODE_REVISION_SYSTEM;
+    }
+
     public static String renderFixSystemPrompt(String targetTitle, String targetDescription) {
         return buildWorkflowSystemPrefix(
-                "Stage 3 / Render Fix",
+                "Stage 4 / Render Fix",
                 "Repair Manim code after render failure",
                 targetTitle,
                 targetDescription
@@ -567,6 +586,52 @@ public final class PromptTemplates {
                 targetConcept, storyboardJson);
     }
 
+    public static String codeReviewUserPrompt(String targetConcept,
+                                              String sceneName,
+                                              String storyboardJson,
+                                              String staticAnalysisJson,
+                                              String manimCode) {
+        return String.format(
+                "Target concept: %s\n"
+                        + "Scene class name: %s\n\n"
+                        + "Review this Manim code for likely presentation quality problems before render.\n"
+                        + "Do NOT judge whether the code can execute. Judge whether it is likely to feel"
+                        + " crowded, drift visually, feel discontinuous, or mismatch the storyboard pacing.\n"
+                        + "\n"
+                        + "Storyboard JSON (source of truth):\n```json\n%s\n```\n\n"
+                        + "Static visual analysis:\n```json\n%s\n```\n\n"
+                        + "Manim code to review:\n```python\n%s\n```\n\n"
+                        + "Focus on layout safety, continuity between scenes, pacing versus narration,"
+                        + " clutter risk, and likely offscreen placement.\n"
+                        + "Return only the structured review output.",
+                targetConcept, sceneName, storyboardJson, staticAnalysisJson, manimCode);
+    }
+
+    public static String codeRevisionUserPrompt(String targetConcept,
+                                                String sceneName,
+                                                String storyboardJson,
+                                                String staticAnalysisJson,
+                                                String reviewJson,
+                                                String manimCode) {
+        return String.format(
+                "Target concept: %s\n"
+                + "Scene class name: %s\n\n"
+                        + "The current Manim code is not approved for render because it likely has"
+                        + " presentation-quality problems, not runtime problems.\n"
+                        + "\n"
+                        + "Storyboard JSON (source of truth):\n```json\n%s\n```\n\n"
+                        + "Static visual analysis:\n```json\n%s\n```\n\n"
+                        + "Structured code review:\n```json\n%s\n```\n\n"
+                        + "Current Manim code:\n```python\n%s\n```\n\n"
+                        + "Rewrite the FULL code to improve layout discipline, reduce clutter,"
+                        + " preserve continuity with transforms instead of resets, keep recurring"
+                        + " anchors stable, and better match scene pacing to narration.\n"
+                        + "Do not focus on execution unless it directly affects visual continuity.\n"
+                        + "Preserve the scene class name and the teaching goal.\n"
+                        + "Return ONLY the full Python code block.",
+                targetConcept, sceneName, storyboardJson, staticAnalysisJson, reviewJson, manimCode);
+    }
+
     // =====================================================================
     // Stage 2: Code Generation
     // =====================================================================
@@ -644,7 +709,76 @@ public final class PromptTemplates {
             + "Return only Python code inside a ```python ... ``` block.";
 
     // =====================================================================
-    // Stage 3: Render Fix
+    // Stage 3: Code Evaluation
+    // =====================================================================
+
+    public static final String CODE_EVALUATION_SYSTEM =
+            "You are a senior Manim code reviewer.\n"
+            + "\n"
+            + "Your job is NOT to debug runtime errors.\n"
+            + "Your job is to inspect the code and predict whether the generated animation is likely to look crowded,"
+            + " drift around the frame, feel visually discontinuous, or be badly paced against"
+            + " the storyboard narration.\n"
+            + "\n"
+            + "The storyboard JSON is the source of truth.\n"
+            + "- Compare the code against the storyboard's object continuity, safe-area plan,"
+            + " layout goals, and scene pacing.\n"
+            + "- Treat repeated `to_edge` / large `shift` positioning, heavy text stacking,"
+            + " many same-time formulas, and overuse of `FadeIn` / `FadeOut` in place of"
+            + " transforms as warning signs.\n"
+            + "- Penalize code that likely pushes content toward screen edges, redraws"
+            + " persistent objects instead of transforming them, or lacks a consistent layout"
+            + " strategy such as `arrange`, `next_to`, and stable anchors.\n"
+            + "\n"
+            + "Return only structured JSON (or equivalent tool output) with these fields:\n"
+            + "- `approved_for_render`: boolean\n"
+            + "- `layout_score`: integer 1-10 where higher is better\n"
+            + "- `continuity_score`: integer 1-10 where higher is better\n"
+            + "- `pacing_score`: integer 1-10 where higher is better\n"
+            + "- `clutter_risk`: integer 1-10 where higher means more risk\n"
+            + "- `likely_offscreen_risk`: integer 1-10 where higher means more risk\n"
+            + "- `summary`: short paragraph\n"
+            + "- `strengths`: short array\n"
+            + "- `blocking_issues`: short array\n"
+            + "- `revision_directives`: short array of actionable visual revisions\n"
+            + "\n"
+            + "Score guidance:\n"
+            + "- Layout score should drop when objects are likely near edges or stacked without spacing.\n"
+            + "- Continuity score should drop when persistent storyboard objects are redrawn or"
+            + " replaced by abrupt fade cycles.\n"
+            + "- Pacing score should drop when narration density and scene timing feel mismatched.\n"
+            + "- Clutter risk rises when too many text/formula objects are visible together.\n"
+            + "- Offscreen risk rises when code heavily depends on repeated edge pushes or large shifts.\n"
+            + "\n"
+            + "Be calibrated and pragmatic. Only withhold approval when there are clear,"
+            + " viewer-visible presentation risks likely to matter in the rendered output."
+            + " Do not fail the code for minor imperfections or stylistic variation alone.";
+
+    public static final String CODE_REVISION_SYSTEM =
+            "You are a Manim code revision specialist.\n"
+            + "\n"
+            + "You will receive storyboard JSON, static visual findings, a structured review,"
+            + " and the current Manim code.\n"
+            + "Rewrite the full code so it is visually safer before render.\n"
+            + "\n"
+            + "Priorities:\n"
+            + "- Reduce clutter by simplifying what is shown at one time.\n"
+            + "- Preserve continuity with `Transform`, `ReplacementTransform`,"
+            + " `FadeTransform`, and stable anchors.\n"
+            + "- Avoid pushing many objects to the frame edge with repeated `to_edge` or large `shift`.\n"
+            + "- Use consistent spacing helpers such as `VGroup(...).arrange(...)`, `next_to`,"
+            + " aligned edges, and safe-area scaling.\n"
+            + "- Match animation beats to the storyboard durations and narration density.\n"
+            + "- Keep the main geometry or motion in the center safe area.\n"
+            + "\n"
+            + "Requirements:\n"
+            + "- Return ONE SINGLE ```python ... ``` block containing the FULL corrected code.\n"
+            + "- Preserve the storyboard intent and scene class name.\n"
+            + "- Preserve ASCII-only identifiers.\n"
+            + "- Do not explain the changes. Return only the full code block.";
+
+    // =====================================================================
+    // Stage 4: Render Fix
     // =====================================================================
 
     public static final String RENDER_FIX_SYSTEM =

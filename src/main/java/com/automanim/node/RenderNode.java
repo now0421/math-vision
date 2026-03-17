@@ -2,8 +2,9 @@ package com.automanim.node;
 
 import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeResult;
-import com.automanim.model.WorkflowKeys;
 import com.automanim.model.RenderResult;
+import com.automanim.model.CodeEvaluationResult;
+import com.automanim.model.WorkflowKeys;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
 import com.automanim.service.ManimRendererService;
@@ -24,7 +25,7 @@ import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 /**
- * Stage 3: Code Rendering - renders Manim code to video with automatic
+ * Stage 4: Code Rendering - renders Manim code to video with automatic
  * error-driven retry.
  */
 public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderResult, String> {
@@ -64,16 +65,22 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
      */
     public static class RenderInput {
         private final CodeResult codeResult;
+        private final CodeEvaluationResult codeEvaluationResult;
         private final WorkflowConfig config;
         private final Path outputDir;
 
-        public RenderInput(CodeResult codeResult, WorkflowConfig config, Path outputDir) {
+        public RenderInput(CodeResult codeResult,
+                           CodeEvaluationResult codeEvaluationResult,
+                           WorkflowConfig config,
+                           Path outputDir) {
             this.codeResult = codeResult;
+            this.codeEvaluationResult = codeEvaluationResult;
             this.config = config;
             this.outputDir = outputDir;
         }
 
         public CodeResult codeResult() { return codeResult; }
+        public CodeEvaluationResult codeEvaluationResult() { return codeEvaluationResult; }
         public WorkflowConfig config() { return config; }
         public Path outputDir() { return outputDir; }
     }
@@ -82,18 +89,21 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
     public RenderInput prep(Map<String, Object> ctx) {
         this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
         CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
+        CodeEvaluationResult codeEvaluationResult =
+                (CodeEvaluationResult) ctx.get(WorkflowKeys.CODE_EVALUATION_RESULT);
         WorkflowConfig config = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
         Path outputDir = (Path) ctx.get(WorkflowKeys.OUTPUT_DIR);
-        return new RenderInput(codeResult, config, outputDir);
+        return new RenderInput(codeResult, codeEvaluationResult, config, outputDir);
     }
 
     @Override
     public RenderResult exec(RenderInput input) {
         CodeResult codeResult = input.codeResult();
+        CodeEvaluationResult codeEvaluationResult = input.codeEvaluationResult();
         WorkflowConfig config = input.config();
         Path outputDir = input.outputDir();
 
-        log.info("=== Stage 3: Code Rendering ===");
+        log.info("=== Stage 4: Code Rendering ===");
 
         // Skip if render disabled or no code
         if (config != null && !config.isRenderEnabled()) {
@@ -103,6 +113,11 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         if (!codeResult.hasCode()) {
             log.warn("No code to render");
             return RenderResult.skipped(codeResult.getSceneName(), "No code");
+        }
+        if (codeEvaluationResult != null && !codeEvaluationResult.isApprovedForRender()) {
+            String reason = codeEvaluationResult.getGateReason();
+            log.warn("Code evaluation reported advisory issues; continuing to render anyway: {}",
+                    reason != null && !reason.isBlank() ? reason : "No additional detail");
         }
 
         String quality = config != null ? config.getRenderQuality() : "low";

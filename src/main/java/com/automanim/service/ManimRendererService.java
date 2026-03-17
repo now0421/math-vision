@@ -26,6 +26,7 @@ public class ManimRendererService {
 
     private static final Logger log = LoggerFactory.getLogger(ManimRendererService.class);
     private static final long RENDER_TIMEOUT_MINUTES = 10;
+    private static final String GENERATED_SCENE_FILE = "scene_render.py";
 
     /**
      * Result of a single Manim render attempt.
@@ -59,21 +60,17 @@ public class ManimRendererService {
      * @return render attempt result
      */
     public RenderAttemptResult render(String code, String sceneName, String quality, Path outputDir) {
+        Path codeFile = null;
         try {
             Path normalizedOutputDir = outputDir.toAbsolutePath().normalize();
 
-            Path codeFile = normalizedOutputDir.resolve("scene_render.py");
+            codeFile = normalizedOutputDir.resolve(GENERATED_SCENE_FILE);
             Files.writeString(codeFile, code, StandardCharsets.UTF_8);
 
             List<String> cmd = buildManimCommand(codeFile, sceneName, quality, normalizedOutputDir);
             log.info("Rendering: manim {} (quality={})", sceneName, quality);
 
-            ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.directory(normalizedOutputDir.toFile());
-            pb.redirectErrorStream(false);
-            pb.environment().put("PYTHONUTF8", "1");
-            pb.environment().put("PYTHONIOENCODING", "utf-8");
-            Process process = pb.start();
+            Process process = startProcess(cmd, normalizedOutputDir);
 
             ExecutorService streamReaders = Executors.newFixedThreadPool(2);
             Future<String> stdoutFuture = streamReaders.submit(
@@ -126,7 +123,18 @@ public class ManimRendererService {
                 Thread.currentThread().interrupt();
             }
             return new RenderAttemptResult(false, "", e.getMessage(), null);
+        } finally {
+            deleteTemporarySceneFile(codeFile);
         }
+    }
+
+    protected Process startProcess(List<String> cmd, Path workingDir) throws IOException {
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(workingDir.toFile());
+        pb.redirectErrorStream(false);
+        pb.environment().put("PYTHONUTF8", "1");
+        pb.environment().put("PYTHONIOENCODING", "utf-8");
+        return pb.start();
     }
 
     private List<String> buildManimCommand(Path codeFile, String sceneName, String quality, Path outputDir) {
@@ -153,6 +161,20 @@ public class ManimRendererService {
         cmd.add(sceneName);
 
         return cmd;
+    }
+
+    private void deleteTemporarySceneFile(Path codeFile) {
+        if (codeFile == null) {
+            return;
+        }
+
+        try {
+            if (Files.deleteIfExists(codeFile)) {
+                log.debug("Deleted temporary render script: {}", codeFile);
+            }
+        } catch (IOException e) {
+            log.warn("Failed to delete temporary render script {}: {}", codeFile, e.getMessage());
+        }
     }
 
     private String findVideoFile(Path outputDir, String sceneName) {

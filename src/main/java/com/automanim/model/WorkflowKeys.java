@@ -29,7 +29,10 @@ public final class WorkflowKeys {
     // ---- Stage 2: Code generation output ----
     public static final String CODE_RESULT = "codeResult";
 
-    // ---- Stage 3: Render output ----
+    // ---- Stage 3: Code evaluation output ----
+    public static final String CODE_EVALUATION_RESULT = "codeEvaluationResult";
+
+    // ---- Stage 4: Render output ----
     public static final String RENDER_RESULT = "renderResult";
 
     // ---- Metrics ----

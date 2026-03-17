@@ -61,7 +61,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
     private WorkflowConfig workflowConfig;
 
     public NarrativeNode() {
-        super(1, 0);
+        super(2, 2000);
     }
 
     @Override
@@ -71,13 +71,13 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         if (config != null) {
             this.workflowConfig = config;
         }
+        this.toolCalls = 0;
         return (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
     }
 
     @Override
     public Narrative exec(KnowledgeGraph graph) {
         log.info("=== Stage 1c: Narrative Composition ===");
-        toolCalls = 0;
 
         String resolvedMode = resolveInputMode(graph);
         boolean problemMode = WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode);
@@ -98,26 +98,18 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
         int totalDuration = estimateTotalDuration(sceneCount, problemMode);
         Storyboard storyboard;
-        String fallbackText = "";
 
         try {
             NarrativeDraft draft = requestNarrativeAsync(
                     userPrompt, systemPrompt, sceneCount, totalDuration).join();
             storyboard = draft.storyboard;
-            fallbackText = draft.rawText;
             sceneCount = draft.sceneCount;
             totalDuration = draft.totalDuration;
         } catch (CompletionException e) {
             Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
-            log.error("Narrative composition failed: {}", cause.getMessage());
-            storyboard = null;
-            fallbackText = "Narrative generation failed: " + cause.getMessage();
-        }
-
-        storyboard = ensureStoryboard(graph.getTargetConcept(), storyboard, fallbackText);
-        if (storyboard.getScenes() != null && !storyboard.getScenes().isEmpty()) {
-            sceneCount = storyboard.getScenes().size();
-            totalDuration = calculateStoryboardDuration(storyboard, totalDuration);
+            log.error("Narrative composition failed on attempt {}: {}",
+                    currentRetry + 1, cause.getMessage());
+            throw new RuntimeException("Narrative composition failed: " + cause.getMessage(), cause);
         }
 
         String storyboardJson = JsonUtils.toPrettyJson(storyboard);
@@ -149,32 +141,16 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         return aiClient.chatWithToolsRawAsync(userPrompt, systemPrompt, NARRATIVE_TOOL)
                 .thenApply(rawResponse -> {
                     toolCalls++;
-                    JsonNode toolData = JsonUtils.extractToolCallPayload(rawResponse);
-                    String responseText = JsonUtils.extractBestEffortTextFromResponse(rawResponse);
-                    NarrativeDraft fromTool = buildNarrativeDraft(
-                            toolData, responseText,
-                            defaultSceneCount, defaultTotalDuration);
-                    if (fromTool != null && fromTool.hasContent()) {
-                        return fromTool;
+                    NarrativeDraft draft = buildNarrativeDraft(
+                            JsonUtils.extractToolCallPayload(rawResponse),
+                            JsonUtils.extractBestEffortTextFromResponse(rawResponse),
+                            defaultSceneCount,
+                            defaultTotalDuration);
+                    if (draft == null) {
+                        throw new IllegalStateException(
+                                "Narrative response did not contain a valid storyboard");
                     }
-
-                    return buildNarrativeDraft(null, responseText, defaultSceneCount, defaultTotalDuration);
-                })
-                .exceptionally(error -> {
-                    Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
-                    log.debug("  Tool calling failed, falling back to plain chat: {}", cause.getMessage());
-                    return null;
-                })
-                .thenCompose(draft -> {
-                    if (draft != null && draft.hasContent()) {
-                        return CompletableFuture.completedFuture(draft);
-                    }
-                    return aiClient.chatAsync(userPrompt, systemPrompt)
-                            .thenApply(response -> {
-                                toolCalls++;
-                                return buildNarrativeDraft(
-                                        null, response, defaultSceneCount, defaultTotalDuration);
-                            });
+                    return draft;
                 });
     }
 
@@ -261,7 +237,9 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
                                                int defaultSceneCount,
                                                int defaultTotalDuration) {
         Storyboard storyboard = parseStoryboard(toolData, rawText);
-        if (storyboard == null && (rawText == null || rawText.isBlank())) {
+        if (storyboard == null
+                || storyboard.getScenes() == null
+                || storyboard.getScenes().isEmpty()) {
             return null;
         }
 
@@ -281,7 +259,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
             totalDuration = calculateStoryboardDuration(storyboard, totalDuration);
         }
 
-        return new NarrativeDraft(storyboard, rawText, sceneCount, totalDuration);
+        return new NarrativeDraft(storyboard, sceneCount, totalDuration);
     }
 
     private Storyboard parseStoryboard(JsonNode toolData, String rawText) {
@@ -320,43 +298,6 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
             log.warn("Failed to map storyboard payload: {}", e.getMessage());
             return null;
         }
-    }
-
-    private Storyboard ensureStoryboard(String targetConcept, Storyboard storyboard, String fallbackText) {
-        Storyboard normalized = normalizeStoryboard(storyboard);
-        if (normalized != null && normalized.getScenes() != null && !normalized.getScenes().isEmpty()) {
-            return normalized;
-        }
-
-        Storyboard fallback = new Storyboard();
-        fallback.setHook("Introduce " + targetConcept + " with one clear visual anchor.");
-        fallback.setSummary("Fallback storyboard generated from unstructured narrative output.");
-        fallback.setContinuityPlan("Keep one stable layout and selectively add, transform, or remove objects instead of clearing the whole scene.");
-        fallback.setGlobalVisualRules(new ArrayList<>(Arrays.asList(
-                "Keep the main diagram centered and any formula near an edge.",
-                "Prefer smooth transforms over redraws when content persists."
-        )));
-
-        StoryboardScene scene = new StoryboardScene();
-        scene.setSceneId("scene_1");
-        scene.setTitle("Overview");
-        scene.setGoal("Introduce " + targetConcept);
-        scene.setNarration(fallbackText == null || fallbackText.isBlank()
-                ? "Explain the target concept with a stable diagram and uncluttered layout."
-                : fallbackText);
-        scene.setDurationSeconds(8);
-        scene.setCameraAnchor("center");
-        scene.setLayoutGoal("Keep the main diagram centered and any supporting formula in a corner.");
-        scene.setSafeAreaPlan("Keep the main diagram inside the center safe area and leave a margin from all edges.");
-        scene.setNotesForCodegen(new ArrayList<>(Arrays.asList(
-                "Avoid global clears; preserve continuity for any later additions.",
-                "Add only the minimum set of objects needed for this overview."
-        )));
-
-        List<StoryboardScene> scenes = new ArrayList<>();
-        scenes.add(scene);
-        fallback.setScenes(scenes);
-        return normalizeStoryboard(fallback);
     }
 
     private Storyboard normalizeStoryboard(Storyboard storyboard) {
@@ -714,23 +655,14 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
     private static final class NarrativeDraft {
         private final Storyboard storyboard;
-        private final String rawText;
         private final int sceneCount;
         private final int totalDuration;
 
-        private NarrativeDraft(Storyboard storyboard, String rawText,
+        private NarrativeDraft(Storyboard storyboard,
                                int sceneCount, int totalDuration) {
             this.storyboard = storyboard;
-            this.rawText = rawText;
             this.sceneCount = sceneCount;
             this.totalDuration = totalDuration;
-        }
-
-        private boolean hasContent() {
-            return (storyboard != null
-                    && storyboard.getScenes() != null
-                    && !storyboard.getScenes().isEmpty())
-                    || (rawText != null && !rawText.isBlank());
         }
     }
 }

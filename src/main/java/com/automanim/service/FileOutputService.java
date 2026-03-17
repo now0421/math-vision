@@ -4,6 +4,7 @@ import com.automanim.model.CodeResult;
 import com.automanim.model.KnowledgeGraph;
 import com.automanim.model.Narrative;
 import com.automanim.model.RenderResult;
+import com.automanim.model.CodeEvaluationResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
@@ -88,6 +89,21 @@ public class FileOutputService {
         meta.put("tool_calls", codeResult.getToolCalls());
         meta.put("execution_time_seconds", codeResult.getExecutionTimeSeconds());
         writeJson(outputDir.resolve("4_code_result.json"), meta, "code metadata");
+    }
+
+    public static void saveCodeEvaluation(Path outputDir,
+                                          CodeEvaluationResult codeEvaluationResult,
+                                            CodeResult codeResult) {
+        writeJson(outputDir.resolve("4_code_evaluation.json"),
+                codeEvaluationResult, "code evaluation");
+
+        if (codeEvaluationResult != null
+                && codeEvaluationResult.isRevisedCodeApplied()
+                && codeResult != null
+                && codeResult.hasCode()) {
+            writeText(outputDir.resolve("4_manim_code_reviewed.py"),
+                    codeResult.getManimCode(), "reviewed Manim code");
+        }
     }
 
     public static void saveRenderResult(Path outputDir, RenderResult renderResult) {
