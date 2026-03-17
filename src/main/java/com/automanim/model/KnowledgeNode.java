@@ -81,7 +81,9 @@ public class KnowledgeNode {
     public String getConcept() { return concept; }
     public void setConcept(String concept) { this.concept = concept; }
 
-    public String getNodeType() { return nodeType; }
+    public String getNodeType() {
+        return nodeType == null || nodeType.isBlank() ? NODE_TYPE_CONCEPT : nodeType;
+    }
     public void setNodeType(String nodeType) { this.nodeType = nodeType; }
 
     public int getMinDepth() { return minDepth; }

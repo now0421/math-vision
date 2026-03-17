@@ -96,7 +96,9 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
                 ? workflowConfig.getModelConfig().getMaxInputTokens()
                 : 131072;
         this.conversationContext = new NodeConversationContext(maxInputTokens);
-        this.conversationContext.setSystemMessage(PromptTemplates.MATH_ENRICHMENT_SYSTEM);
+        this.conversationContext.setSystemMessage(PromptTemplates.mathEnrichmentSystemPrompt(
+                graph.getTargetConcept(),
+                buildWorkflowTargetDescription(graph)));
 
         try {
             return enrichGraph(graph);
@@ -119,7 +121,16 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         try {
             for (Map.Entry<Integer, List<KnowledgeNode>> entry : levels.entrySet()) {
                 int depth = entry.getKey();
-                List<KnowledgeNode> nodes = entry.getValue();
+                List<KnowledgeNode> nodes = new ArrayList<>();
+                for (KnowledgeNode node : entry.getValue()) {
+                    if (shouldEnrichNode(node)) {
+                        nodes.add(node);
+                    }
+                }
+                if (nodes.isEmpty()) {
+                    log.info("  Skipping depth {} (only metadata nodes)", depth);
+                    continue;
+                }
                 log.info("  Enriching depth {} ({} nodes{})", depth, nodes.size(),
                         parallelEnabled && nodes.size() > 1 ? ", parallel" : "");
 
@@ -205,6 +216,25 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
                 ? ""
                 : node.getDescription().trim().toLowerCase();
         return conceptKey + "||" + descriptionKey;
+    }
+
+    private boolean shouldEnrichNode(KnowledgeNode node) {
+        return node != null && !KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(node.getNodeType());
+    }
+
+    private String buildWorkflowTargetDescription(KnowledgeGraph graph) {
+        KnowledgeNode root = graph != null ? graph.getRootNode() : null;
+        return PromptTemplates.workflowTargetDescription(
+                graph != null ? graph.getTargetConcept() : "",
+                root != null ? root.getConcept() : "",
+                root != null ? root.getDescription() : "",
+                graph != null && isProblemGraph(graph));
+    }
+
+    private boolean isProblemGraph(KnowledgeGraph graph) {
+        return graph.getNodes().values().stream()
+                .anyMatch(node -> node != null
+                        && KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(node.getNodeType()));
     }
 
     private void applyContent(KnowledgeNode node, JsonNode data) {

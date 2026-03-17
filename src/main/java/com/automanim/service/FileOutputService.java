@@ -83,6 +83,7 @@ public class FileOutputService {
         meta.put("scene_name", codeResult.getSceneName());
         meta.put("description", codeResult.getDescription());
         meta.put("target_concept", codeResult.getTargetConcept());
+        meta.put("target_description", codeResult.getTargetDescription());
         meta.put("code_lines", codeResult.codeLineCount());
         meta.put("tool_calls", codeResult.getToolCalls());
         meta.put("execution_time_seconds", codeResult.getExecutionTimeSeconds());

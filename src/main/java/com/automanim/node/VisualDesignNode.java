@@ -103,7 +103,9 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                 ? workflowConfig.getModelConfig().getMaxInputTokens()
                 : 131072;
         this.conversationContext = new NodeConversationContext(maxInputTokens);
-        this.conversationContext.setSystemMessage(PromptTemplates.VISUAL_DESIGN_SYSTEM);
+        this.conversationContext.setSystemMessage(PromptTemplates.visualDesignSystemPrompt(
+                graph.getTargetConcept(),
+                buildWorkflowTargetDescription(graph)));
 
         try {
             return designGraph(graph);
@@ -131,7 +133,16 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         try {
             for (Map.Entry<Integer, List<KnowledgeNode>> entry : levels.entrySet()) {
                 int depth = entry.getKey();
-                List<KnowledgeNode> nodes = entry.getValue();
+                List<KnowledgeNode> nodes = new ArrayList<>();
+                for (KnowledgeNode node : entry.getValue()) {
+                    if (shouldDesignNode(node)) {
+                        nodes.add(node);
+                    }
+                }
+                if (nodes.isEmpty()) {
+                    log.info("  Skipping depth {} (only metadata nodes)", depth);
+                    continue;
+                }
                 log.info("  Designing depth {} ({} nodes{})", depth, nodes.size(),
                         parallelEnabled && nodes.size() > 1 ? ", parallel" : "");
                 waitForDepth(nodes);
@@ -258,6 +269,25 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                 + "consistent across all nodes.",
                 graph.getTargetConcept()
         );
+    }
+
+    private boolean shouldDesignNode(KnowledgeNode node) {
+        return node != null && !KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(node.getNodeType());
+    }
+
+    private String buildWorkflowTargetDescription(KnowledgeGraph graph) {
+        KnowledgeNode root = graph != null ? graph.getRootNode() : null;
+        return PromptTemplates.workflowTargetDescription(
+                graph != null ? graph.getTargetConcept() : "",
+                root != null ? root.getConcept() : "",
+                root != null ? root.getDescription() : "",
+                graph != null && isProblemGraph(graph));
+    }
+
+    private boolean isProblemGraph(KnowledgeGraph graph) {
+        return graph.getNodes().values().stream()
+                .anyMatch(node -> node != null
+                        && KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(node.getNodeType()));
     }
 
     private void applyVisualSpec(KnowledgeNode node, JsonNode data) {

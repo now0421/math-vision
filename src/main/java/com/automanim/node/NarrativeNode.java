@@ -81,15 +81,19 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
         String resolvedMode = resolveInputMode(graph);
         boolean problemMode = WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode);
-        List<KnowledgeNode> ordered = graph.topologicalOrder();
+        List<KnowledgeNode> ordered = filterNarrativeNodes(graph.topologicalOrder(), problemMode);
         List<String> conceptOrder = ordered.stream()
                 .map(KnowledgeNode::getConcept)
                 .collect(java.util.stream.Collectors.toList());
+        String targetDescription = buildWorkflowTargetDescription(graph, problemMode);
+        String systemPrompt = PromptTemplates.narrativeSystemPrompt(
+                graph.getTargetConcept(), targetDescription);
 
         log.info("  Narrative mode: {}, order: {}", resolvedMode, conceptOrder);
 
         int sceneCount = estimateSceneCount(ordered, problemMode);
-        String context = buildTruncatedContext(graph.getTargetConcept(), ordered, problemMode, sceneCount);
+        String context = buildTruncatedContext(
+                graph.getTargetConcept(), ordered, problemMode, sceneCount, systemPrompt);
         String userPrompt = buildUserPrompt(graph.getTargetConcept(), context, sceneCount, problemMode);
 
         int totalDuration = estimateTotalDuration(sceneCount, problemMode);
@@ -97,7 +101,8 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         String fallbackText = "";
 
         try {
-            NarrativeDraft draft = requestNarrativeAsync(userPrompt, sceneCount, totalDuration).join();
+            NarrativeDraft draft = requestNarrativeAsync(
+                    userPrompt, systemPrompt, sceneCount, totalDuration).join();
             storyboard = draft.storyboard;
             fallbackText = draft.rawText;
             sceneCount = draft.sceneCount;
@@ -121,6 +126,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
         Narrative narrative = new Narrative(
                 graph.getTargetConcept(),
+                targetDescription,
                 codegenPrompt,
                 storyboard,
                 conceptOrder,
@@ -137,9 +143,10 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
     }
 
     private CompletableFuture<NarrativeDraft> requestNarrativeAsync(String userPrompt,
+                                                                    String systemPrompt,
                                                                     int defaultSceneCount,
                                                                     int defaultTotalDuration) {
-        return aiClient.chatWithToolsRawAsync(userPrompt, PromptTemplates.NARRATIVE_SYSTEM, NARRATIVE_TOOL)
+        return aiClient.chatWithToolsRawAsync(userPrompt, systemPrompt, NARRATIVE_TOOL)
                 .thenApply(rawResponse -> {
                     toolCalls++;
                     JsonNode toolData = JsonUtils.extractToolCallPayload(rawResponse);
@@ -162,7 +169,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
                     if (draft != null && draft.hasContent()) {
                         return CompletableFuture.completedFuture(draft);
                     }
-                    return aiClient.chatAsync(userPrompt, PromptTemplates.NARRATIVE_SYSTEM)
+                    return aiClient.chatAsync(userPrompt, systemPrompt)
                             .thenApply(response -> {
                                 toolCalls++;
                                 return buildNarrativeDraft(
@@ -198,11 +205,12 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
     private String buildTruncatedContext(String targetConcept,
                                          List<KnowledgeNode> orderedNodes,
                                          boolean problemMode,
-                                         int sceneCount) {
+                                         int sceneCount,
+                                         String systemPrompt) {
         String fullContext = buildContext(orderedNodes, problemMode);
         int fullContextTokens = estimateTokens(fullContext);
         int maxInputTokens = workflowConfig.getModelConfig().getMaxInputTokens();
-        int promptOverheadTokens = estimateTokens(PromptTemplates.NARRATIVE_SYSTEM)
+        int promptOverheadTokens = estimateTokens(systemPrompt)
                 + estimateTokens(buildUserPrompt(targetConcept, "", sceneCount, problemMode));
         int availableContextTokens = Math.max(0, maxInputTokens - promptOverheadTokens);
 
@@ -235,7 +243,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         if (problemMode) {
             sb.append("- Keep the story centered on solving the stated problem, not on surveying related theory.\n");
             sb.append("- Reuse one stable diagram and add only the smallest necessary change per scene.\n");
-            sb.append("- The root problem node is for the opening setup only; do not use it to preload the full solution.\n");
+            sb.append("- The original problem statement is already provided separately, so do not treat it as a standalone graph lesson.\n");
             sb.append("- Merge nearby steps when they belong to the same solving move.\n");
         }
         sb.append("\n");
@@ -510,10 +518,10 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
             sb.append("  ").append(node.getDescription()).append("\n");
         }
 
-        boolean rootProblemNode = problemMode
+        boolean problemStatementNode = problemMode
                 && KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(node.getNodeType());
 
-        if (rootProblemNode) {
+        if (problemStatementNode) {
             sb.append("Narrative role:\n");
             sb.append("  Use this node only to introduce the problem setup, givens, and goal.\n");
             sb.append("  Do not reveal the reflection trick, final formula, or optimality proof yet.\n");
@@ -526,7 +534,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         Map<String, Object> spec = node.getVisualSpec();
         if (spec != null && !spec.isEmpty()) {
             sb.append("Primary visual guidance:\n");
-            List<String> preferredKeys = rootProblemNode
+            List<String> preferredKeys = problemStatementNode
                     ? Arrays.asList("visual_description", "layout", "animation_description",
                     "duration", "color_scheme", "color_palette", "transitions")
                     : Arrays.asList("visual_description", "color_scheme", "layout",
@@ -667,7 +675,41 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         if (root != null && KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(root.getNodeType())) {
             return WorkflowConfig.INPUT_MODE_PROBLEM;
         }
+        boolean hasProblemStatementNode = graph.getNodes().values().stream()
+                .anyMatch(node -> node != null
+                        && KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(node.getNodeType()));
+        if (hasProblemStatementNode) {
+            return WorkflowConfig.INPUT_MODE_PROBLEM;
+        }
         return WorkflowConfig.INPUT_MODE_CONCEPT;
+    }
+
+    private List<KnowledgeNode> filterNarrativeNodes(List<KnowledgeNode> orderedNodes, boolean problemMode) {
+        if (!problemMode) {
+            return orderedNodes;
+        }
+
+        List<KnowledgeNode> filtered = new ArrayList<>();
+        for (KnowledgeNode node : orderedNodes) {
+            if (node == null || isProblemMetadataNode(node)) {
+                continue;
+            }
+            filtered.add(node);
+        }
+        return filtered;
+    }
+
+    private boolean isProblemMetadataNode(KnowledgeNode node) {
+        return KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(node.getNodeType());
+    }
+
+    private String buildWorkflowTargetDescription(KnowledgeGraph graph, boolean problemMode) {
+        KnowledgeNode root = graph.getRootNode();
+        return PromptTemplates.workflowTargetDescription(
+                graph.getTargetConcept(),
+                root != null ? root.getConcept() : "",
+                root != null ? root.getDescription() : "",
+                problemMode);
     }
 
     private static final class NarrativeDraft {

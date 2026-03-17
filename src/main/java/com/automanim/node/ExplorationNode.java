@@ -203,8 +203,9 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         int maxInputTokens = (workflowConfig != null && workflowConfig.getModelConfig() != null)
                 ? workflowConfig.getModelConfig().getMaxInputTokens()
                 : 131072;
-        initializeContexts(maxInputTokens);
+        initializeRoutingContext(maxInputTokens, concept);
         String resolvedMode = resolveInputMode(concept);
+        initializeExplorationContexts(maxInputTokens, concept, resolvedMode);
         log.info("=== Stage 0: {} Exploration ===",
                 WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode) ? "Problem" : "Concept");
         log.info("Target input: {}, mode: {}, max depth: {}, min depth: {}, concurrency: {}",
@@ -281,7 +282,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private KnowledgeGraph parseProblemGraphPayload(JsonNode payload, String problemStatement) {
         String rootId = payload.hasNonNull("root_id")
                 ? ConceptUtils.normalizeConcept(payload.get("root_id").asText())
-                : "problem";
+                : "";
 
         Map<String, KnowledgeNode> nodes = new LinkedHashMap<>();
         JsonNode nodesArray = payload.get("nodes");
@@ -305,8 +306,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 KnowledgeNode node = new KnowledgeNode(nodeId, concept, depth, foundation);
                 String nodeType = nodeJson.hasNonNull("node_type")
                         ? nodeJson.get("node_type").asText()
-                        : (nodeId.equals(rootId) ? KnowledgeNode.NODE_TYPE_PROBLEM
-                        : KnowledgeNode.NODE_TYPE_DERIVATION);
+                        : KnowledgeNode.NODE_TYPE_DERIVATION;
                 node.setNodeType(nodeType);
 
                 if (nodeJson.hasNonNull("description")) {
@@ -315,12 +315,6 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
                 nodes.put(nodeId, node);
             }
-        }
-
-        if (!nodes.containsKey(rootId)) {
-            KnowledgeNode rootNode = new KnowledgeNode(rootId, problemStatement, 0, false);
-            rootNode.setNodeType(KnowledgeNode.NODE_TYPE_PROBLEM);
-            nodes.put(rootId, rootNode);
         }
 
         Map<String, List<String>> edges = new LinkedHashMap<>();
@@ -352,27 +346,197 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             });
         }
 
-        rootId = sanitizeProblemRoot(rootId, nodes, edges, problemStatement);
+        ensureProblemStatementNode(nodes, problemStatement);
+        rootId = sanitizeProblemRoot(rootId, nodes, edges);
+        recomputeProblemDepths(rootId, nodes, edges);
         return new KnowledgeGraph(rootId, problemStatement, orderNodes(nodes), orderProblemEdges(edges, nodes));
     }
 
     private String sanitizeProblemRoot(String currentRootId,
                                        Map<String, KnowledgeNode> nodes,
-                                       Map<String, List<String>> edges,
-                                       String problemStatement) {
-        if (nodes.containsKey(currentRootId)) {
-            KnowledgeNode currentRoot = nodes.get(currentRootId);
-            currentRoot.setConcept(problemStatement);
-            currentRoot.setNodeType(KnowledgeNode.NODE_TYPE_PROBLEM);
-            currentRoot.setFoundation(false);
-            currentRoot.updateMinDepth(0);
-            return currentRootId;
+                                       Map<String, List<String>> edges) {
+        Set<String> referencedAsPrerequisite = new LinkedHashSet<>();
+        for (List<String> dependencies : edges.values()) {
+            referencedAsPrerequisite.addAll(dependencies);
         }
 
-        KnowledgeNode rootNode = new KnowledgeNode("problem", problemStatement, 0, false);
-        rootNode.setNodeType(KnowledgeNode.NODE_TYPE_PROBLEM);
-        nodes.put(rootNode.getId(), rootNode);
-        return rootNode.getId();
+        List<String> terminalCandidates = new ArrayList<>();
+        for (String nodeId : nodes.keySet()) {
+            if (!referencedAsPrerequisite.contains(nodeId)) {
+                terminalCandidates.add(nodeId);
+            }
+        }
+
+        String normalizedRootId = ConceptUtils.normalizeConcept(currentRootId);
+        if (terminalCandidates.contains(normalizedRootId)
+                && isValidProblemRoot(normalizedRootId, nodes)) {
+            return normalizedRootId;
+        }
+
+        terminalCandidates.sort(problemRootComparator(nodes));
+        for (String candidateId : terminalCandidates) {
+            if (isValidProblemRoot(candidateId, nodes)) {
+                return candidateId;
+            }
+        }
+
+        List<String> fallbackCandidates = new ArrayList<>(nodes.keySet());
+        fallbackCandidates.sort(problemRootComparator(nodes));
+        for (String candidateId : fallbackCandidates) {
+            if (isValidProblemRoot(candidateId, nodes)) {
+                return candidateId;
+            }
+        }
+
+        String syntheticRootId = createSyntheticConclusionRoot(nodes, edges);
+        String problemNodeId = findProblemStatementNodeId(nodes);
+        if (problemNodeId != null && !problemNodeId.equals(syntheticRootId)) {
+            edges.put(syntheticRootId, Collections.singletonList(problemNodeId));
+        }
+        return syntheticRootId;
+    }
+
+    private void ensureProblemStatementNode(Map<String, KnowledgeNode> nodes, String problemStatement) {
+        if (findProblemStatementNodeId(nodes) != null) {
+            return;
+        }
+
+        String nodeId = createProblemStatementNodeId(nodes);
+        KnowledgeNode problemNode = new KnowledgeNode(nodeId, problemStatement, 1, false);
+        problemNode.setNodeType(KnowledgeNode.NODE_TYPE_PROBLEM);
+        problemNode.setDescription("Introduce the problem statement, givens, and target clearly.");
+        nodes.put(nodeId, problemNode);
+    }
+
+    private String findProblemStatementNodeId(Map<String, KnowledgeNode> nodes) {
+        for (KnowledgeNode node : nodes.values()) {
+            if (node != null && KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(node.getNodeType())) {
+                return node.getId();
+            }
+        }
+        return null;
+    }
+
+    private String createProblemStatementNodeId(Map<String, KnowledgeNode> nodes) {
+        String baseId = nodes.containsKey("problem") ? "problem_statement" : "problem";
+        String candidate = baseId;
+        int suffix = 2;
+        while (nodes.containsKey(candidate)) {
+            candidate = baseId + "_" + suffix++;
+        }
+        return candidate;
+    }
+
+    private boolean isValidProblemRoot(String nodeId, Map<String, KnowledgeNode> nodes) {
+        if (nodeId == null || nodeId.isBlank() || !nodes.containsKey(nodeId)) {
+            return false;
+        }
+
+        KnowledgeNode node = nodes.get(nodeId);
+        return node != null && !KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(node.getNodeType());
+    }
+
+    private Comparator<String> problemRootComparator(Map<String, KnowledgeNode> nodes) {
+        return Comparator.comparing((String id) -> {
+                    KnowledgeNode node = nodes.get(id);
+                    return node == null || !KnowledgeNode.NODE_TYPE_CONCLUSION.equalsIgnoreCase(node.getNodeType());
+                })
+                .thenComparing((String id) -> {
+                    KnowledgeNode node = nodes.get(id);
+                    return node != null && KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(node.getNodeType());
+                })
+                .thenComparing(Comparator.comparingInt((String id) -> {
+                    KnowledgeNode node = nodes.get(id);
+                    return node != null ? node.getMinDepth() : Integer.MIN_VALUE;
+                }).reversed())
+                .thenComparing(id -> {
+                    KnowledgeNode node = nodes.get(id);
+                    return node != null ? node.getConcept() : id;
+                }, String.CASE_INSENSITIVE_ORDER);
+    }
+
+    private String createSyntheticConclusionRoot(Map<String, KnowledgeNode> nodes,
+                                                 Map<String, List<String>> edges) {
+        String baseId = "final_answer";
+        String candidate = baseId;
+        int suffix = 2;
+        while (nodes.containsKey(candidate)) {
+            candidate = baseId + "_" + suffix++;
+        }
+
+        KnowledgeNode rootNode = new KnowledgeNode(candidate, "Final answer and why it is correct", 0, false);
+        rootNode.setNodeType(KnowledgeNode.NODE_TYPE_CONCLUSION);
+        rootNode.setDescription("Present the final answer and summarize why the solution is correct.");
+        nodes.put(candidate, rootNode);
+
+        List<String> prerequisites = new ArrayList<>();
+        List<String> fallbackCandidates = new ArrayList<>(nodes.keySet());
+        fallbackCandidates.remove(candidate);
+        fallbackCandidates.sort(problemRootComparator(nodes));
+        if (!fallbackCandidates.isEmpty()) {
+            prerequisites.add(fallbackCandidates.get(0));
+        }
+        if (!prerequisites.isEmpty()) {
+            edges.put(candidate, prerequisites);
+        }
+        return candidate;
+    }
+
+    private void recomputeProblemDepths(String rootId,
+                                        Map<String, KnowledgeNode> nodes,
+                                        Map<String, List<String>> edges) {
+        Map<String, Integer> computedDepths = new LinkedHashMap<>();
+        ArrayDeque<String> queue = new ArrayDeque<>();
+
+        if (nodes.containsKey(rootId)) {
+            computedDepths.put(rootId, 0);
+            queue.add(rootId);
+        }
+
+        int nextComponentDepth = traverseProblemComponent(queue, computedDepths, edges);
+
+        List<String> remaining = new ArrayList<>(nodes.keySet());
+        remaining.sort(Comparator.comparingInt((String id) -> nodes.get(id).getMinDepth()).reversed()
+                .thenComparing(id -> nodes.get(id).getConcept(), String.CASE_INSENSITIVE_ORDER));
+
+        for (String nodeId : remaining) {
+            if (computedDepths.containsKey(nodeId)) {
+                continue;
+            }
+            computedDepths.put(nodeId, nextComponentDepth);
+            queue.add(nodeId);
+            nextComponentDepth = traverseProblemComponent(queue, computedDepths, edges);
+        }
+
+        for (KnowledgeNode node : nodes.values()) {
+            Integer depth = computedDepths.get(node.getId());
+            node.setMinDepth(depth != null ? depth : 0);
+            node.setFoundation(false);
+        }
+    }
+
+    private int traverseProblemComponent(ArrayDeque<String> queue,
+                                         Map<String, Integer> computedDepths,
+                                         Map<String, List<String>> edges) {
+        int maxDepth = computedDepths.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+
+        while (!queue.isEmpty()) {
+            String currentId = queue.removeFirst();
+            int currentDepth = computedDepths.getOrDefault(currentId, 0);
+            maxDepth = Math.max(maxDepth, currentDepth);
+
+            for (String dependencyId : edges.getOrDefault(currentId, Collections.emptyList())) {
+                int candidateDepth = currentDepth + 1;
+                Integer existingDepth = computedDepths.get(dependencyId);
+                if (existingDepth == null || candidateDepth < existingDepth) {
+                    computedDepths.put(dependencyId, candidateDepth);
+                    queue.addLast(dependencyId);
+                    maxDepth = Math.max(maxDepth, candidateDepth);
+                }
+            }
+        }
+
+        return maxDepth + 1;
     }
 
     private Map<String, List<String>> orderProblemEdges(Map<String, List<String>> edgeIndex,
@@ -875,18 +1039,35 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         return looksLikeProblem ? WorkflowConfig.INPUT_MODE_PROBLEM : WorkflowConfig.INPUT_MODE_CONCEPT;
     }
 
-    private void initializeContexts(int maxInputTokens) {
+    private void initializeRoutingContext(int maxInputTokens, String input) {
+        routingContext = new NodeConversationContext(maxInputTokens);
+        routingContext.setSystemMessage(PromptTemplates.inputModeClassifierSystemPrompt(input));
+    }
+
+    private void initializeExplorationContexts(int maxInputTokens, String input, String resolvedMode) {
+        String targetDescription = buildExplorationTargetDescription(input, resolvedMode);
+
         prerequisiteContext = new NodeConversationContext(maxInputTokens);
-        prerequisiteContext.setSystemMessage(PromptTemplates.PREREQUISITES_SYSTEM);
+        prerequisiteContext.setSystemMessage(
+                PromptTemplates.prerequisitesSystemPrompt(input, targetDescription));
 
         foundationContext = new NodeConversationContext(maxInputTokens);
-        foundationContext.setSystemMessage(PromptTemplates.FOUNDATION_CHECK_SYSTEM);
-
-        routingContext = new NodeConversationContext(maxInputTokens);
-        routingContext.setSystemMessage(PromptTemplates.INPUT_MODE_CLASSIFIER_SYSTEM);
+        foundationContext.setSystemMessage(
+                PromptTemplates.foundationCheckSystemPrompt(input, targetDescription));
 
         problemGraphContext = new NodeConversationContext(maxInputTokens);
-        problemGraphContext.setSystemMessage(PromptTemplates.PROBLEM_STEP_GRAPH_SYSTEM);
+        problemGraphContext.setSystemMessage(
+                PromptTemplates.problemStepGraphSystemPrompt(input, targetDescription));
+    }
+
+    private String buildExplorationTargetDescription(String input, String resolvedMode) {
+        String trimmedInput = input == null ? "" : input.trim();
+        if (WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)) {
+            return PromptTemplates.workflowTargetDescription(
+                    trimmedInput, trimmedInput, trimmedInput, true);
+        }
+        return PromptTemplates.workflowTargetDescription(
+                trimmedInput, trimmedInput, "", false);
     }
 
     private JsonNode parseFoundationDecisionTextResponse(String response) {

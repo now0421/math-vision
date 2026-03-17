@@ -7,6 +7,145 @@ public final class PromptTemplates {
 
     private PromptTemplates() {}
 
+    private static final String WORKFLOW_OVERVIEW =
+            "Stage 0 Exploration -> Stage 1a Mathematical Enrichment -> Stage 1b Visual Design"
+            + " -> Stage 1c Narrative Composition -> Stage 2 Code Generation -> Stage 3 Render Fix";
+
+    private static String sanitizePromptText(String value, String fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? fallback : normalized;
+    }
+
+    private static String buildWorkflowSystemPrefix(String stageLabel,
+                                                    String substepLabel,
+                                                    String targetTitle,
+                                                    String targetDescription) {
+        return "You are working inside a multi-stage Manim animation generation workflow.\n"
+                + "Current workflow stage: " + sanitizePromptText(stageLabel, "Unknown stage") + "\n"
+                + "Current substep: " + sanitizePromptText(substepLabel, "Unknown substep") + "\n"
+                + "Overall workflow: " + WORKFLOW_OVERVIEW + "\n"
+                + "Final animation target: " + sanitizePromptText(targetTitle, "Unknown target") + "\n"
+                + "Final target description: "
+                + sanitizePromptText(targetDescription, "No explicit target description is available yet.")
+                + "\n"
+                + "Keep the full target in mind, but perform only the responsibility of the current substep.\n\n";
+    }
+
+    public static String workflowTargetDescription(String targetConcept,
+                                                   String rootConcept,
+                                                   String rootDescription,
+                                                   boolean problemMode) {
+        String safeTarget = sanitizePromptText(targetConcept, "Unknown target");
+        String safeRootConcept = sanitizePromptText(rootConcept, safeTarget);
+        String safeRootDescription = sanitizePromptText(rootDescription, "");
+
+        if (problemMode) {
+            if (!safeRootDescription.isEmpty()) {
+                return String.format(
+                        "Solve the math problem \"%s\" through a coherent Manim animation. The solution"
+                                + " should culminate in the final conclusion \"%s\": %s",
+                        safeTarget, safeRootConcept, safeRootDescription);
+            }
+            return String.format(
+                    "Solve the math problem \"%s\" through a coherent Manim animation that reaches"
+                            + " the final conclusion \"%s\".",
+                    safeTarget, safeRootConcept);
+        }
+
+        if (!safeRootDescription.isEmpty()) {
+            return safeRootDescription;
+        }
+        return String.format(
+                "Explain the concept \"%s\" through a coherent Manim animation built from the"
+                        + " necessary prerequisites up to the final idea.",
+                safeTarget);
+    }
+
+    public static String foundationCheckSystemPrompt(String targetTitle, String targetDescription) {
+        return buildWorkflowSystemPrefix(
+                "Stage 0 / Exploration",
+                "Foundation sufficiency check",
+                targetTitle,
+                targetDescription
+        ) + FOUNDATION_CHECK_SYSTEM;
+    }
+
+    public static String prerequisitesSystemPrompt(String targetTitle, String targetDescription) {
+        return buildWorkflowSystemPrefix(
+                "Stage 0 / Exploration",
+                "Direct prerequisite extraction",
+                targetTitle,
+                targetDescription
+        ) + PREREQUISITES_SYSTEM;
+    }
+
+    public static String inputModeClassifierSystemPrompt(String inputText) {
+        return buildWorkflowSystemPrefix(
+                "Stage 0 / Exploration",
+                "Input mode classification",
+                inputText,
+                "Decide whether this input should follow the concept-explanation workflow or the"
+                        + " problem-solving workflow."
+        ) + INPUT_MODE_CLASSIFIER_SYSTEM;
+    }
+
+    public static String problemStepGraphSystemPrompt(String targetTitle, String targetDescription) {
+        return buildWorkflowSystemPrefix(
+                "Stage 0 / Exploration",
+                "Problem solution-step graph planning",
+                targetTitle,
+                targetDescription
+        ) + PROBLEM_STEP_GRAPH_SYSTEM;
+    }
+
+    public static String mathEnrichmentSystemPrompt(String targetTitle, String targetDescription) {
+        return buildWorkflowSystemPrefix(
+                "Stage 1a / Mathematical Enrichment",
+                "Mathematical content enrichment",
+                targetTitle,
+                targetDescription
+        ) + MATH_ENRICHMENT_SYSTEM;
+    }
+
+    public static String visualDesignSystemPrompt(String targetTitle, String targetDescription) {
+        return buildWorkflowSystemPrefix(
+                "Stage 1b / Visual Design",
+                "Scene visual design",
+                targetTitle,
+                targetDescription
+        ) + VISUAL_DESIGN_SYSTEM;
+    }
+
+    public static String narrativeSystemPrompt(String targetTitle, String targetDescription) {
+        return buildWorkflowSystemPrefix(
+                "Stage 1c / Narrative Composition",
+                "Storyboard composition",
+                targetTitle,
+                targetDescription
+        ) + NARRATIVE_SYSTEM;
+    }
+
+    public static String codeGenerationSystemPrompt(String targetTitle, String targetDescription) {
+        return buildWorkflowSystemPrefix(
+                "Stage 2 / Code Generation",
+                "Generate executable Manim code",
+                targetTitle,
+                targetDescription
+        ) + CODE_GENERATION_SYSTEM;
+    }
+
+    public static String renderFixSystemPrompt(String targetTitle, String targetDescription) {
+        return buildWorkflowSystemPrefix(
+                "Stage 3 / Render Fix",
+                "Repair Manim code after render failure",
+                targetTitle,
+                targetDescription
+        ) + RENDER_FIX_SYSTEM;
+    }
+
     // =====================================================================
     // Stage 0: Exploration
     // =====================================================================
@@ -114,28 +253,37 @@ public final class PromptTemplates {
             + "1. Focus on the actual route to the solution.\n"
             + "2. Each node must be an atomic solving step.\n"
             + "3. Use node_type from: problem, observation, construction, derivation, conclusion.\n"
-            + "4. Include exactly one root problem node for the original statement.\n"
-            + "5. Prefer 4 to 8 nodes unless the problem truly needs more.\n"
-            + "6. Dependencies must point only to earlier required steps.\n"
-            + "7. Avoid generic textbook topics such as 'geometry' or 'algebra basics'.\n"
-            + "8. Use concise English labels that work well as scene titles.\n"
+            + "4. Include exactly one root conclusion node for the final answer, final claim,"
+            + " or decisive end state of the solution.\n"
+            + "5. Include exactly one separate problem node for the original statement,"
+            + " givens, and goal.\n"
+            + "6. Set the root conclusion node to min_depth 0. Earlier required steps should"
+            + " have larger min_depth values.\n"
+            + "7. Prefer 4 to 8 nodes unless the problem truly needs more.\n"
+            + "8. Dependencies must point only to earlier required steps.\n"
+            + "9. Avoid generic textbook topics such as 'geometry' or 'algebra basics'.\n"
+            + "10. Use concise English labels that work well as scene titles.\n"
             + "\n"
             + "Return a JSON object with this exact shape:\n"
             + "{\n"
-            + "  \"root_id\": \"problem\",\n"
+            + "  \"root_id\": \"final_answer\",\n"
             + "  \"nodes\": [\n"
+            + "    {\"id\": \"final_answer\", \"concept\": \"Shortest path occurs when A, P,"
+            + " and B' are collinear\", \"description\": \"Reveal the final straight-line"
+            + " alignment and state why this gives the minimum path.\","
+            + " \"node_type\": \"conclusion\", \"min_depth\": 0, \"is_foundation\": false},\n"
+            + "    {\"id\": \"observe_alignment\", \"concept\": \"Transform AP + PB into AP +"
+            + " PB' and look for one straight line\", \"description\": \"Move point P along the"
+            + " riverbank while updating AP, PB, and PB' to show the special aligned case.\","
+            + " \"node_type\": \"observation\", \"min_depth\": 1, \"is_foundation\": false},\n"
             + "    {\"id\": \"problem\", \"concept\": \"Original problem statement\","
             + " \"description\": \"Display the problem text, then animate the given geometric"
             + " figure being drawn step by step.\", \"node_type\": \"problem\","
-            + " \"min_depth\": 0, \"is_foundation\": false},\n"
-            + "    {\"id\": \"step_1\", \"concept\": \"Reflect point B across line l\","
-            + " \"description\": \"Animate the perpendicular from B to l, then move B along the"
-            + " perpendicular to its mirror position B' with a smooth transition.\","
-            + " \"node_type\": \"construction\", \"min_depth\": 1, \"is_foundation\": false}\n"
+            + " \"min_depth\": 2, \"is_foundation\": false}\n"
             + "  ],\n"
             + "  \"prerequisite_edges\": {\n"
-            + "    \"problem\": [\"step_1\", \"step_2\"],\n"
-            + "    \"step_3\": [\"step_1\"]\n"
+            + "    \"final_answer\": [\"observe_alignment\"],\n"
+            + "    \"observe_alignment\": [\"problem\"]\n"
             + "  }\n"
             + "}\n"
             + "\n"

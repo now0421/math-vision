@@ -17,6 +17,9 @@ public class Narrative {
     @JsonProperty("target_concept")
     private String targetConcept;
 
+    @JsonProperty("target_description")
+    private String targetDescription;
+
     @JsonProperty("verbose_prompt")
     private String verbosePrompt;
 
@@ -36,12 +39,19 @@ public class Narrative {
 
     public Narrative(String targetConcept, String verbosePrompt,
                      List<String> conceptOrder, int totalDuration, int sceneCount) {
-        this(targetConcept, verbosePrompt, null, conceptOrder, totalDuration, sceneCount);
+        this(targetConcept, "", verbosePrompt, null, conceptOrder, totalDuration, sceneCount);
     }
 
     public Narrative(String targetConcept, String verbosePrompt, Storyboard storyboard,
                      List<String> conceptOrder, int totalDuration, int sceneCount) {
+        this(targetConcept, "", verbosePrompt, storyboard, conceptOrder, totalDuration, sceneCount);
+    }
+
+    public Narrative(String targetConcept, String targetDescription, String verbosePrompt,
+                     Storyboard storyboard, List<String> conceptOrder,
+                     int totalDuration, int sceneCount) {
         this.targetConcept = targetConcept;
+        this.targetDescription = targetDescription;
         this.verbosePrompt = verbosePrompt;
         this.storyboard = storyboard;
         this.conceptOrder = conceptOrder;
@@ -58,6 +68,9 @@ public class Narrative {
 
     public String getTargetConcept() { return targetConcept; }
     public void setTargetConcept(String targetConcept) { this.targetConcept = targetConcept; }
+
+    public String getTargetDescription() { return targetDescription; }
+    public void setTargetDescription(String targetDescription) { this.targetDescription = targetDescription; }
 
     public String getVerbosePrompt() { return verbosePrompt; }
     public void setVerbosePrompt(String verbosePrompt) { this.verbosePrompt = verbosePrompt; }

@@ -112,7 +112,9 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
                 ? config.getModelConfig().getMaxInputTokens()
                 : 131072;
         NodeConversationContext conversationContext = new NodeConversationContext(maxInputTokens);
-        conversationContext.setSystemMessage(PromptTemplates.RENDER_FIX_SYSTEM);
+        conversationContext.setSystemMessage(PromptTemplates.renderFixSystemPrompt(
+                codeResult.getTargetConcept(),
+                codeResult.getTargetDescription()));
 
         String currentCode = codeResult.getManimCode();
         String sceneName = codeResult.getSceneName();

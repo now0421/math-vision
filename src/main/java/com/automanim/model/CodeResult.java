@@ -10,16 +10,23 @@ public class CodeResult {
     private String sceneName;
     private String description;
     private String targetConcept;
+    private String targetDescription;
     private int toolCalls;
     private double executionTimeSeconds;
 
     public CodeResult() {}
 
     public CodeResult(String manimCode, String sceneName, String description, String targetConcept) {
+        this(manimCode, sceneName, description, targetConcept, "");
+    }
+
+    public CodeResult(String manimCode, String sceneName, String description,
+                      String targetConcept, String targetDescription) {
         this.manimCode = manimCode;
         this.sceneName = sceneName;
         this.description = description;
         this.targetConcept = targetConcept;
+        this.targetDescription = targetDescription;
     }
 
     public int codeLineCount() {
@@ -44,6 +51,9 @@ public class CodeResult {
 
     public String getTargetConcept() { return targetConcept; }
     public void setTargetConcept(String targetConcept) { this.targetConcept = targetConcept; }
+
+    public String getTargetDescription() { return targetDescription; }
+    public void setTargetDescription(String targetDescription) { this.targetDescription = targetDescription; }
 
     public int getToolCalls() { return toolCalls; }
     public void setToolCalls(int toolCalls) { this.toolCalls = toolCalls; }

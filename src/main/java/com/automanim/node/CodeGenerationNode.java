@@ -87,21 +87,24 @@ public class CodeGenerationNode extends PocketFlow.Node<Narrative, CodeResult, S
                     ? workflowConfig.getModelConfig().getMaxInputTokens()
                     : 131072;
             this.conversationContext = new NodeConversationContext(maxInputTokens);
-            this.conversationContext.setSystemMessage(PromptTemplates.CODE_GENERATION_SYSTEM);
         }
 
         if (narrative == null) {
             log.warn("Narrative is empty, cannot generate code");
             return new CodeResult("", "", "Empty narrative",
-                    "");
+                    "", "");
         }
+
+        this.conversationContext.setSystemMessage(PromptTemplates.codeGenerationSystemPrompt(
+                narrative.getTargetConcept(),
+                narrative.getTargetDescription()));
 
         String expectedSceneName = conceptToClassName(narrative.getTargetConcept());
         String userPrompt = buildGenerationPrompt(narrative, expectedSceneName);
         if (userPrompt.isBlank()) {
             log.warn("Narrative prompt is empty, cannot generate code");
             return new CodeResult("", "", "Empty narrative",
-                    narrative.getTargetConcept());
+                    narrative.getTargetConcept(), narrative.getTargetDescription());
         }
 
         String code;
@@ -138,7 +141,8 @@ public class CodeGenerationNode extends PocketFlow.Node<Narrative, CodeResult, S
                 code,
                 sceneName,
                 "Manim animation for " + narrative.getTargetConcept(),
-                narrative.getTargetConcept()
+                narrative.getTargetConcept(),
+                narrative.getTargetDescription()
         );
         result.setToolCalls(toolCalls);
 
