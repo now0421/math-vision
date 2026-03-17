@@ -13,8 +13,11 @@ import com.automanim.model.CodeEvaluationResult.StaticFinding;
 import com.automanim.model.WorkflowKeys;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
+import com.automanim.util.AiRequestUtils;
+import com.automanim.util.ConcurrencyUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.automanim.util.JsonUtils;
+import com.automanim.util.NodeConversationContext;
 import com.automanim.util.PromptTemplates;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
@@ -30,6 +33,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletionException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -103,6 +107,9 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
             + "]";
 
     private AiClient aiClient;
+    private WorkflowConfig workflowConfig;
+    private NodeConversationContext reviewConversationContext;
+    private NodeConversationContext revisionConversationContext;
     private int toolCalls;
 
     public CodeEvaluationNode() {
@@ -134,6 +141,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     @Override
     public CodeEvaluationInput prep(Map<String, Object> ctx) {
         this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
+        this.workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
         this.toolCalls = 0;
         return new CodeEvaluationInput(
                 (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT),
@@ -163,6 +171,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         String sceneName = extractSceneName(currentCode, codeResult.getSceneName());
         codeResult.setSceneName(sceneName);
         result.setSceneName(sceneName);
+        initializeConversationContexts(codeResult, sceneName);
 
         StaticAnalysis initialStatic = analyzeStaticQuality(narrative, codeResult, currentCode);
         ReviewSnapshot initialReview = requestCodeReview(narrative, codeResult, sceneName, currentCode, initialStatic);
@@ -277,22 +286,28 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                 ? JsonUtils.toPrettyJson(narrative.getStoryboard())
                 : "{\"scenes\":[]}";
         String staticAnalysisJson = JsonUtils.toPrettyJson(analysis);
+        String userPrompt = PromptTemplates.codeReviewUserPrompt(
+                targetConcept, sceneName, storyboardJson, staticAnalysisJson, code);
 
         try {
-            JsonNode rawResponse = aiClient.chatWithToolsRaw(
-                    PromptTemplates.codeReviewUserPrompt(
-                            targetConcept, sceneName, storyboardJson, staticAnalysisJson, code),
-                    PromptTemplates.codeEvaluationSystemPrompt(
-                            targetConcept, codeResult.getTargetDescription()),
-                    CODE_REVIEW_TOOL);
-            toolCalls++;
-            ReviewSnapshot parsed = parseReviewSnapshot(
-                    JsonUtils.extractToolCallPayload(rawResponse),
-                    JsonUtils.extractBestEffortTextFromResponse(rawResponse));
+            JsonNode payload = AiRequestUtils.requestJsonObjectAsync(
+                    aiClient,
+                    log,
+                    sceneName,
+                    reviewConversationContext,
+                    userPrompt,
+                    CODE_REVIEW_TOOL,
+                    () -> toolCalls++,
+                    this::parseReviewTextResponse
+            ).join();
+            ReviewSnapshot parsed = parseReviewSnapshot(payload, null);
             if (parsed != null) {
                 return normalizeReview(parsed);
             }
             log.warn("Code reviewer returned no parseable structure, falling back to static synthesis");
+        } catch (CompletionException e) {
+            Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
+            log.warn("Code reviewer request failed, using static fallback: {}", cause.getMessage());
         } catch (Exception e) {
             log.warn("Code reviewer request failed, using static fallback: {}", e.getMessage());
         }
@@ -313,24 +328,61 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                 : "{\"scenes\":[]}";
         String staticAnalysisJson = JsonUtils.toPrettyJson(analysis);
         String reviewJson = JsonUtils.toPrettyJson(review);
+        String userPrompt = PromptTemplates.codeRevisionUserPrompt(
+                targetConcept,
+                sceneName,
+                storyboardJson,
+                staticAnalysisJson,
+                reviewJson,
+                code);
 
         try {
-            String response = aiClient.chat(
-                    PromptTemplates.codeRevisionUserPrompt(
-                            targetConcept,
-                            sceneName,
-                            storyboardJson,
-                            staticAnalysisJson,
-                            reviewJson,
-                            code),
-                    PromptTemplates.codeRevisionSystemPrompt(
-                            targetConcept,
-                            codeResult.getTargetDescription()));
-            toolCalls++;
+            String response = requestTextResponse(revisionConversationContext, userPrompt);
             return JsonUtils.extractCodeBlock(response);
+        } catch (CompletionException e) {
+            Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
+            log.warn("Code revision request failed: {}", cause.getMessage());
+            return null;
         } catch (Exception e) {
             log.warn("Code revision request failed: {}", e.getMessage());
             return null;
+        }
+    }
+
+    private void initializeConversationContexts(CodeResult codeResult, String fallbackSceneName) {
+        String targetConcept = codeResult != null && codeResult.getTargetConcept() != null
+                ? codeResult.getTargetConcept()
+                : fallbackSceneName;
+        String targetDescription = codeResult != null ? codeResult.getTargetDescription() : "";
+        int maxInputTokens = (workflowConfig != null && workflowConfig.getModelConfig() != null)
+                ? workflowConfig.getModelConfig().getMaxInputTokens()
+                : 131072;
+
+        this.reviewConversationContext = new NodeConversationContext(maxInputTokens);
+        this.reviewConversationContext.setSystemMessage(
+                PromptTemplates.codeEvaluationSystemPrompt(targetConcept, targetDescription));
+
+        this.revisionConversationContext = new NodeConversationContext(maxInputTokens);
+        this.revisionConversationContext.setSystemMessage(
+                PromptTemplates.codeRevisionSystemPrompt(targetConcept, targetDescription));
+    }
+
+    private String requestTextResponse(NodeConversationContext context, String userPrompt) {
+        NodeConversationContext.TurnReservation reservation = context.reserveTurn(userPrompt);
+        List<NodeConversationContext.Message> snapshot = reservation.getSnapshot();
+        NodeConversationContext.trimSnapshotToFitBudget(snapshot, context.getMaxInputTokens());
+
+        try {
+            String response = aiClient.chatAsync(snapshot).join();
+            toolCalls++;
+            context.appendReservedTurn(reservation.getSequence(), userPrompt, response);
+            return response;
+        } catch (CompletionException e) {
+            context.cancelReservedTurn(reservation.getSequence());
+            throw e;
+        } catch (RuntimeException e) {
+            context.cancelReservedTurn(reservation.getSequence());
+            throw e;
         }
     }
 
@@ -576,7 +628,11 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
             return null;
         }
         try {
-            return parseReviewNode(JsonUtils.parseTree(JsonUtils.extractJsonObject(rawText)));
+            String candidate = JsonUtils.extractJsonObject(rawText);
+            if (candidate == null || candidate.isBlank()) {
+                return null;
+            }
+            return parseReviewNode(JsonUtils.parseTree(candidate));
         } catch (RuntimeException e) {
             log.debug("Failed to parse review JSON from text response: {}", e.getMessage());
             return null;
@@ -584,21 +640,22 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     }
 
     private ReviewSnapshot parseReviewNode(JsonNode node) {
-        if (node == null || node.isNull()) {
+        JsonNode reviewNode = unwrapReviewPayload(node);
+        if (reviewNode == null || reviewNode.isNull()) {
             return null;
         }
 
         ReviewSnapshot snapshot = new ReviewSnapshot();
-        snapshot.setApprovedForRender(readBoolean(node, "approved_for_render", "approvedForRender"));
-        snapshot.setLayoutScore(readInt(node, "layout_score", "layoutScore"));
-        snapshot.setContinuityScore(readInt(node, "continuity_score", "continuityScore"));
-        snapshot.setPacingScore(readInt(node, "pacing_score", "pacingScore"));
-        snapshot.setClutterRisk(readInt(node, "clutter_risk", "clutterRisk"));
-        snapshot.setLikelyOffscreenRisk(readInt(node, "likely_offscreen_risk", "likelyOffscreenRisk"));
-        snapshot.setSummary(readText(node, "summary"));
-        snapshot.setStrengths(readStringList(node, "strengths"));
-        snapshot.setBlockingIssues(readStringList(node, "blocking_issues", "blockingIssues"));
-        snapshot.setRevisionDirectives(readStringList(node, "revision_directives", "revisionDirectives"));
+        snapshot.setApprovedForRender(readBoolean(reviewNode, "approved_for_render", "approvedForRender"));
+        snapshot.setLayoutScore(readInt(reviewNode, "layout_score", "layoutScore"));
+        snapshot.setContinuityScore(readInt(reviewNode, "continuity_score", "continuityScore"));
+        snapshot.setPacingScore(readInt(reviewNode, "pacing_score", "pacingScore"));
+        snapshot.setClutterRisk(readInt(reviewNode, "clutter_risk", "clutterRisk"));
+        snapshot.setLikelyOffscreenRisk(readInt(reviewNode, "likely_offscreen_risk", "likelyOffscreenRisk"));
+        snapshot.setSummary(readText(reviewNode, "summary"));
+        snapshot.setStrengths(readStringList(reviewNode, "strengths"));
+        snapshot.setBlockingIssues(readStringList(reviewNode, "blocking_issues", "blockingIssues"));
+        snapshot.setRevisionDirectives(readStringList(reviewNode, "revision_directives", "revisionDirectives"));
 
         if (snapshot.getLayoutScore() <= 0
                 && snapshot.getContinuityScore() <= 0
@@ -608,6 +665,46 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
             return null;
         }
         return snapshot;
+    }
+
+    private JsonNode parseReviewTextResponse(String response) {
+        return tryParseJsonObject(response);
+    }
+
+    private JsonNode tryParseJsonObject(String response) {
+        if (response == null || !response.contains("{")) {
+            return null;
+        }
+        try {
+            String candidate = JsonUtils.extractJsonObject(response);
+            if (candidate == null || candidate.isBlank()) {
+                return null;
+            }
+            return JsonUtils.parseTree(candidate);
+        } catch (RuntimeException e) {
+            log.debug("Failed to parse code review JSON from text response: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private JsonNode unwrapReviewPayload(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        String[] wrapperFields = {
+                "review",
+                "code_review",
+                "codeReview",
+                "result",
+                "payload"
+        };
+        for (String field : wrapperFields) {
+            JsonNode wrapped = node.get(field);
+            if (wrapped != null && wrapped.isObject()) {
+                return wrapped;
+            }
+        }
+        return node;
     }
 
     private ReviewSnapshot normalizeReview(ReviewSnapshot snapshot) {

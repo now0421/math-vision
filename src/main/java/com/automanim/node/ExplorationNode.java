@@ -1155,7 +1155,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             return null;
         }
         String candidate = JsonUtils.extractJsonObject(response);
-        if ("{}".equals(candidate)) {
+        if (candidate == null || candidate.isBlank()) {
             return null;
         }
         return JsonUtils.parseTree(candidate);

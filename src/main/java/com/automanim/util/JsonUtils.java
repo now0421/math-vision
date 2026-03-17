@@ -17,7 +17,6 @@ public final class JsonUtils {
     private static final Logger log = LoggerFactory.getLogger(JsonUtils.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Pattern JSON_ARRAY_PATTERN = Pattern.compile("\\[.*?]", Pattern.DOTALL);
-    private static final Pattern JSON_OBJECT_PATTERN = Pattern.compile("\\{.*}", Pattern.DOTALL);
     private static final Pattern CODE_BLOCK_PATTERN = Pattern.compile("```(?:python)?\\s*([\\s\\S]*?)```");
 
     private JsonUtils() {}
@@ -103,39 +102,30 @@ public final class JsonUtils {
     }
 
     public static String extractJsonObject(String text) {
-        if (text == null || text.isBlank()) return "{}";
+        if (text == null || text.isBlank()) return null;
 
         // Layer 1: Direct parse
         String trimmed = text.trim();
-        if (trimmed.startsWith("{")) {
-            try {
-                MAPPER.readTree(trimmed);
-                return trimmed;
-            } catch (JsonProcessingException ignored) {}
+        String direct = validateJsonObjectCandidate(trimmed);
+        if (direct != null) {
+            return direct;
         }
 
         // Layer 2: Code blocks
         String fromBlock = extractFromCodeBlock(text, "{");
-        if (fromBlock != null) {
-            try {
-                MAPPER.readTree(fromBlock);
-                return fromBlock;
-            } catch (JsonProcessingException ignored) {}
+        String validatedBlock = validateJsonObjectCandidate(fromBlock);
+        if (validatedBlock != null) {
+            return validatedBlock;
         }
 
-        // Layer 3: Find { and }
-        int start = text.indexOf('{');
-        int end = text.lastIndexOf('}');
-        if (start >= 0 && end > start) {
-            String candidate = text.substring(start, end + 1);
-            try {
-                MAPPER.readTree(candidate);
-                return candidate;
-            } catch (JsonProcessingException ignored) {}
+        // Layer 3: scan for the first balanced, parseable JSON object.
+        String scanned = scanForJsonObject(text);
+        if (scanned != null) {
+            return scanned;
         }
 
-        log.warn("Could not extract JSON object from response, returning empty");
-        return "{}";
+        log.warn("Could not extract JSON object from response");
+        return null;
     }
 
     public static String extractCodeBlock(String text) {
@@ -334,6 +324,78 @@ public final class JsonUtils {
                 return value;
             }
         }
+        return null;
+    }
+
+    private static String validateJsonObjectCandidate(String candidate) {
+        if (candidate == null || candidate.isBlank()) {
+            return null;
+        }
+        String trimmed = candidate.trim();
+        if (!trimmed.startsWith("{")) {
+            return null;
+        }
+        try {
+            JsonNode parsed = MAPPER.readTree(trimmed);
+            return parsed != null && parsed.isObject() ? trimmed : null;
+        } catch (JsonProcessingException ignored) {
+            return null;
+        }
+    }
+
+    private static String scanForJsonObject(String text) {
+        int start = -1;
+        int depth = 0;
+        boolean inString = false;
+        boolean escaping = false;
+
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+
+            if (start < 0) {
+                if (ch == '{') {
+                    start = i;
+                    depth = 1;
+                    inString = false;
+                    escaping = false;
+                }
+                continue;
+            }
+
+            if (escaping) {
+                escaping = false;
+                continue;
+            }
+
+            if (ch == '\\' && inString) {
+                escaping = true;
+                continue;
+            }
+
+            if (ch == '"') {
+                inString = !inString;
+                continue;
+            }
+
+            if (inString) {
+                continue;
+            }
+
+            if (ch == '{') {
+                depth++;
+            } else if (ch == '}') {
+                depth--;
+                if (depth == 0) {
+                    String candidate = text.substring(start, i + 1);
+                    String validated = validateJsonObjectCandidate(candidate);
+                    if (validated != null) {
+                        return validated;
+                    }
+                    start = -1;
+                }
+            }
+        }
+
         return null;
     }
 

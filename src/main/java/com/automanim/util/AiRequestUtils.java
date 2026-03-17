@@ -59,7 +59,8 @@ public final class AiRequestUtils {
                     return aiClient.chatAsync(userPrompt, systemPrompt)
                             .thenApply(response -> {
                                 onApiCall.run();
-                                return parsePlainTextResponse(response, plainTextParser);
+                                JsonNode parsed = parsePlainTextResponse(response, plainTextParser);
+                                return isUsablePayload(parsed) ? parsed : null;
                             });
                 });
     }
@@ -144,7 +145,8 @@ public final class AiRequestUtils {
                                 onApiCall.run();
                                 context.appendReservedTurn(
                                         reservation.getSequence(), userPrompt, response);
-                                return parsePlainTextResponse(response, plainTextParser);
+                                JsonNode parsed = parsePlainTextResponse(response, plainTextParser);
+                                return isUsablePayload(parsed) ? parsed : null;
                             });
                 })
                 .whenComplete((ignored, error) -> {
@@ -185,14 +187,21 @@ public final class AiRequestUtils {
         Function<String, JsonNode> parser = plainTextParser != null
                 ? plainTextParser
                 : AiRequestUtils::parsePlainTextJsonObject;
-        JsonNode parsed = parser.apply(response);
-        return parsed != null ? parsed : JsonUtils.parseTree("{}");
+        return parser.apply(response);
     }
 
     private static JsonNode parsePlainTextJsonObject(String response) {
         if (response == null || !response.contains("{")) {
             return null;
         }
-        return JsonUtils.parseTree(JsonUtils.extractJsonObject(response));
+        String candidate = JsonUtils.extractJsonObject(response);
+        if (candidate == null || candidate.isBlank()) {
+            return null;
+        }
+        try {
+            return JsonUtils.parseTree(candidate);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 }

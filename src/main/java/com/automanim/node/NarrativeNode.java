@@ -273,7 +273,11 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         }
 
         try {
-            JsonNode textNode = JsonUtils.parseTree(JsonUtils.extractJsonObject(rawText));
+            String candidate = JsonUtils.extractJsonObject(rawText);
+            if (candidate == null || candidate.isBlank()) {
+                return null;
+            }
+            JsonNode textNode = JsonUtils.parseTree(candidate);
             return parseStoryboardNode(textNode);
         } catch (RuntimeException e) {
             log.debug("Failed to parse storyboard JSON from text response: {}", e.getMessage());
