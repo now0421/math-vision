@@ -220,15 +220,18 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         return truncatedContext;
     }
 
-    private String buildContext(List<KnowledgeNode> orderedNodes, boolean problemMode) {
+    private String buildContext(List<KnowledgeNode> orderedNodes,
+                                boolean problemMode) {
         StringBuilder sb = new StringBuilder();
         sb.append("Narrative context rules:\n");
         sb.append("- Treat visual specifications as primary staging guidance.\n");
+        sb.append("- Treat node descriptions from earlier planning stages as the intended teaching job of each node.\n");
         sb.append("- Treat mathematical enrichment as optional supporting material.\n");
         sb.append("- Use equations, definitions, interpretations, and examples only when they help the main point.\n");
         sb.append("- It is acceptable to ignore optional math details that would make scenes crowded or repetitive.\n");
         sb.append("- Keep important content inside the safe canvas area: x in [-6.5, 6.5], y in [-3.5, 3.5].\n");
         sb.append("- If a planned layout would overflow, split content across scenes instead of squeezing it.\n");
+        sb.append("- Follow the provided topological order when deciding what should be established before later beats.\n");
         if (problemMode) {
             sb.append("- Keep the story centered on solving the stated problem, not on surveying related theory.\n");
             sb.append("- Reuse one stable diagram and add only the smallest necessary change per scene.\n");
@@ -488,14 +491,24 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         return total > 0 ? total : fallbackDuration;
     }
 
-    private String formatNodeContext(int index, KnowledgeNode node, boolean problemMode) {
+    private String formatNodeContext(int index,
+                                     KnowledgeNode node,
+                                     boolean problemMode) {
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("%n--- Node %d: %s (type=%s, depth=%d) ---%n",
                 index, node.getConcept(), node.getNodeType(), node.getMinDepth()));
 
         sb.append("Core node identity:\n");
+        sb.append("  id: ").append(node.getId()).append("\n");
         sb.append("  concept: ").append(node.getConcept()).append("\n");
         sb.append("  node_type: ").append(node.getNodeType()).append("\n");
+        sb.append("  min_depth: ").append(node.getMinDepth()).append("\n");
+        sb.append("  is_foundation: ").append(node.isFoundation()).append("\n");
+
+        if (node.getDescription() != null && !node.getDescription().isBlank()) {
+            sb.append("Planning description from previous stage:\n");
+            sb.append("  ").append(node.getDescription()).append("\n");
+        }
 
         boolean rootProblemNode = problemMode
                 && KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(node.getNodeType());
@@ -513,19 +526,12 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         Map<String, Object> spec = node.getVisualSpec();
         if (spec != null && !spec.isEmpty()) {
             sb.append("Primary visual guidance:\n");
-            List<String> visualKeys = rootProblemNode
-                    ? Arrays.asList("visual_description", "layout")
+            List<String> preferredKeys = rootProblemNode
+                    ? Arrays.asList("visual_description", "layout", "animation_description",
+                    "duration", "color_scheme", "color_palette", "transitions")
                     : Arrays.asList("visual_description", "color_scheme", "layout",
-                    "animation_description", "duration");
-            for (String key : visualKeys) {
-                if (spec.containsKey(key)) {
-                    sb.append("  ").append(key).append(": ").append(spec.get(key)).append("\n");
-                }
-            }
-        }
-
-        if (rootProblemNode) {
-            return sb.toString();
+                    "animation_description", "transitions", "duration", "color_palette");
+            appendVisualSpec(sb, spec, preferredKeys);
         }
 
         boolean hasOptionalMath = (node.getEquations() != null && !node.getEquations().isEmpty())
@@ -563,6 +569,25 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         }
 
         return sb.toString();
+    }
+
+    private void appendVisualSpec(StringBuilder sb,
+                                  Map<String, Object> spec,
+                                  List<String> preferredKeys) {
+        List<String> emittedKeys = new ArrayList<>();
+        for (String key : preferredKeys) {
+            if (spec.containsKey(key)) {
+                sb.append("  ").append(key).append(": ").append(spec.get(key)).append("\n");
+                emittedKeys.add(key);
+            }
+        }
+
+        for (Map.Entry<String, Object> entry : spec.entrySet()) {
+            if (emittedKeys.contains(entry.getKey())) {
+                continue;
+            }
+            sb.append("  ").append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+        }
     }
 
     private int estimateSceneCount(List<KnowledgeNode> orderedNodes, boolean problemMode) {

@@ -413,7 +413,8 @@ public final class PromptTemplates {
                         + "- Respect safe_area_plan so content stays inside the storyboard's intended"
                         + " safe frame.\n"
                         + "- Preserve the storyboard's scene order and teaching intent.\n\n"
-                        + "Storyboard JSON:\n```json\n%s\n```",
+                        + "Storyboard JSON:\n```json\n%s\n```\n\n"
+                        + "Remember: Return ONLY the single Python code block. No explanation.",
                 targetConcept, storyboardJson);
     }
 
@@ -426,6 +427,11 @@ public final class PromptTemplates {
             + "\n"
             + "The user will provide a structured storyboard JSON and a target scene class name."
             + " Generate complete, runnable, maintainable Python code that implements the animation.\n"
+            + "\n"
+            + "CRITICAL OUTPUT RULES:\n"
+            + "1. Return ONE SINGLE ```python ... ``` block containing the FULL CODE.\n"
+            + "2. Do NOT provide any explanations, comments, or conversational text before or after the code block.\n"
+            + "3. The output must be ONLY the code block.\n"
             + "\n"
             + "Requirements:\n"
             + "- Use `from manim import *`.\n"
@@ -498,11 +504,16 @@ public final class PromptTemplates {
             + " validation errors.\n"
             + "Fix the code so it renders successfully.\n"
             + "\n"
+            + "CRITICAL OUTPUT RULES:\n"
+            + "1. Return ONE SINGLE ```python ... ``` block containing the FULL CORRECTED CODE.\n"
+            + "2. Do NOT provide any explanations, comments, or conversational text before or after the code block.\n"
+            + "3. Do NOT provide partial fixes or snippets.\n"
+            + "4. The output must be ONLY the code block.\n"
+            + "\n"
             + "Requirements:\n"
             + "- Return the full corrected code, not a patch or partial snippet.\n"
             + "- Preserve the original scene class name and intended animation meaning.\n"
             + "- Use only Manim Community APIs.\n"
-            + "- Put the code inside a ```python ... ``` block.\n"
             + "- All identifiers must remain ASCII English only.\n"
             + "\n"
             + "When fixing the reported error, do not stop at the first failing line.\n"
@@ -543,7 +554,8 @@ public final class PromptTemplates {
 
         sb.append("\nPlease fix the reported error and also inspect nearby and structurally"
                 + " similar code paths for the same root cause. If the same kind of failure could"
-                + " happen elsewhere in this file, fix those places too in the returned full code.\n");
+                + " happen elsewhere in this file, fix those places too in the returned full code.\n"
+                + "\nRemember: Return ONLY the single Python code block containing the full file. No explanation.\n");
 
         if (fixHistory != null && !fixHistory.isEmpty()) {
             sb.append("\nPrevious fix attempts to avoid repeating:\n");

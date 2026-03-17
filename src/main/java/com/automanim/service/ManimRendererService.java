@@ -111,6 +111,12 @@ public class ManimRendererService {
             }
 
             String videoPath = findVideoFile(normalizedOutputDir, sceneName);
+            
+            if (videoPath == null) {
+                log.warn("Manim exited successfully but produced no video file");
+                return new RenderAttemptResult(false, stdout, appendMessage(stderr, "No video file produced despite successful exit"), null);
+            }
+
             log.info("Render successful: {}", videoPath);
             return new RenderAttemptResult(true, stdout, stderr, videoPath);
 

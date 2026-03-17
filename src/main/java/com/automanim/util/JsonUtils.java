@@ -18,6 +18,7 @@ public final class JsonUtils {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Pattern JSON_ARRAY_PATTERN = Pattern.compile("\\[.*?]", Pattern.DOTALL);
     private static final Pattern JSON_OBJECT_PATTERN = Pattern.compile("\\{.*}", Pattern.DOTALL);
+    private static final Pattern CODE_BLOCK_PATTERN = Pattern.compile("```(?:python)?\\s*([\\s\\S]*?)```");
 
     private JsonUtils() {}
 
@@ -140,31 +141,36 @@ public final class JsonUtils {
     public static String extractCodeBlock(String text) {
         if (text == null || text.isBlank()) return text != null ? text.trim() : "";
 
-        // Try ```python ... ``` first
-        int start = text.indexOf("```python");
-        if (start >= 0) {
-            start = text.indexOf('\n', start) + 1;
-            int end = text.indexOf("```", start);
-            if (end > start) {
-                return text.substring(start, end).trim();
+        String bestBlock = "";
+        int bestScore = -1;
+
+        Matcher m = CODE_BLOCK_PATTERN.matcher(text);
+        while (m.find()) {
+            String block = m.group(1).trim();
+            int score = block.length();
+            
+            // Prioritize blocks that look like a Manim scene class
+            if (block.contains("class ") && block.contains("(Scene):")) {
+                score += 10000;
+            } else if (block.contains("class ") && block.contains("Scene")) {
+                score += 5000;
             }
-        }
-        // Try ``` ... ```
-        start = text.indexOf("```");
-        if (start >= 0) {
-            start = text.indexOf('\n', start) + 1;
-            int end = text.indexOf("```", start);
-            if (end > start) {
-                String block = text.substring(start, end).trim();
-                // Verify it looks like code
-                if (block.contains("from manim import") || block.contains("class ")) {
-                    return block;
-                }
-                return block;
+            // Prioritize blocks with imports
+            if (block.contains("from manim import")) {
+                score += 1000;
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestBlock = block;
             }
         }
 
-        // If it looks like raw code, return as-is
+        if (bestScore > 0) {
+            return bestBlock;
+        }
+
+        // Fallback: If it looks like raw code (no backticks), return as-is
         if (text.contains("from manim import") || (text.contains("class ") && text.contains("Scene"))) {
             return text.trim();
         }
