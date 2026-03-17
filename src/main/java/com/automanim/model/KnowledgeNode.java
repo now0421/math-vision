@@ -34,6 +34,7 @@ public class KnowledgeNode {
 
     private String id;
     private String concept;
+    private String description;
     private String nodeType = NODE_TYPE_CONCEPT;
 
     @JsonProperty("min_depth")
@@ -46,7 +47,6 @@ public class KnowledgeNode {
     private Map<String, String> definitions;
     private String interpretation;
     private List<String> examples;
-    private String description;
 
     @JsonProperty("visual_spec")
     private Map<String, Object> visualSpec;

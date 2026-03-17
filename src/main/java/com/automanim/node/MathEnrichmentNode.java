@@ -31,8 +31,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * node in the knowledge graph.
  *
  * Enrichment is fully independent across nodes, so the whole graph is scheduled
- * immediately and only limited by maxConcurrent. Repeated concepts share the
- * same in-flight future so concurrent duplicates do not trigger duplicate calls.
+ * immediately and only limited by maxConcurrent. Repeated concepts with the
+ * same animation intent share the same in-flight future so concurrent
+ * duplicates do not trigger duplicate calls.
  */
 public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeGraph, String> {
 
@@ -158,7 +159,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
     }
 
     private CompletableFuture<JsonNode> getCachedContentAsync(KnowledgeNode node) {
-        String cacheKey = ConceptUtils.normalizeConcept(node.getConcept());
+        String cacheKey = buildCacheKey(node);
         CompletableFuture<JsonNode> existing = cache.get(cacheKey);
         if (existing != null) {
             return existing;
@@ -179,20 +180,31 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
     }
 
     private CompletableFuture<JsonNode> fetchMathContentAsync(KnowledgeNode node) {
-        String complexity = node.isFoundation() ? "middle-school level" : "upper-undergraduate level";
-        String userPrompt = String.format(
-                "Concept: %s\nNode type: %s\nDepth: %d\nTarget complexity: %s",
-                node.getConcept(), node.getNodeType(), node.getMinDepth(), complexity);
+        StringBuilder userPrompt = new StringBuilder();
+        userPrompt.append("Concept: ").append(node.getConcept())
+                .append("\nNode type: ").append(node.getNodeType())
+                .append("\nDepth: ").append(node.getMinDepth());
+        if (node.getDescription() != null && !node.getDescription().isBlank()) {
+            userPrompt.append("\nAnimation description: ").append(node.getDescription().trim());
+        }
 
         return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonObjectAsync(
                 aiClient,
                 log,
                 node.getConcept(),
                 conversationContext,
-                userPrompt,
+                userPrompt.toString(),
                 MATH_CONTENT_TOOL,
                 () -> toolCalls.incrementAndGet()
         ));
+    }
+
+    private String buildCacheKey(KnowledgeNode node) {
+        String conceptKey = ConceptUtils.normalizeConcept(node.getConcept());
+        String descriptionKey = node.getDescription() == null
+                ? ""
+                : node.getDescription().trim().toLowerCase();
+        return conceptKey + "||" + descriptionKey;
     }
 
     private void applyContent(KnowledgeNode node, JsonNode data) {
