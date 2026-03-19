@@ -328,28 +328,74 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
     }
 
     private void applyContent(KnowledgeNode node, JsonNode data) {
+        if (node == null || data == null || data.isNull()) {
+            return;
+        }
+
         if (data.has("equations")) {
-            List<String> equations = new ArrayList<>();
-            for (JsonNode eq : data.get("equations")) {
-                equations.add(eq.asText());
-            }
-            node.setEquations(equations);
+            node.setEquations(readTrimmedStringList(data.get("equations")));
         }
         if (data.has("definitions")) {
-            Map<String, String> defs = new LinkedHashMap<>();
-            data.get("definitions").fields().forEachRemaining(
-                    entry -> defs.put(entry.getKey(), entry.getValue().asText()));
-            node.setDefinitions(defs);
+            node.setDefinitions(readTrimmedStringMap(data.get("definitions")));
         }
         if (data.has("interpretation")) {
-            node.setInterpretation(data.get("interpretation").asText());
+            node.setInterpretation(readOptionalText(data.get("interpretation")));
         }
         if (data.has("examples")) {
-            List<String> examples = new ArrayList<>();
-            for (JsonNode ex : data.get("examples")) {
-                examples.add(ex.asText());
-            }
-            node.setExamples(examples);
+            node.setExamples(readTrimmedStringList(data.get("examples")));
         }
+    }
+
+    private List<String> readTrimmedStringList(JsonNode node) {
+        List<String> values = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return values;
+        }
+
+        if (node.isArray()) {
+            for (JsonNode item : node) {
+                String text = readOptionalText(item);
+                if (text != null) {
+                    values.add(text);
+                }
+            }
+            return values;
+        }
+
+        String singleValue = readOptionalText(node);
+        if (singleValue != null) {
+            values.add(singleValue);
+        }
+        return values;
+    }
+
+    private Map<String, String> readTrimmedStringMap(JsonNode node) {
+        Map<String, String> values = new LinkedHashMap<>();
+        if (node == null || node.isNull() || !node.isObject()) {
+            return values;
+        }
+
+        node.fields().forEachRemaining(entry -> {
+            String key = entry.getKey() == null ? null : entry.getKey().trim();
+            String value = readOptionalText(entry.getValue());
+            if (key != null && !key.isEmpty() && value != null) {
+                values.put(key, value);
+            }
+        });
+        return values;
+    }
+
+    private String readOptionalText(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+
+        String text = node.asText();
+        if (text == null) {
+            return null;
+        }
+
+        String normalized = text.trim();
+        return normalized.isEmpty() ? null : normalized;
     }
 }

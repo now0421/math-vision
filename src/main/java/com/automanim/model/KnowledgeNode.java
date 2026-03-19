@@ -67,8 +67,7 @@ public class KnowledgeNode {
     }
 
     public boolean isEnriched() {
-        return equations != null && !equations.isEmpty()
-                && definitions != null && !definitions.isEmpty();
+        return equations != null && definitions != null;
     }
 
     public boolean hasVisualSpec() {

@@ -329,6 +329,8 @@ public final class PromptTemplates {
             + "- \"definitions\": object mapping symbols to meanings\n"
             + "- \"interpretation\": short explanation when useful\n"
             + "- \"examples\": optional examples when useful\n"
+            + "If the current step does not need formulas, return empty fields such as"
+            + " \"equations\": [] and \"definitions\": {} instead of inventing notation.\n"
             + "\n"
             + "Do not pad the response. Simple concepts should get concise output.\n"
             + "\n"
