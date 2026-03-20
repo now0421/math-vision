@@ -29,6 +29,19 @@ _PRIORITY_ANIMATION_TYPES = {
     "_MethodAnimation",
     "MoveToTarget",
 }
+_RESULT_ONLY_ANIMATION_TYPES = {
+    "Create",
+    "Uncreate",
+    "Write",
+    "Unwrite",
+    "FadeIn",
+    "FadeOut",
+    "GrowFromCenter",
+    "GrowFromEdge",
+    "GrowFromPoint",
+    "GrowArrow",
+    "DrawBorderThenFill",
+}
 _SEMANTIC_NAME_SOURCE_RANK = {
     "class_name": 0,
     "display_text": 1,
@@ -43,6 +56,12 @@ _COMPOSITE_GROUP_CLASSES = {"VGroup", "Group"}
 _LAYOUT_OFFSCREEN_TOLERANCE = 0.03
 _LAYOUT_MIN_OVERLAP_AREA = 0.015
 _LAYOUT_MIN_OVERLAP_RATIO = 0.08
+_NON_VISUAL_MOBJECT_CLASSES = {
+    "Mobject",
+    "_AnimationBuilder",
+    "ValueTracker",
+    "ComplexValueTracker",
+}
 
 
 def patch_scene_for_geometry_export(scene_cls):
@@ -128,7 +147,6 @@ def patch_scene_for_geometry_export(scene_cls):
             )
             animation_summary = _summarize_play_args(args, play_argument_hints)
             priority_sampling = _is_priority_animation_summary(animation_summary)
-
             play_record = {
                 "play_index": self._automanim_play_index,
                 "play_type": _detect_play_type(args),
@@ -144,7 +162,6 @@ def patch_scene_for_geometry_export(scene_cls):
                 "observed_render_frame_count": 0,
                 "sampled_roles": [],
                 "sample_ids": [],
-                "intermediate_roles": [],
                 "visibility_change_count": 0,
                 "visibility_change_sample_ids": [],
                 "_last_visible_signature": None,
@@ -159,18 +176,12 @@ def patch_scene_for_geometry_export(scene_cls):
             )
 
             try:
-                if play_record["play_type"] != "wait":
-                    start_sample = self._automanim_capture_sample(
-                        sample_role="start",
-                        trigger="play_start",
-                        animation_time=0.0,
-                        scene_time=getattr(self, "time", 0.0),
-                        source_hint=source_hint,
-                    )
-                    if start_sample is not None:
-                        play_record["_last_visible_signature"] = tuple(
-                            sorted(start_sample.get("visible_object_ids", []))
-                        )
+                start_collected = self._automanim_collect_visible_objects(
+                    source_hint=source_hint,
+                    play_index=play_record["play_index"],
+                    scene_time=getattr(self, "time", 0.0),
+                )
+                play_record["_last_visible_signature"] = start_collected["visible_signature"]
 
                 return super().play(
                     *args,
@@ -184,32 +195,29 @@ def patch_scene_for_geometry_export(scene_cls):
                 if current_play is not None:
                     duration = _safe_float(getattr(self, "duration", None))
                     current_play["duration_seconds"] = duration
-                    current_play["sampling_profile"] = _sampling_profile_name(
-                        duration=duration,
-                        priority_sampling=current_play.get("priority_sampling", False),
-                    )
                     current_play["end_scene_time_seconds"] = _safe_float(getattr(self, "time", None))
-
-                    if current_play["observed_render_frame_count"] == 0:
-                        final_sample = self._automanim_capture_sample(
-                            sample_role="static",
-                            trigger="play_static",
+                    final_collected = self._automanim_collect_visible_objects(
+                        source_hint=source_hint,
+                        play_index=current_play["play_index"],
+                        scene_time=getattr(self, "time", 0.0),
+                    )
+                    final_visibility_event = self._automanim_detect_visibility_change(
+                        current_play=current_play,
+                        visible_signature=final_collected["visible_signature"],
+                    )
+                    if final_visibility_event is not None:
+                        sample = self._automanim_capture_sample(
+                            sample_role=f"visibility_removed_{current_play['visibility_change_count'] + 1}",
+                            trigger="play_end_visibility_removed",
                             animation_time=duration,
                             scene_time=getattr(self, "time", 0.0),
                             source_hint=source_hint,
+                            precollected=final_collected,
                         )
-                    else:
-                        final_sample = self._automanim_capture_sample(
-                            sample_role="end",
-                            trigger="play_end",
-                            animation_time=duration,
-                            scene_time=getattr(self, "time", 0.0),
-                            source_hint=source_hint,
-                        )
-
-                    if final_sample is not None:
-                        current_play["_last_visible_signature"] = tuple(
-                            sorted(final_sample.get("visible_object_ids", []))
+                        self._automanim_note_visibility_change(
+                            current_play,
+                            sample,
+                            final_visibility_event,
                         )
 
                     self._automanim_current_play = None
@@ -241,68 +249,29 @@ def patch_scene_for_geometry_export(scene_cls):
                 return
 
             current_play["observed_render_frame_count"] += 1
-            if current_play["duration_seconds"] is None:
-                current_play["duration_seconds"] = _safe_float(getattr(self, "duration", None))
-                current_play["sampling_profile"] = _sampling_profile_name(
-                    duration=current_play["duration_seconds"],
-                    priority_sampling=current_play.get("priority_sampling", False),
-                )
-                current_play["intermediate_roles"] = _select_intermediate_roles(
-                    duration=current_play["duration_seconds"],
-                    priority_sampling=current_play.get("priority_sampling", False),
-                )
-
-            pending_roles = []
-            for sample_role, fraction in current_play.get("intermediate_roles", []):
-                if sample_role in current_play["sampled_roles"]:
-                    continue
-                if _should_capture_fraction(
-                    animation_time=animation_time,
-                    duration=current_play["duration_seconds"],
-                    fraction=fraction,
-                ):
-                    pending_roles.append(sample_role)
 
             capture_source_hint = current_play_source_hint(current_play)
             scene_time = _safe_float(getattr(renderer_self, "time", 0.0))
-            collected = None
-            visibility_event = None
+            collected = self._automanim_collect_visible_objects(
+                source_hint=capture_source_hint,
+                play_index=current_play["play_index"],
+                scene_time=scene_time,
+            )
+            visibility_event = self._automanim_detect_visibility_change(
+                current_play=current_play,
+                visible_signature=collected["visible_signature"],
+            )
 
-            if pending_roles or current_play.get("_last_visible_signature") is not None:
-                collected = self._automanim_collect_visible_objects(
-                    source_hint=capture_source_hint,
-                    play_index=current_play["play_index"],
-                    scene_time=scene_time,
-                )
-                visibility_event = self._automanim_detect_visibility_change(
-                    current_play=current_play,
-                    visible_signature=collected["visible_signature"],
-                )
-
-            if pending_roles:
-                for index, sample_role in enumerate(pending_roles):
-                    sample = self._automanim_capture_sample(
-                        sample_role=sample_role,
-                        trigger="render_frame",
-                        animation_time=animation_time,
-                        scene_time=scene_time,
-                        source_hint=capture_source_hint,
-                        precollected=collected,
-                        extra_metadata=visibility_event if index == 0 else None,
-                    )
-                    if index == 0 and visibility_event is not None:
-                        self._automanim_note_visibility_change(current_play, sample)
-            elif visibility_event is not None:
+            if visibility_event is not None:
                 sample = self._automanim_capture_sample(
-                    sample_role=f"visibility_change_{current_play['visibility_change_count'] + 1}",
-                    trigger="visibility_change",
+                    sample_role=f"visibility_removed_{current_play['visibility_change_count'] + 1}",
+                    trigger="visibility_removed",
                     animation_time=animation_time,
                     scene_time=scene_time,
                     source_hint=capture_source_hint,
                     precollected=collected,
-                    extra_metadata=visibility_event,
                 )
-                self._automanim_note_visibility_change(current_play, sample)
+                self._automanim_note_visibility_change(current_play, sample, visibility_event)
 
         def _automanim_note_geometry_error(self, exc):
             if self._automanim_geometry_export_error is None:
@@ -517,20 +486,20 @@ def patch_scene_for_geometry_export(scene_cls):
             current_play["_last_visible_signature"] = visible_signature
             added_ids = [object_id for object_id in visible_signature if object_id not in previous_signature]
             removed_ids = [object_id for object_id in previous_signature if object_id not in visible_signature]
+            if not removed_ids:
+                return None
             return {
-                "visibility_change": {
-                    "added_visible_ids": added_ids,
-                    "removed_visible_ids": removed_ids,
-                    "added_objects": _object_refs_from_ids(self._automanim_object_registry, added_ids),
-                    "removed_objects": _object_refs_from_ids(
-                        self._automanim_object_registry,
-                        removed_ids,
-                    ),
-                }
+                "added_visible_ids": added_ids,
+                "removed_visible_ids": removed_ids,
+                "added_objects": _object_refs_from_ids(self._automanim_object_registry, added_ids),
+                "removed_objects": _object_refs_from_ids(
+                    self._automanim_object_registry,
+                    removed_ids,
+                ),
             }
 
-        def _automanim_note_visibility_change(self, current_play, sample):
-            if current_play is None or sample is None or "visibility_change" not in sample:
+        def _automanim_note_visibility_change(self, current_play, sample, visibility_event):
+            if current_play is None or sample is None or visibility_event is None:
                 return
 
             current_play["visibility_change_count"] += 1
@@ -546,7 +515,6 @@ def patch_scene_for_geometry_export(scene_cls):
             scene_time,
             source_hint,
             precollected=None,
-            extra_metadata=None,
         ):
             current_play = self._automanim_current_play
             play_index = current_play["play_index"] if current_play is not None else None
@@ -578,8 +546,6 @@ def patch_scene_for_geometry_export(scene_cls):
                 "element_count": len(collected["elements"]),
                 "elements": collected["elements"],
             }
-            if extra_metadata:
-                sample.update(extra_metadata)
             self._automanim_samples.append(sample)
 
             if current_play is not None:
@@ -619,13 +585,29 @@ def patch_scene_for_geometry_export(scene_cls):
                 return super().render(preview)
             finally:
                 try:
-                    if not self._automanim_samples:
+                    final_scene_time = _safe_float(getattr(self, "time", 0.0))
+                    final_source_hint = (
+                        current_play_source_hint(self._automanim_play_records[-1])
+                        if self._automanim_play_records
+                        else self._automanim_resolve_source_hint()
+                    )
+                    final_collected = self._automanim_collect_visible_objects(
+                        source_hint=final_source_hint,
+                        play_index=self._automanim_play_index or None,
+                        scene_time=final_scene_time,
+                    )
+                    if not _sample_matches_scene_state(
+                        self._automanim_samples[-1] if self._automanim_samples else None,
+                        final_collected,
+                        final_scene_time,
+                    ):
                         self._automanim_capture_sample(
                             sample_role="scene_final",
                             trigger="scene_final",
                             animation_time=None,
-                            scene_time=getattr(self, "time", 0.0),
-                            source_hint=self._automanim_resolve_source_hint(),
+                            scene_time=final_scene_time,
+                            source_hint=final_source_hint,
+                            precollected=final_collected,
                         )
                     self._automanim_write_geometry_file()
                 except Exception as exc:
@@ -651,6 +633,30 @@ def current_play_source_hint(play_record):
         "line_number": play_record.get("source_line"),
         "code_line": play_record.get("source_code"),
     }
+
+
+def _sample_matches_scene_state(sample, collected, scene_time):
+    if sample is None or collected is None:
+        return False
+
+    sample_time = _safe_float(sample.get("scene_time_seconds"))
+    target_time = _safe_float(scene_time)
+    frame_tolerance = max(1.0 / max(_safe_float(config["frame_rate"]) or 1.0, 1.0), 0.01)
+    if sample_time is None or target_time is None:
+        time_matches = True
+    else:
+        time_matches = abs(sample_time - target_time) <= frame_tolerance
+    if not time_matches:
+        return False
+
+    sample_visible_ids = sorted(
+        {
+            element.get("stable_id")
+            for element in sample.get("elements", [])
+            if element.get("visible") and element.get("stable_id") is not None
+        }
+    )
+    return tuple(sample_visible_ids) == tuple(collected.get("visible_signature", ()))
 
 
 def _resolve_scene_source_path(scene_cls):
@@ -767,7 +773,12 @@ def _looks_like_mobject(value):
 def _should_track_object(mobject):
     if not _looks_like_mobject(mobject):
         return False
-    return mobject.__class__.__name__ not in {"Mobject", "_AnimationBuilder"}
+    class_name = mobject.__class__.__name__
+    if class_name in _NON_VISUAL_MOBJECT_CLASSES:
+        return False
+    if class_name.endswith("Tracker"):
+        return False
+    return True
 
 
 def _profile_key_for_duration(duration):
