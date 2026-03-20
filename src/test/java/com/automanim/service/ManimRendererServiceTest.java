@@ -76,4 +76,35 @@ class ManimRendererServiceTest {
         assertFalse(Files.exists(tempDir.resolve("scene_render.py")));
         assertFalse(Files.exists(helperFile));
     }
+
+    @Test
+    void stripsMarkdownFencesBeforeWritingTemporaryRenderScript() {
+        ManimRendererService service = new ManimRendererService() {
+            @Override
+            protected Process startProcess(List<String> cmd, Path workingDir, Path geometryOutputPath)
+                    throws IOException {
+                String script = Files.readString(workingDir.resolve("scene_render.py"));
+                assertTrue(script.startsWith("from manim import *"));
+                assertFalse(script.startsWith("```"));
+                throw new IOException("stop after inspection");
+            }
+        };
+
+        ManimRendererService.RenderAttemptResult result = service.render(
+                String.join("\n",
+                        "```python",
+                        "from manim import *",
+                        "",
+                        "class DemoScene(Scene):",
+                        "    def construct(self):",
+                        "        self.add(Dot())"),
+                "DemoScene",
+                "low",
+                tempDir
+        );
+
+        assertFalse(result.success());
+        assertTrue(result.stderr().contains("stop after inspection"));
+        assertFalse(Files.exists(tempDir.resolve("scene_render.py")));
+    }
 }

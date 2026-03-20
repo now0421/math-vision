@@ -11,8 +11,8 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonPropertyOrder({
         "id",
-        "concept",
-        "description",
+        "step",
+        "reason",
         "nodeType",
         "min_depth",
         "is_foundation",
@@ -33,8 +33,13 @@ public class KnowledgeNode {
     public static final String NODE_TYPE_CONCLUSION = "conclusion";
 
     private String id;
-    private String concept;
-    private String description;
+
+    @JsonProperty("step")
+    private String step;
+
+    @JsonProperty("reason")
+    private String reason;
+
     private String nodeType = NODE_TYPE_CONCEPT;
 
     @JsonProperty("min_depth")
@@ -53,9 +58,9 @@ public class KnowledgeNode {
 
     public KnowledgeNode() {}
 
-    public KnowledgeNode(String id, String concept, int minDepth, boolean foundation) {
+    public KnowledgeNode(String id, String step, int minDepth, boolean foundation) {
         this.id = id;
-        this.concept = concept;
+        this.step = step;
         this.minDepth = minDepth;
         this.foundation = foundation;
     }
@@ -77,8 +82,11 @@ public class KnowledgeNode {
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
 
-    public String getConcept() { return concept; }
-    public void setConcept(String concept) { this.concept = concept; }
+    public String getStep() { return step; }
+    public void setStep(String step) { this.step = step; }
+
+    public String getReason() { return reason; }
+    public void setReason(String reason) { this.reason = reason; }
 
     public String getNodeType() {
         return nodeType == null || nodeType.isBlank() ? NODE_TYPE_CONCEPT : nodeType;
@@ -103,15 +111,12 @@ public class KnowledgeNode {
     public List<String> getExamples() { return examples; }
     public void setExamples(List<String> examples) { this.examples = examples; }
 
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-
     public Map<String, Object> getVisualSpec() { return visualSpec; }
     public void setVisualSpec(Map<String, Object> visualSpec) { this.visualSpec = visualSpec; }
 
     @Override
     public String toString() {
-        return "KnowledgeNode{id='" + id + "', concept='" + concept + "', minDepth=" + minDepth
+        return "KnowledgeNode{id='" + id + "', step='" + step + "', minDepth=" + minDepth
                 + ", nodeType='" + nodeType + "', foundation=" + foundation + "}";
     }
 }

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JsonUtilsTest {
 
@@ -57,5 +58,40 @@ class JsonUtilsTest {
         assertNotNull(payload);
         assertEquals(3, payload.get("scene_count").asInt());
         assertNotNull(payload.get("storyboard"));
+    }
+
+    @Test
+    void extractCodeBlockRemovesUnterminatedPythonFence() {
+        String fenced = String.join("\n",
+                "```python",
+                "from manim import *",
+                "",
+                "class DemoScene(Scene):",
+                "    def construct(self):",
+                "        pass");
+
+        String extracted = JsonUtils.extractCodeBlock(fenced);
+
+        assertTrue(extracted.startsWith("from manim import *"));
+        assertTrue(extracted.contains("class DemoScene(Scene):"));
+        assertEquals(-1, extracted.indexOf("```"));
+    }
+
+    @Test
+    void extractCodeBlockSupportsUppercaseFenceLanguage() {
+        String fenced = String.join("\n",
+                "```Python",
+                "from manim import *",
+                "",
+                "class DemoScene(Scene):",
+                "    def construct(self):",
+                "        pass",
+                "```");
+
+        String extracted = JsonUtils.extractCodeBlock(fenced);
+
+        assertTrue(extracted.startsWith("from manim import *"));
+        assertTrue(extracted.contains("def construct(self):"));
+        assertEquals(-1, extracted.indexOf("```"));
     }
 }

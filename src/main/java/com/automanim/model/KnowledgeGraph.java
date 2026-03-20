@@ -72,7 +72,7 @@ public class KnowledgeGraph {
             }
         }
         prerequisites.sort(Comparator.comparingInt(KnowledgeNode::getMinDepth)
-                .thenComparing(KnowledgeNode::getConcept, String.CASE_INSENSITIVE_ORDER));
+                .thenComparing(KnowledgeNode::getStep, String.CASE_INSENSITIVE_ORDER));
         return prerequisites;
     }
 
@@ -160,7 +160,7 @@ public class KnowledgeGraph {
             groups.computeIfAbsent(node.getMinDepth(), ignored -> new ArrayList<>()).add(node);
         }
         for (List<KnowledgeNode> levelNodes : groups.values()) {
-            levelNodes.sort(Comparator.comparing(KnowledgeNode::getConcept, String.CASE_INSENSITIVE_ORDER));
+            levelNodes.sort(Comparator.comparing(KnowledgeNode::getStep, String.CASE_INSENSITIVE_ORDER));
         }
         return groups;
     }
@@ -255,7 +255,7 @@ public class KnowledgeGraph {
             sb.append("Target: ").append(targetConcept).append("\n");
         }
         if (root != null) {
-            sb.append("Root: ").append(root.getConcept())
+            sb.append("Root: ").append(root.getStep())
                     .append(" [depth=").append(root.getMinDepth()).append("]\n");
         }
         sb.append("Nodes: ").append(countNodes())
@@ -264,7 +264,7 @@ public class KnowledgeGraph {
                 .append("\n\n");
 
         for (KnowledgeNode node : topologicalOrder()) {
-            sb.append("- ").append(node.getConcept())
+            sb.append("- ").append(node.getStep())
                     .append(" [id=").append(node.getId())
                     .append(", depth=").append(node.getMinDepth());
             if (node.getNodeType() != null && !node.getNodeType().isBlank()) {
@@ -282,7 +282,7 @@ public class KnowledgeGraph {
                     if (i > 0) {
                         sb.append(", ");
                     }
-                    sb.append(prerequisites.get(i).getConcept());
+                    sb.append(prerequisites.get(i).getStep());
                 }
                 sb.append("\n");
             }
@@ -294,7 +294,7 @@ public class KnowledgeGraph {
                     if (i > 0) {
                         sb.append(", ");
                     }
-                    sb.append(dependents.get(i).getConcept());
+                    sb.append(dependents.get(i).getStep());
                 }
                 sb.append("\n");
             }
@@ -340,7 +340,7 @@ public class KnowledgeGraph {
             return node != null ? node.getMinDepth() : Integer.MIN_VALUE;
         }).reversed().thenComparing(id -> {
             KnowledgeNode node = nodes.get(id);
-            return node != null ? node.getConcept() : id;
+            return node != null ? node.getStep() : id;
         }, String.CASE_INSENSITIVE_ORDER);
     }
 
@@ -350,7 +350,7 @@ public class KnowledgeGraph {
             return node != null ? node.getMinDepth() : Integer.MAX_VALUE;
         }).thenComparing(id -> {
             KnowledgeNode node = nodes.get(id);
-            return node != null ? node.getConcept() : id;
+            return node != null ? node.getStep() : id;
         }, String.CASE_INSENSITIVE_ORDER);
     }
 

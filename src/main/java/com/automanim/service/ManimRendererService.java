@@ -1,5 +1,6 @@
 package com.automanim.service;
 
+import com.automanim.util.JsonUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,11 +76,16 @@ public class ManimRendererService {
             Path geometryOutputFile = normalizedOutputDir.resolve(GEOMETRY_EXPORT_OUTPUT_FILE);
             deleteTemporaryFile(geometryOutputFile);
 
-            String renderCode = code;
+            String sanitizedCode = JsonUtils.extractCodeBlock(code);
+            if (sanitizedCode == null || sanitizedCode.isBlank()) {
+                sanitizedCode = code;
+            }
+
+            String renderCode = sanitizedCode;
             try {
                 geometryHelperFile = normalizedOutputDir.resolve(GEOMETRY_EXPORT_HELPER_FILE);
                 Files.writeString(geometryHelperFile, loadGeometryExportHelperScript(), StandardCharsets.UTF_8);
-                renderCode = instrumentCodeWithGeometryExport(code, sceneName);
+                renderCode = instrumentCodeWithGeometryExport(sanitizedCode, sceneName);
             } catch (IOException e) {
                 geometryHelperFile = null;
                 log.warn("Geometry export helper unavailable; rendering without geometry export: {}",

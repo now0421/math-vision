@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * node in the knowledge graph.
  *
  * Enrichment is fully independent across nodes, so the whole graph is scheduled
- * immediately and only limited by maxConcurrent. Repeated concepts with the
+ * immediately and only limited by maxConcurrent. Repeated steps with the
  * same animation intent share the same in-flight future so concurrent
  * duplicates do not trigger duplicate calls.
  */
@@ -44,7 +44,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
             + "  \"type\": \"function\","
             + "  \"function\": {"
             + "    \"name\": \"write_mathematical_content\","
-            + "    \"description\": \"Return mathematical content for a concept.\","
+            + "    \"description\": \"Return mathematical content for a teaching step.\","
             + "    \"parameters\": {"
             + "      \"type\": \"object\","
             + "      \"properties\": {"
@@ -156,7 +156,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
 
     private CompletableFuture<Void> enrichNodeAsync(KnowledgeNode node) {
         if (node.isEnriched()) {
-            log.debug("  Skipping already-enriched node: {}", node.getConcept());
+            log.debug("  Skipping already-enriched node: {}", node.getStep());
             return CompletableFuture.completedFuture(null);
         }
 
@@ -168,7 +168,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
                 })
                 .exceptionally(error -> {
                     Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
-                    log.warn("  Math enrichment failed for '{}': {}", node.getConcept(), cause.getMessage());
+                    log.warn("  Math enrichment failed for '{}': {}", node.getStep(), cause.getMessage());
                     return null;
                 });
     }
@@ -200,7 +200,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonObjectAsync(
                 aiClient,
                 log,
-                node.getConcept(),
+                node.getStep(),
                 conversationContext,
                 userPrompt,
                 MATH_CONTENT_TOOL,
@@ -209,11 +209,11 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
     }
 
     private String buildCacheKey(KnowledgeNode node) {
-        String conceptKey = ConceptUtils.normalizeConcept(node.getConcept());
-        String descriptionKey = node.getDescription() == null
+        String stepKey = ConceptUtils.normalizeConcept(node.getStep());
+        String reasonKey = node.getReason() == null
                 ? ""
-                : node.getDescription().trim().toLowerCase();
-        return conceptKey + "||" + descriptionKey;
+                : node.getReason().trim().toLowerCase();
+        return stepKey + "||" + reasonKey;
     }
 
     private boolean shouldEnrichNode(KnowledgeNode node) {
@@ -227,9 +227,9 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
             StringBuilder sb = new StringBuilder();
             sb.append("Target problem: ").append(graph.getTargetConcept()).append("\n");
             if (root != null) {
-                sb.append("Final conclusion: ").append(root.getConcept()).append("\n");
-                if (root.getDescription() != null && !root.getDescription().isBlank()) {
-                    sb.append("Conclusion role: ").append(root.getDescription().trim()).append("\n");
+                sb.append("Final conclusion: ").append(root.getStep()).append("\n");
+                if (root.getReason() != null && !root.getReason().isBlank()) {
+                    sb.append("Conclusion reason: ").append(root.getReason().trim()).append("\n");
                 }
             }
             String stepChain = buildProblemSolutionChainSummary(graph, null);
@@ -240,19 +240,19 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         }
         return PromptTemplates.workflowTargetDescription(
                 graph != null ? graph.getTargetConcept() : "",
-                root != null ? root.getConcept() : "",
-                root != null ? root.getDescription() : "",
+                root != null ? root.getStep() : "",
+                root != null ? root.getReason() : "",
                 problemMode);
     }
 
     private String buildCurrentStepPrompt(KnowledgeNode node) {
         StringBuilder sb = new StringBuilder();
         sb.append("Current step:\n");
-        sb.append("- Concept: ").append(node.getConcept()).append("\n");
+        sb.append("- Step: ").append(node.getStep()).append("\n");
         sb.append("- Node type: ").append(node.getNodeType()).append("\n");
         sb.append("- Depth: ").append(node.getMinDepth()).append("\n");
-        if (node.getDescription() != null && !node.getDescription().isBlank()) {
-            sb.append("- Planning summary: ").append(node.getDescription().trim()).append("\n");
+        if (node.getReason() != null && !node.getReason().isBlank()) {
+            sb.append("- Reason from Stage 0: ").append(node.getReason().trim()).append("\n");
         }
 
         if (graph != null && graph.isProblemMode()) {
@@ -285,7 +285,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         return sb.toString();
     }
 
-    private String buildProblemSolutionChainSummary(KnowledgeGraph graph, KnowledgeNode currentNode) {
+    private String buildProblemSolutionChainSummary(KnowledgeGraph graph, KnowledgeNode currentStep) {
         if (graph == null || !graph.isProblemMode()) {
             return "";
         }
@@ -298,15 +298,15 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < steps.size(); i++) {
             KnowledgeNode step = steps.get(i);
-            String marker = currentNode != null && step.getId().equals(currentNode.getId()) ? "-> " : "   ";
+            String marker = currentStep != null && step.getId().equals(currentStep.getId()) ? "-> " : "   ";
             sb.append(marker)
                     .append(i + 1)
                     .append(". [")
                     .append(step.getNodeType())
                     .append("] ")
-                    .append(step.getConcept());
-            if (step.getDescription() != null && !step.getDescription().isBlank()) {
-                sb.append(" - ").append(step.getDescription().trim());
+                    .append(step.getStep());
+            if (step.getReason() != null && !step.getReason().isBlank()) {
+                sb.append(" - ").append(step.getReason().trim());
             }
             sb.append("\n");
         }
@@ -320,9 +320,9 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         sb.append("- [")
                 .append(step.getNodeType())
                 .append("] ")
-                .append(step.getConcept());
-        if (step.getDescription() != null && !step.getDescription().isBlank()) {
-            sb.append(" - ").append(step.getDescription().trim());
+                .append(step.getStep());
+        if (step.getReason() != null && !step.getReason().isBlank()) {
+            sb.append(" - ").append(step.getReason().trim());
         }
         sb.append("\n");
     }

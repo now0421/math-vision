@@ -52,7 +52,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             + "  \"type\": \"function\","
             + "  \"function\": {"
             + "    \"name\": \"write_prerequisites\","
-            + "    \"description\": \"Return the list of direct prerequisite concepts.\","
+            + "    \"description\": \"Return the list of direct prerequisite teaching beats.\","
             + "    \"parameters\": {"
             + "      \"type\": \"object\","
             + "      \"properties\": {"
@@ -61,10 +61,10 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             + "          \"items\": {"
             + "            \"type\": \"object\","
             + "            \"properties\": {"
-            + "              \"concept\": { \"type\": \"string\", \"description\": \"Concept name\" },"
-            + "              \"description\": { \"type\": \"string\", \"description\": \"Short conceptual summary of why this prerequisite matters in the learning path\" }"
+            + "              \"step\": { \"type\": \"string\", \"description\": \"Short description of the prerequisite teaching beat\" },"
+            + "              \"reason\": { \"type\": \"string\", \"description\": \"Why this prerequisite beat matters in the learning path\" }"
             + "            },"
-            + "            \"required\": [\"concept\", \"description\"]"
+            + "            \"required\": [\"step\", \"reason\"]"
             + "          }"
             + "        }"
             + "      },"
@@ -119,7 +119,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             + "  \"type\": \"function\","
             + "  \"function\": {"
             + "    \"name\": \"write_problem_step_graph\","
-            + "    \"description\": \"Return a compact dependency graph of problem-solving steps.\","
+            + "    \"description\": \"Return a compact graph of animation-ready teaching beats for solving the problem.\","
             + "    \"parameters\": {"
             + "      \"type\": \"object\","
             + "      \"properties\": {"
@@ -130,13 +130,13 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             + "            \"type\": \"object\","
             + "            \"properties\": {"
             + "              \"id\": { \"type\": \"string\" },"
-            + "              \"concept\": { \"type\": \"string\" },"
-            + "              \"description\": { \"type\": \"string\", \"description\": \"Short summary of the step's mathematical role in the solution\" },"
+            + "              \"step\": { \"type\": \"string\" },"
+            + "              \"reason\": { \"type\": \"string\", \"description\": \"Why this teaching beat matters, what the viewer should understand, and why it matters next\" },"
             + "              \"node_type\": { \"type\": \"string\" },"
             + "              \"min_depth\": { \"type\": \"integer\" },"
             + "              \"is_foundation\": { \"type\": \"boolean\" }"
             + "            },"
-            + "            \"required\": [\"id\", \"concept\", \"node_type\", \"min_depth\", \"is_foundation\"]"
+            + "            \"required\": [\"id\", \"step\", \"node_type\", \"min_depth\", \"is_foundation\"]"
             + "          }"
             + "        },"
             + "        \"prerequisite_edges\": {"
@@ -261,10 +261,13 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private KnowledgeGraph buildProblemGraph(String problemStatement) {
         String normalizedProblem = problemStatement == null ? "" : problemStatement.trim();
         String prompt = "Math problem:\n" + normalizedProblem + "\n\n"
-                + "Build a compact solution-step dependency graph for this problem.\n"
-                + "Organize it for a teaching animation, not for an answer-only writeup.\n"
-                + "Make the steps suitable for later scenes that reveal the reasoning"
-                + " progressively.";
+                + "Plan the animation-ready teaching beats for solving this problem.\n"
+                + "Return the small set of major beats that a strong teaching animation should"
+                + " present, in a dependency graph format.\n"
+                + "Use `step` for what each beat does or shows, and `reason` for why that beat"
+                + " is needed before the next one.\n"
+                + "Prefer intuitive, visually teachable reasoning over textbook-style"
+                + " decomposition, and make the key insight or transformation explicit.";
 
         try {
             JsonNode payload = aiCallLimiter.submit(() -> AiRequestUtils.requestJsonObjectAsync(
@@ -295,27 +298,29 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             for (JsonNode nodeJson : nodesArray) {
                 String rawId = nodeJson.hasNonNull("id")
                         ? nodeJson.get("id").asText()
-                        : nodeJson.path("concept").asText();
+                        : nodeJson.path("step").asText("");
                 String nodeId = ConceptUtils.normalizeConcept(rawId);
                 if (nodeId.isBlank()) {
                     continue;
                 }
 
-                String concept = nodeJson.hasNonNull("concept")
-                        ? nodeJson.get("concept").asText().trim()
-                        : rawId.trim();
+                String step = nodeJson.path("step").asText("").trim();
+                if (step.isBlank()) {
+                    step = rawId.trim();
+                }
                 int depth = nodeJson.has("min_depth") ? nodeJson.get("min_depth").asInt(0) : 0;
                 boolean foundation = nodeJson.has("is_foundation")
                         && nodeJson.get("is_foundation").asBoolean(false);
 
-                KnowledgeNode node = new KnowledgeNode(nodeId, concept, depth, foundation);
+                KnowledgeNode node = new KnowledgeNode(nodeId, step, depth, foundation);
                 String nodeType = nodeJson.hasNonNull("node_type")
                         ? nodeJson.get("node_type").asText()
                         : KnowledgeNode.NODE_TYPE_DERIVATION;
                 node.setNodeType(nodeType);
 
-                if (nodeJson.hasNonNull("description")) {
-                    node.setDescription(nodeJson.get("description").asText().trim());
+                String reason = nodeJson.path("reason").asText("").trim();
+                if (!reason.isBlank()) {
+                    node.setReason(reason);
                 }
 
                 nodes.put(nodeId, node);
@@ -424,7 +429,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 })
                 .thenComparing(id -> {
                     KnowledgeNode node = nodes.get(id);
-                    return node != null ? node.getConcept() : id;
+                    return node != null ? node.getStep() : id;
                 }, String.CASE_INSENSITIVE_ORDER);
     }
 
@@ -437,9 +442,9 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             candidate = baseId + "_" + suffix++;
         }
 
-        KnowledgeNode rootNode = new KnowledgeNode(candidate, "Final answer and why it is correct", 0, false);
+        KnowledgeNode rootNode = new KnowledgeNode(candidate, "Present the final answer and why it is correct", 0, false);
         rootNode.setNodeType(KnowledgeNode.NODE_TYPE_CONCLUSION);
-        rootNode.setDescription("Present the final answer and summarize why the solution is correct.");
+        rootNode.setReason("This beat resolves the problem and summarizes why the solution is correct.");
         nodes.put(candidate, rootNode);
 
         List<String> prerequisites = new ArrayList<>();
@@ -470,7 +475,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
         List<String> remaining = new ArrayList<>(nodes.keySet());
         remaining.sort(Comparator.comparingInt((String id) -> nodes.get(id).getMinDepth()).reversed()
-                .thenComparing(id -> nodes.get(id).getConcept(), String.CASE_INSENSITIVE_ORDER));
+                .thenComparing(id -> nodes.get(id).getStep(), String.CASE_INSENSITIVE_ORDER));
 
         for (String nodeId : remaining) {
             if (computedDepths.containsKey(nodeId)) {
@@ -517,12 +522,12 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         Map<String, List<String>> ordered = new LinkedHashMap<>();
         List<String> sourceIds = new ArrayList<>(edgeIndex.keySet());
         sourceIds.sort(Comparator.comparingInt((String id) -> nodes.get(id).getMinDepth())
-                .thenComparing(id -> nodes.get(id).getConcept(), String.CASE_INSENSITIVE_ORDER));
+                .thenComparing(id -> nodes.get(id).getStep(), String.CASE_INSENSITIVE_ORDER));
 
         for (String sourceId : sourceIds) {
             List<String> dependencies = new ArrayList<>(edgeIndex.getOrDefault(sourceId, Collections.emptyList()));
             dependencies.sort(Comparator.comparingInt((String id) -> nodes.get(id).getMinDepth())
-                    .thenComparing(id -> nodes.get(id).getConcept(), String.CASE_INSENSITIVE_ORDER));
+                    .thenComparing(id -> nodes.get(id).getStep(), String.CASE_INSENSITIVE_ORDER));
             ordered.put(sourceId, dependencies);
         }
         return ordered;
@@ -584,7 +589,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 nodeRef.id(),
                 ignored -> new KnowledgeNode(nodeRef.id(), nodeRef.concept(), nodeRef.depth(), false)
         );
-        node.setConcept(nodeRef.concept());
+        node.setStep(nodeRef.concept());
         node.setNodeType(KnowledgeNode.NODE_TYPE_CONCEPT);
         node.updateMinDepth(nodeRef.depth());
 
@@ -603,7 +608,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 result.nodeId(),
                 ignored -> new KnowledgeNode(result.nodeId(), result.concept(), result.depth(), false)
         );
-        node.setConcept(result.concept());
+        node.setStep(result.concept());
         node.setNodeType(KnowledgeNode.NODE_TYPE_CONCEPT);
         node.updateMinDepth(result.depth());
         node.setFoundation(result.foundation());
@@ -646,13 +651,13 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                     prereqId,
                     ignored -> new KnowledgeNode(prereqId, trimmedConcept, childDepth, false)
             );
-            child.setConcept(trimmedConcept);
+            child.setStep(trimmedConcept);
             child.setNodeType(KnowledgeNode.NODE_TYPE_CONCEPT);
             child.updateMinDepth(childDepth);
 
             String description = prereqDescriptions.get(prereqId);
-            if (description != null && child.getDescription() == null) {
-                child.setDescription(description);
+            if (description != null && child.getReason() == null) {
+                child.setReason(description);
             }
             state.edgeIndex.computeIfAbsent(result.nodeId(), ignored -> ConcurrentHashMap.newKeySet())
                     .add(prereqId);
@@ -726,8 +731,8 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private CompletableFuture<Boolean> checkFoundationAsync(String concept) {
         String prompt = String.format(
                 "Final teaching goal: %s\n"
-                + "Current concept under evaluation: %s\n"
-                + "This concept will become a node in a prerequisite knowledge graph.\n"
+                + "Current step under evaluation: %s\n"
+                + "This step will become a node in the Stage 0 teaching-beat graph.\n"
                 + "Decide whether it is already basic enough, precise enough, and directly"
                 + " understandable for a middle-school student while still serving the final"
                 + " teaching goal.",
@@ -779,10 +784,10 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private CompletableFuture<List<String>> getPrerequisitesAsync(String concept) {
         String prompt = String.format(
                 "Final teaching goal: %s\n"
-                + "Current concept: %s\n"
-                + "List the direct prerequisite concepts needed to understand the current"
-                + " concept in a teaching animation workflow. Keep the result precise,"
-                + " ordered, and free of duplicates or overly broad topics.",
+                + "Current step: %s\n"
+                + "List the direct prerequisite teaching beats needed before the current"
+                + " step in a teaching animation workflow. Keep the result precise,"
+                + " ordered, and free of duplicates or overly broad beats.",
                 targetConcept, concept);
 
         return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonObjectAsync(
@@ -814,7 +819,6 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
     /**
      * Parses a prerequisites JSON array (from tool call or plain response).
-     * Accepts both [{concept, description}, ...] and plain string arrays.
      */
     private List<String> parsePrerequisiteArray(JsonNode array) {
         if (!array.isArray() || array.isEmpty()) {
@@ -825,31 +829,28 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         Set<String> seen = new LinkedHashSet<>();
 
         for (JsonNode element : array) {
-            String conceptName;
-            String description = null;
+            String stepName;
+            String reason = null;
 
-            if (element.isObject() && element.has("concept")) {
-                conceptName = element.get("concept").asText();
-                if (element.has("description")) {
-                    description = element.get("description").asText();
-                }
+            if (element.isObject()) {
+                stepName = element.path("step").asText("").trim();
+                reason = element.path("reason").asText("").trim();
             } else {
-                conceptName = element.asText();
+                stepName = element.asText("").trim();
             }
 
-            if (conceptName == null || conceptName.isBlank()) {
+            if (stepName.isBlank()) {
                 continue;
             }
-            String normalized = ConceptUtils.normalizeConcept(conceptName);
+            String normalized = ConceptUtils.normalizeConcept(stepName);
             if (!seen.add(normalized)) {
                 continue;
             }
 
-            String trimmed = conceptName.trim();
-            cleaned.add(trimmed);
+            cleaned.add(stepName);
 
-            if (description != null && !description.isBlank()) {
-                prereqDescriptions.put(normalized, description.trim());
+            if (!reason.isBlank()) {
+                prereqDescriptions.put(normalized, reason);
             }
 
             if (cleaned.size() >= 5) {
@@ -895,7 +896,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private Map<String, KnowledgeNode> orderNodes(Map<String, KnowledgeNode> nodeIndex) {
         List<KnowledgeNode> nodes = new ArrayList<>(nodeIndex.values());
         nodes.sort(Comparator.comparingInt(KnowledgeNode::getMinDepth)
-                .thenComparing(KnowledgeNode::getConcept, String.CASE_INSENSITIVE_ORDER));
+                .thenComparing(KnowledgeNode::getStep, String.CASE_INSENSITIVE_ORDER));
 
         Map<String, KnowledgeNode> ordered = new LinkedHashMap<>();
         for (KnowledgeNode node : nodes) {

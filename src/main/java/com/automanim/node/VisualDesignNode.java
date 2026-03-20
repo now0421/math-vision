@@ -30,8 +30,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Stage 1b: Visual Design - adds visual specifications to each node.
  *
- * Depth levels are processed foundation-first (deepest concepts to depth 0):
- * - Basic concepts establish reusable motifs before advanced concepts are designed.
+ * Depth levels are processed foundation-first (deepest steps to depth 0):
+ * - Foundational steps establish reusable motifs before later steps are designed.
  * - Nodes at the same depth run concurrently because they only depend on deeper,
  *   already-finalized prerequisite specs plus the shared global style guide.
  */
@@ -44,7 +44,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
             + "  \"type\": \"function\","
             + "  \"function\": {"
             + "    \"name\": \"write_visual_design\","
-            + "    \"description\": \"Return a visual design spec for a concept animation scene.\","
+            + "    \"description\": \"Return a visual design spec for a teaching-step animation scene.\","
             + "    \"parameters\": {"
             + "      \"type\": \"object\","
             + "      \"properties\": {"
@@ -168,7 +168,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
     private CompletableFuture<Void> designNodeAsync(KnowledgeNode node) {
         Map<String, Object> existingSpec = node.getVisualSpec();
         if (existingSpec != null && existingSpec.containsKey("visual_description")) {
-            log.debug("  Skipping already-designed node: {}", node.getConcept());
+            log.debug("  Skipping already-designed node: {}", node.getStep());
             return CompletableFuture.completedFuture(null);
         }
 
@@ -196,7 +196,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonObjectAsync(
                         aiClient,
                         log,
-                        node.getConcept(),
+                        node.getStep(),
                         conversationContext,
                         userPrompt.toString(),
                         VISUAL_DESIGN_TOOL,
@@ -205,31 +205,31 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                 .thenAccept(data -> {
                     if (data != null) {
                         applyVisualSpec(node, data);
-                        log.debug("  Visual spec set for: {}", node.getConcept());
+                        log.debug("  Visual spec set for: {}", node.getStep());
                     }
                 })
                 .exceptionally(error -> {
                     Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
-                    log.warn("  Visual design failed for '{}': {}", node.getConcept(), cause.getMessage());
+                    log.warn("  Visual design failed for '{}': {}", node.getStep(), cause.getMessage());
                     return null;
                 });
     }
 
     /**
      * Designs from foundations upward, so direct prerequisites are finalized
-     * before their dependent concept is designed.
+     * before their dependent step is designed.
      */
     private String buildPrerequisiteSpecContext(KnowledgeNode node) {
         List<KnowledgeNode> prerequisites = getNearestPrerequisites(node);
         if (prerequisites.isEmpty()) {
-            return "This is a foundation concept. Keep the scene concrete, intuitive, and reusable later.";
+            return "This is a foundation step. Keep the scene concrete, intuitive, and reusable later.";
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("Already-designed prerequisite concepts:\n");
+        sb.append("Already-designed prerequisite steps:\n");
         for (KnowledgeNode prerequisite : prerequisites) {
             Map<String, Object> prerequisiteSpec = prerequisite.getVisualSpec();
-            sb.append(String.format("- %s%n", prerequisite.getConcept()));
+            sb.append(String.format("- %s%n", prerequisite.getStep()));
             if (prerequisiteSpec == null || prerequisiteSpec.isEmpty()) {
                 sb.append("  No visual spec available yet.\n");
                 continue;
@@ -269,7 +269,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         return String.format(
                 "Treat every scene as part of one coherent animation about %s. "
                 + "Start with concrete, approachable visuals for foundational ideas, then "
-                + "gradually increase abstraction toward the final concept. "
+                + "gradually increase abstraction toward the final teaching step. "
                 + "Keep layout grammar, motion rhythm, recurring shapes, and overall palette "
                 + "consistent across all nodes.",
                 graph.getTargetConcept()
@@ -285,9 +285,9 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         if (graph != null && graph.isProblemMode()) {
             StringBuilder sb = new StringBuilder();
             appendLabeledLine(sb, "Original problem", graph.getTargetConcept());
-            appendLabeledLine(sb, "Final conclusion", root != null ? root.getConcept() : "");
-            if (root != null && root.getDescription() != null && !root.getDescription().isBlank()) {
-                appendLabeledLine(sb, "Conclusion role", root.getDescription());
+            appendLabeledLine(sb, "Final conclusion", root != null ? root.getStep() : "");
+            if (root != null && root.getReason() != null && !root.getReason().isBlank()) {
+                appendLabeledLine(sb, "Conclusion reason", root.getReason());
             }
             String solutionChain = buildProblemSolutionChainSummary();
             if (!solutionChain.isBlank()) {
@@ -303,20 +303,20 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         }
         return PromptTemplates.workflowTargetDescription(
                 graph != null ? graph.getTargetConcept() : "",
-                root != null ? root.getConcept() : "",
-                root != null ? root.getDescription() : "",
+                root != null ? root.getStep() : "",
+                root != null ? root.getReason() : "",
                 graph != null && graph.isProblemMode());
     }
 
     private String buildCurrentStepPrompt(KnowledgeNode node, String equationsInfo) {
         StringBuilder sb = new StringBuilder();
         sb.append("Current step:\n");
-        sb.append("- Concept: ").append(node.getConcept()).append("\n");
+        sb.append("- Step: ").append(node.getStep()).append("\n");
         sb.append("- Node type: ").append(node.getNodeType()).append("\n");
         sb.append("- Depth: ").append(node.getMinDepth()).append("\n");
         sb.append("- Relevant equations: ").append(equationsInfo).append("\n");
-        if (node.getDescription() != null && !node.getDescription().isBlank()) {
-            sb.append("- Planning summary: ").append(node.getDescription().trim()).append("\n");
+        if (node.getReason() != null && !node.getReason().isBlank()) {
+            sb.append("- Reason from Stage 0: ").append(node.getReason().trim()).append("\n");
         }
         if (graph != null && graph.isProblemMode()) {
             sb.append("- Target problem: ").append(graph.getTargetConcept()).append("\n");
@@ -334,8 +334,8 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         return sb.toString().trim();
     }
 
-    private String buildProblemDesignContext(KnowledgeNode currentNode) {
-        if (graph == null || currentNode == null || !graph.isProblemMode()) {
+    private String buildProblemDesignContext(KnowledgeNode currentStep) {
+        if (graph == null || currentStep == null || !graph.isProblemMode()) {
             return "";
         }
 
@@ -343,19 +343,19 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         sb.append("Problem context (source of truth):\n");
         appendLabeledLine(sb, "- Statement", graph.getTargetConcept());
 
-        List<KnowledgeNode> prerequisites = graph.getPrerequisites(currentNode.getId());
+        List<KnowledgeNode> prerequisites = graph.getPrerequisites(currentStep.getId());
         if (!prerequisites.isEmpty()) {
             sb.append("Direct prerequisite steps for this node:\n");
             for (KnowledgeNode prerequisite : prerequisites) {
-                sb.append(String.format("- [%s] %s", prerequisite.getNodeType(), prerequisite.getConcept()));
-                if (prerequisite.getDescription() != null && !prerequisite.getDescription().isBlank()) {
-                    sb.append(" - ").append(prerequisite.getDescription().trim());
+                sb.append(String.format("- [%s] %s", prerequisite.getNodeType(), prerequisite.getStep()));
+                if (prerequisite.getReason() != null && !prerequisite.getReason().isBlank()) {
+                    sb.append(" - ").append(prerequisite.getReason().trim());
                 }
                 sb.append("\n");
             }
         }
 
-        String solutionChain = buildProblemSolutionChainSummary(currentNode);
+        String solutionChain = buildProblemSolutionChainSummary(currentStep);
         if (!solutionChain.isBlank()) {
             sb.append("Ordered solution-step chain (do not invent extra steps):\n")
                     .append(solutionChain);
@@ -369,7 +369,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         return buildProblemSolutionChainSummary(null);
     }
 
-    private String buildProblemSolutionChainSummary(KnowledgeNode currentNode) {
+    private String buildProblemSolutionChainSummary(KnowledgeNode currentStep) {
         if (graph == null || !graph.isProblemMode()) {
             return "";
         }
@@ -382,15 +382,15 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < steps.size(); i++) {
             KnowledgeNode step = steps.get(i);
-            String marker = currentNode != null && step.getId().equals(currentNode.getId()) ? "-> " : "   ";
+            String marker = currentStep != null && step.getId().equals(currentStep.getId()) ? "-> " : "   ";
             sb.append(marker)
                     .append(i + 1)
                     .append(". [")
                     .append(step.getNodeType())
                     .append("] ")
-                    .append(step.getConcept());
-            if (step.getDescription() != null && !step.getDescription().isBlank()) {
-                sb.append(" - ").append(step.getDescription().trim());
+                    .append(step.getStep());
+            if (step.getReason() != null && !step.getReason().isBlank()) {
+                sb.append(" - ").append(step.getReason().trim());
             }
             sb.append("\n");
         }
@@ -411,9 +411,9 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         sb.append("- [")
                 .append(step.getNodeType())
                 .append("] ")
-                .append(step.getConcept());
-        if (step.getDescription() != null && !step.getDescription().isBlank()) {
-            sb.append(" - ").append(step.getDescription().trim());
+                .append(step.getStep());
+        if (step.getReason() != null && !step.getReason().isBlank()) {
+            sb.append(" - ").append(step.getReason().trim());
         }
         sb.append("\n");
     }

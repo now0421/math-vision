@@ -53,11 +53,16 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
             Pattern.compile("(?i)dvisvgm.*not found")
     );
 
-    private final ManimRendererService renderer = new ManimRendererService();
+    private final ManimRendererService renderer;
     private AiClient aiClient;
 
     public RenderNode() {
+        this(new ManimRendererService());
+    }
+
+    RenderNode(ManimRendererService renderer) {
         super(1, 0); // no PocketFlow retry - we handle retry internally
+        this.renderer = renderer;
     }
 
     /**
@@ -131,7 +136,10 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
                 codeResult.getTargetConcept(),
                 codeResult.getTargetDescription()));
 
-        String currentCode = codeResult.getManimCode();
+        String currentCode = JsonUtils.extractCodeBlock(codeResult.getManimCode());
+        if (currentCode == null || currentCode.isBlank()) {
+            currentCode = codeResult.getManimCode();
+        }
         String sceneName = codeResult.getSceneName();
         String lastError = "";
         String geometryPath = null;
@@ -150,9 +158,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
             RenderAttemptResult renderResult = renderer.render(
                     currentCode, sceneName, quality, outputDir
             );
-            if (renderResult.geometryPath() != null) {
-                geometryPath = renderResult.geometryPath();
-            }
+            geometryPath = renderResult.geometryPath();
 
             if (renderResult.success()) {
                 log.info("  Render succeeded on attempt {}", attempts);

@@ -30,7 +30,7 @@ import java.util.concurrent.CompletionException;
 
 /**
  * Stage 1c: Narrative Composition - composes an animation script
- * from the enriched knowledge graph, with length adapted to concept complexity.
+ * from the enriched knowledge graph, with length adapted to graph complexity.
  */
 public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, String> {
 
@@ -42,7 +42,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
             + "  \"type\": \"function\","
             + "  \"function\": {"
             + "    \"name\": \"write_storyboard\","
-            + "    \"description\": \"Return a structured storyboard JSON for the concept progression.\","
+            + "    \"description\": \"Return a structured storyboard JSON for the planned step progression.\","
             + "    \"parameters\": {"
             + "      \"type\": \"object\","
             + "      \"properties\": {"
@@ -82,15 +82,15 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         String resolvedMode = resolveInputMode(graph);
         boolean problemMode = WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode);
         List<KnowledgeNode> ordered = filterNarrativeNodes(graph.topologicalOrder(), problemMode);
-        List<String> conceptOrder = ordered.stream()
-                .map(KnowledgeNode::getConcept)
+        List<String> stepOrder = ordered.stream()
+                .map(KnowledgeNode::getStep)
                 .collect(java.util.stream.Collectors.toList());
-        String targetDescription = buildWorkflowTargetDescription(graph, problemMode);
+        String workflowTargetDetails = buildWorkflowTargetDescription(graph, problemMode);
         String workflowTarget = graph.getTargetConcept();
         String systemPrompt = PromptTemplates.narrativeSystemPrompt(
-                workflowTarget, targetDescription);
+                workflowTarget, workflowTargetDetails);
 
-        log.info("  Narrative mode: {}, order: {}", resolvedMode, conceptOrder);
+        log.info("  Narrative mode: {}, order: {}", resolvedMode, stepOrder);
 
         int sceneCount = estimateSceneCount(ordered, problemMode);
         String promptTarget = graph.getTargetConcept();
@@ -120,10 +120,10 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
         Narrative narrative = new Narrative(
                 graph.getTargetConcept(),
-                targetDescription,
+                workflowTargetDetails,
                 codegenPrompt,
                 storyboard,
-                conceptOrder,
+                stepOrder,
                 totalDuration,
                 sceneCount
         );
@@ -211,7 +211,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         StringBuilder sb = new StringBuilder();
         sb.append("Narrative context rules:\n");
         sb.append("- Treat visual specifications as primary staging guidance.\n");
-        sb.append("- Treat node descriptions from earlier planning stages as the intended teaching job of each node.\n");
+        sb.append("- Treat node reasons from earlier planning stages as the intended teaching job of each node.\n");
         sb.append("- Treat mathematical enrichment as optional supporting material.\n");
         sb.append("- Use equations, definitions, interpretations, and examples only when they help the main point.\n");
         sb.append("- It is acceptable to ignore optional math details that would make scenes crowded or repetitive.\n");
@@ -322,7 +322,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
                     "Maintain one stable layout and update existing objects instead of redrawing the whole scene.");
         }
         if (storyboard.getSummary() == null || storyboard.getSummary().isBlank()) {
-            storyboard.setSummary("Continuity-aware storyboard for the target concept.");
+            storyboard.setSummary("Continuity-aware storyboard for the target lesson.");
         }
 
         List<String> globalRules = new ArrayList<>(storyboard.getGlobalVisualRules());
@@ -366,8 +366,8 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
                 scene.setSafeAreaPlan(
                         "Keep important content inside x in [-6.5, 6.5] and y in [-3.5, 3.5] with edge margin.");
             }
-            if (scene.getConceptRefs() == null) {
-                scene.setConceptRefs(new ArrayList<>());
+            if (scene.getStepRefs() == null) {
+                scene.setStepRefs(new ArrayList<>());
             }
             if (scene.getPersistentObjects() == null) {
                 scene.setPersistentObjects(new ArrayList<>());
@@ -451,18 +451,18 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
                                      boolean problemMode) {
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("%n--- Node %d: %s (type=%s, depth=%d) ---%n",
-                index, node.getConcept(), node.getNodeType(), node.getMinDepth()));
+                index, node.getStep(), node.getNodeType(), node.getMinDepth()));
 
         sb.append("Core node identity:\n");
         sb.append("  id: ").append(node.getId()).append("\n");
-        sb.append("  concept: ").append(node.getConcept()).append("\n");
+        sb.append("  step: ").append(node.getStep()).append("\n");
         sb.append("  node_type: ").append(node.getNodeType()).append("\n");
         sb.append("  min_depth: ").append(node.getMinDepth()).append("\n");
         sb.append("  is_foundation: ").append(node.isFoundation()).append("\n");
 
-        if (node.getDescription() != null && !node.getDescription().isBlank()) {
-            sb.append("Planning description from previous stage:\n");
-            sb.append("  ").append(node.getDescription()).append("\n");
+        if (node.getReason() != null && !node.getReason().isBlank()) {
+            sb.append("Planning reason from previous stage:\n");
+            sb.append("  ").append(node.getReason()).append("\n");
         }
 
         boolean problemStatementNode = problemMode
@@ -632,8 +632,8 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         KnowledgeNode root = graph.getRootNode();
         return PromptTemplates.workflowTargetDescription(
                 graph.getTargetConcept(),
-                root != null ? root.getConcept() : "",
-                root != null ? root.getDescription() : "",
+                root != null ? root.getStep() : "",
+                root != null ? root.getReason() : "",
                 problemMode);
     }
 

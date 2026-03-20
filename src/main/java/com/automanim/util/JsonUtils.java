@@ -17,7 +17,15 @@ public final class JsonUtils {
     private static final Logger log = LoggerFactory.getLogger(JsonUtils.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Pattern JSON_ARRAY_PATTERN = Pattern.compile("\\[.*?]", Pattern.DOTALL);
-    private static final Pattern CODE_BLOCK_PATTERN = Pattern.compile("```(?:python)?\\s*([\\s\\S]*?)```");
+    private static final Pattern CODE_BLOCK_PATTERN = Pattern.compile(
+            "(?is)(?:^|\\R)```+\\s*([a-z0-9_+.-]*)\\s*\\R?([\\s\\S]*?)\\R?```+"
+    );
+    private static final Pattern FENCE_LINE_PATTERN = Pattern.compile(
+            "^\\s*(```+|~~~+)(?:\\s*([A-Za-z0-9_+.-]+))?\\s*$"
+    );
+    private static final Pattern CLOSING_FENCE_LINE_PATTERN = Pattern.compile("^\\s*(```+|~~~+)\\s*$");
+    private static final Pattern STANDALONE_LANGUAGE_LABEL_PATTERN =
+            Pattern.compile("^(?i:python|py)\\s*$");
 
     private JsonUtils() {}
 
@@ -131,24 +139,15 @@ public final class JsonUtils {
     public static String extractCodeBlock(String text) {
         if (text == null || text.isBlank()) return text != null ? text.trim() : "";
 
+        String trimmed = stripBom(text).trim();
         String bestBlock = "";
         int bestScore = -1;
 
-        Matcher m = CODE_BLOCK_PATTERN.matcher(text);
+        Matcher m = CODE_BLOCK_PATTERN.matcher(trimmed);
         while (m.find()) {
-            String block = m.group(1).trim();
-            int score = block.length();
-            
-            // Prioritize blocks that look like a Manim scene class
-            if (block.contains("class ") && block.contains("(Scene):")) {
-                score += 10000;
-            } else if (block.contains("class ") && block.contains("Scene")) {
-                score += 5000;
-            }
-            // Prioritize blocks with imports
-            if (block.contains("from manim import")) {
-                score += 1000;
-            }
+            String language = m.group(1);
+            String block = stripMarkdownCodeFences(m.group(2));
+            int score = scoreCodeBlock(language, block);
 
             if (score > bestScore) {
                 bestScore = score;
@@ -160,12 +159,17 @@ public final class JsonUtils {
             return bestBlock;
         }
 
-        // Fallback: If it looks like raw code (no backticks), return as-is
-        if (text.contains("from manim import") || (text.contains("class ") && text.contains("Scene"))) {
-            return text.trim();
+        String stripped = stripMarkdownCodeFences(trimmed);
+        if (looksLikeCode(stripped)) {
+            return stripped;
         }
 
-        return text.trim();
+        // Fallback: If it already looks like raw code (no usable fence), return as-is
+        if (looksLikeCode(trimmed)) {
+            return trimmed;
+        }
+
+        return stripped;
     }
 
     public static JsonNode extractToolCallPayload(JsonNode response) {
@@ -422,5 +426,135 @@ public final class JsonUtils {
         }
 
         return null;
+    }
+
+    private static int scoreCodeBlock(String language, String block) {
+        if (block == null || block.isBlank()) {
+            return -1;
+        }
+
+        int score = block.length();
+        String normalizedLanguage = language != null ? language.trim().toLowerCase() : "";
+
+        if ("python".equals(normalizedLanguage) || "py".equals(normalizedLanguage)) {
+            score += 2000;
+        }
+
+        if (block.contains("class ") && block.contains("(Scene):")) {
+            score += 10000;
+        } else if (block.contains("class ") && block.contains("Scene")) {
+            score += 5000;
+        }
+
+        if (block.contains("from manim import")) {
+            score += 1000;
+        }
+
+        if (block.contains("def construct(")) {
+            score += 500;
+        }
+
+        return score;
+    }
+
+    private static boolean looksLikeCode(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+
+        String trimmed = text.trim();
+        return trimmed.contains("from manim import")
+                || trimmed.contains("import manim")
+                || trimmed.contains("def construct(")
+                || (trimmed.contains("class ") && trimmed.contains("Scene"));
+    }
+
+    private static String stripMarkdownCodeFences(String text) {
+        String current = stripBom(text).trim();
+        for (int i = 0; i < 3; i++) {
+            String updated = stripSingleOuterFence(current);
+            if (updated.equals(current)) {
+                break;
+            }
+            current = updated;
+        }
+        return current;
+    }
+
+    private static String stripSingleOuterFence(String text) {
+        if (text == null || text.isBlank()) {
+            return text != null ? text.trim() : "";
+        }
+
+        String[] lines = text.trim().split("\\R", -1);
+        int first = firstNonBlankLine(lines);
+        if (first < 0) {
+            return text.trim();
+        }
+
+        Matcher openingFence = FENCE_LINE_PATTERN.matcher(lines[first]);
+        if (!openingFence.matches()) {
+            return text.trim();
+        }
+
+        int last = lastNonBlankLine(lines);
+        int contentStart = first + 1;
+        int contentEnd = last;
+
+        if (last > first && CLOSING_FENCE_LINE_PATTERN.matcher(lines[last]).matches()) {
+            contentEnd = last - 1;
+        }
+
+        if (contentStart <= contentEnd
+                && STANDALONE_LANGUAGE_LABEL_PATTERN.matcher(lines[contentStart].trim()).matches()) {
+            String withoutLanguageLabel = joinLines(lines, contentStart + 1, contentEnd).trim();
+            if (looksLikeCode(withoutLanguageLabel)) {
+                contentStart++;
+            }
+        }
+
+        return joinLines(lines, contentStart, contentEnd).trim();
+    }
+
+    private static int firstNonBlankLine(String[] lines) {
+        for (int i = 0; i < lines.length; i++) {
+            if (!lines[i].trim().isEmpty()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int lastNonBlankLine(String[] lines) {
+        for (int i = lines.length - 1; i >= 0; i--) {
+            if (!lines[i].trim().isEmpty()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static String joinLines(String[] lines, int startInclusive, int endInclusive) {
+        if (lines == null || startInclusive > endInclusive || startInclusive >= lines.length || endInclusive < 0) {
+            return "";
+        }
+
+        int safeStart = Math.max(0, startInclusive);
+        int safeEnd = Math.min(lines.length - 1, endInclusive);
+        StringBuilder sb = new StringBuilder();
+        for (int i = safeStart; i <= safeEnd; i++) {
+            if (sb.length() > 0) {
+                sb.append('\n');
+            }
+            sb.append(lines[i]);
+        }
+        return sb.toString();
+    }
+
+    private static String stripBom(String text) {
+        if (text == null || text.isEmpty()) {
+            return text != null ? text : "";
+        }
+        return text.charAt(0) == '\uFEFF' ? text.substring(1) : text;
     }
 }

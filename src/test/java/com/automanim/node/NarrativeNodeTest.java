@@ -63,7 +63,7 @@ class NarrativeNodeTest {
 
     private static Map<String, Object> buildContext(AiClient aiClient) {
         KnowledgeNode root = new KnowledgeNode("root", "Target concept", 0, false);
-        root.setDescription("Introduce the target concept with one clear visual.");
+        root.setReason("Introduce the target concept with one clear visual.");
 
         Map<String, KnowledgeNode> nodes = new LinkedHashMap<>();
         nodes.put(root.getId(), root);

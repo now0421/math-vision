@@ -26,8 +26,8 @@ public class Narrative {
     @JsonProperty("storyboard")
     private Storyboard storyboard;
 
-    @JsonProperty("concept_order")
-    private List<String> conceptOrder = new ArrayList<>();
+    @JsonProperty("step_order")
+    private List<String> stepOrder = new ArrayList<>();
 
     @JsonProperty("total_duration")
     private int totalDuration;
@@ -38,23 +38,23 @@ public class Narrative {
     public Narrative() {}
 
     public Narrative(String targetConcept, String verbosePrompt,
-                     List<String> conceptOrder, int totalDuration, int sceneCount) {
-        this(targetConcept, "", verbosePrompt, null, conceptOrder, totalDuration, sceneCount);
+                     List<String> stepOrder, int totalDuration, int sceneCount) {
+        this(targetConcept, "", verbosePrompt, null, stepOrder, totalDuration, sceneCount);
     }
 
     public Narrative(String targetConcept, String verbosePrompt, Storyboard storyboard,
-                     List<String> conceptOrder, int totalDuration, int sceneCount) {
-        this(targetConcept, "", verbosePrompt, storyboard, conceptOrder, totalDuration, sceneCount);
+                     List<String> stepOrder, int totalDuration, int sceneCount) {
+        this(targetConcept, "", verbosePrompt, storyboard, stepOrder, totalDuration, sceneCount);
     }
 
     public Narrative(String targetConcept, String targetDescription, String verbosePrompt,
-                     Storyboard storyboard, List<String> conceptOrder,
+                     Storyboard storyboard, List<String> stepOrder,
                      int totalDuration, int sceneCount) {
         this.targetConcept = targetConcept;
         this.targetDescription = targetDescription;
         this.verbosePrompt = verbosePrompt;
         this.storyboard = storyboard;
-        this.conceptOrder = conceptOrder;
+        this.stepOrder = stepOrder;
         this.totalDuration = totalDuration;
         this.sceneCount = sceneCount;
     }
@@ -78,8 +78,8 @@ public class Narrative {
     public Storyboard getStoryboard() { return storyboard; }
     public void setStoryboard(Storyboard storyboard) { this.storyboard = storyboard; }
 
-    public List<String> getConceptOrder() { return conceptOrder; }
-    public void setConceptOrder(List<String> conceptOrder) { this.conceptOrder = conceptOrder; }
+    public List<String> getStepOrder() { return stepOrder; }
+    public void setStepOrder(List<String> stepOrder) { this.stepOrder = stepOrder; }
 
     public int getTotalDuration() { return totalDuration; }
     public void setTotalDuration(int totalDuration) { this.totalDuration = totalDuration; }
@@ -158,8 +158,8 @@ public class Narrative {
         @JsonProperty("safe_area_plan")
         private String safeAreaPlan;
 
-        @JsonProperty("concept_refs")
-        private List<String> conceptRefs = new ArrayList<>();
+        @JsonProperty("step_refs")
+        private List<String> stepRefs = new ArrayList<>();
 
         @JsonProperty("entering_objects")
         private List<StoryboardObject> enteringObjects = new ArrayList<>();
@@ -202,8 +202,8 @@ public class Narrative {
         public String getSafeAreaPlan() { return safeAreaPlan; }
         public void setSafeAreaPlan(String safeAreaPlan) { this.safeAreaPlan = safeAreaPlan; }
 
-        public List<String> getConceptRefs() { return conceptRefs; }
-        public void setConceptRefs(List<String> conceptRefs) { this.conceptRefs = conceptRefs; }
+        public List<String> getStepRefs() { return stepRefs; }
+        public void setStepRefs(List<String> stepRefs) { this.stepRefs = stepRefs; }
 
         public List<StoryboardObject> getEnteringObjects() { return enteringObjects; }
         public void setEnteringObjects(List<StoryboardObject> enteringObjects) {
