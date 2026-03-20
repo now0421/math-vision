@@ -33,9 +33,16 @@ _SEMANTIC_NAME_SOURCE_RANK = {
     "class_name": 0,
     "display_text": 1,
     "mobject_name": 2,
-    "source_argument": 3,
+    "derived_path": 3,
+    "source_argument": 4,
 }
 _SOURCE_AST_CACHE = {}
+_TEXTUAL_CLASSES = {"text", "formula"}
+_PRIMITIVE_LAYOUT_CLASSES = {"text", "formula", "point", "line", "shape"}
+_COMPOSITE_GROUP_CLASSES = {"VGroup", "Group"}
+_LAYOUT_OFFSCREEN_TOLERANCE = 0.03
+_LAYOUT_MIN_OVERLAP_AREA = 0.015
+_LAYOUT_MIN_OVERLAP_RATIO = 0.08
 
 
 def patch_scene_for_geometry_export(scene_cls):
@@ -321,6 +328,7 @@ def patch_scene_for_geometry_export(scene_cls):
                     play_index=play_index,
                     scene_time=scene_time,
                     semantic_hint=semantic_hint,
+                    semantic_hint_source="source_argument",
                 )
 
         def _automanim_register_targets_from_play_args(self, args, source_hint, play_argument_hints=None):
@@ -336,6 +344,7 @@ def patch_scene_for_geometry_export(scene_cls):
                     play_index=play_index,
                     scene_time=scene_time,
                     semantic_hint=descriptor.get("semantic_name"),
+                    semantic_hint_source="source_argument",
                 )
 
         def _automanim_register_mobject(
@@ -345,12 +354,14 @@ def patch_scene_for_geometry_export(scene_cls):
             play_index,
             scene_time,
             semantic_hint=None,
+            semantic_hint_source=None,
         ):
             object_id = id(mobject)
             stable_id = self._automanim_object_ids.get(object_id)
             semantic_name, semantic_name_source = _resolve_semantic_name(
                 mobject,
                 semantic_hint=semantic_hint,
+                semantic_hint_source=semantic_hint_source,
             )
             if stable_id is None:
                 stable_id = f"mob-{self._automanim_next_object_number:04d}"
@@ -391,33 +402,109 @@ def patch_scene_for_geometry_export(scene_cls):
         def _automanim_collect_visible_objects(self, source_hint, play_index, scene_time):
             roots = _unique_roots(self)
             foreground_ids = {id(mobject) for mobject in getattr(self, "foreground_mobjects", [])}
-            objects = []
+            elements = []
             visible_object_ids = []
             for sample_order, mobject in enumerate(roots):
                 if not _should_track_object(mobject):
                     continue
-                entry = self._automanim_register_mobject(
+                root_entry = self._automanim_register_mobject(
                     mobject,
                     source_hint=source_hint,
                     play_index=play_index,
                     scene_time=_safe_float(scene_time),
                 )
-                record = _build_semantic_mobject_record(
+                self._automanim_collect_layout_elements(
                     mobject=mobject,
-                    registry_entry=entry,
+                    registry_entry=root_entry,
+                    source_hint=source_hint,
+                    play_index=play_index,
+                    scene_time=scene_time,
                     foreground_ids=foreground_ids,
+                    elements=elements,
+                    visible_object_ids=visible_object_ids,
+                    top_level_entry=root_entry,
+                    top_level_order=sample_order,
+                    element_path=str(sample_order),
+                    require_visible=True,
                 )
-                if record is None:
-                    continue
-                record["sample_order"] = sample_order
-                objects.append(record)
-                visible_object_ids.append(entry["stable_id"])
 
             return {
-                "objects": objects,
+                "elements": elements,
                 "visible_object_ids": visible_object_ids,
                 "visible_signature": tuple(sorted(visible_object_ids)),
             }
+
+        def _automanim_collect_layout_elements(
+            self,
+            mobject,
+            registry_entry,
+            source_hint,
+            play_index,
+            scene_time,
+            foreground_ids,
+            elements,
+            visible_object_ids,
+            top_level_entry,
+            top_level_order,
+            element_path,
+            require_visible,
+        ):
+            record = _build_semantic_mobject_record(
+                mobject=mobject,
+                registry_entry=registry_entry,
+                foreground_ids=foreground_ids,
+                require_visible=require_visible,
+            )
+            if record is None:
+                return
+
+            child_descriptors = []
+            for child_index, child in enumerate(getattr(mobject, "submobjects", []) or []):
+                if not _should_track_object(child):
+                    continue
+                child_descriptors.append((child_index, child))
+
+            if _should_descend_layout_children(mobject, child_descriptors):
+                before_count = len(elements)
+                for child_index, child in child_descriptors:
+                    child_entry = self._automanim_register_mobject(
+                        child,
+                        source_hint=source_hint,
+                        play_index=play_index,
+                        scene_time=_safe_float(scene_time),
+                        semantic_hint=_derived_semantic_name(
+                            parent_entry=registry_entry,
+                            child_index=child_index,
+                        ),
+                        semantic_hint_source="derived_path",
+                    )
+                    self._automanim_collect_layout_elements(
+                        mobject=child,
+                        registry_entry=child_entry,
+                        source_hint=source_hint,
+                        play_index=play_index,
+                        scene_time=scene_time,
+                        foreground_ids=foreground_ids,
+                        elements=elements,
+                        visible_object_ids=visible_object_ids,
+                        top_level_entry=top_level_entry,
+                        top_level_order=top_level_order,
+                        element_path=f"{element_path}.{child_index}",
+                        require_visible=False,
+                    )
+
+                if len(elements) > before_count:
+                    return
+
+            record["element_path"] = element_path
+            record["parent_element_path"] = element_path.rsplit(".", 1)[0] if "." in element_path else None
+            record["top_level_stable_id"] = top_level_entry["stable_id"]
+            record["top_level_semantic_name"] = top_level_entry.get("semantic_name")
+            record["top_level_order"] = top_level_order
+            record["sample_order"] = len(elements)
+            elements.append(record)
+            if record.get("visible"):
+                visible_object_ids.append(registry_entry["stable_id"])
 
         def _automanim_detect_visibility_change(self, current_play, visible_signature):
             previous_signature = current_play.get("_last_visible_signature")
@@ -482,20 +569,14 @@ def patch_scene_for_geometry_export(scene_cls):
                 "play_index": play_index,
                 "play_type": current_play["play_type"] if current_play is not None else "scene",
                 "sample_role": sample_role,
-                "trigger": trigger,
                 "scene_method": _source_value(source_hint, "method_name"),
                 "source_line": _source_value(source_hint, "line_number"),
                 "source_code": _source_value(source_hint, "code_line"),
                 "animation_time_seconds": _safe_float(animation_time),
                 "scene_time_seconds": _safe_float(scene_time),
-                "root_object_count": len(collected["objects"]),
-                "textual_object_count": sum(
-                    1
-                    for obj in collected["objects"]
-                    if obj["semantic_class"] in {"text", "formula"}
-                ),
-                "visible_object_ids": list(collected["visible_object_ids"]),
-                "objects": collected["objects"],
+                "trigger": trigger,
+                "element_count": len(collected["elements"]),
+                "elements": collected["elements"],
             }
             if extra_metadata:
                 sample.update(extra_metadata)
@@ -508,94 +589,20 @@ def patch_scene_for_geometry_export(scene_cls):
             return sample
 
         def _automanim_write_geometry_file(self):
-            object_catalog = [
-                self._automanim_object_registry[key]
-                for key in sorted(self._automanim_object_registry.keys())
-            ]
-            serialized_plays = [_serialize_play_record(play) for play in self._automanim_play_records]
             payload = {
                 "scene_name": self.__class__.__name__,
-                "report_type": "sampled_mobject_geometry_report",
-                "report_version": 3,
+                "report_type": "sampled_frame_elements_report",
+                "report_version": 5,
                 "manim_version": getattr(manim, "__version__", None),
-                "frame_rate": _safe_float(config["frame_rate"]),
                 "frame_size": {
                     "width": _safe_float(config["frame_width"]),
                     "height": _safe_float(config["frame_height"]),
                     "x_radius": _safe_float(config["frame_x_radius"]),
                     "y_radius": _safe_float(config["frame_y_radius"]),
                 },
-                "sampling_strategy": {
-                    "root_objects_only": True,
-                    "semantic_naming": {
-                        "enabled": True,
-                        "sources": [
-                            "source_argument",
-                            "mobject_name",
-                            "display_text",
-                            "class_name",
-                        ],
-                    },
-                    "default_profiles": {
-                        "short": ["start", "mid", "end"],
-                        "medium": ["start", "quarter", "mid", "three_quarter", "end"],
-                        "long": [
-                            "start",
-                            "one_sixth",
-                            "one_third",
-                            "mid",
-                            "two_thirds",
-                            "five_sixths",
-                            "end",
-                        ],
-                    },
-                    "priority_animation_types": sorted(_PRIORITY_ANIMATION_TYPES),
-                    "priority_profiles": {
-                        "short": ["start", "quarter", "mid", "three_quarter", "end"],
-                        "medium": [
-                            "start",
-                            "one_sixth",
-                            "one_third",
-                            "mid",
-                            "two_thirds",
-                            "five_sixths",
-                            "end",
-                        ],
-                        "long": [
-                            "start",
-                            "one_eighth",
-                            "quarter",
-                            "three_eighths",
-                            "mid",
-                            "five_eighths",
-                            "three_quarter",
-                            "seven_eighths",
-                            "end",
-                        ],
-                    },
-                    "static_wait_roles": ["static"],
-                    "visibility_change_sampling": {
-                        "enabled": True,
-                        "trigger": "visible_root_signature_changed",
-                    },
-                    "threshold_seconds": {
-                        "medium_play": _safe_float(_MEDIUM_PLAY_SECONDS),
-                        "long_play": _safe_float(_LONG_PLAY_SECONDS),
-                    },
-                },
-                "observed_render_frame_count": self._automanim_observed_render_frame_count,
-                "play_count": len(self._automanim_play_records),
+                "frame_bounds": _frame_bounds_from_config(),
                 "sample_count": len(self._automanim_samples),
-                "object_catalog_count": len(object_catalog),
-                "plays": serialized_plays,
-                "object_catalog": object_catalog,
                 "samples": self._automanim_samples,
-                "report_summary": _build_report_summary(
-                    samples=self._automanim_samples,
-                    object_catalog=object_catalog,
-                    play_records=serialized_plays,
-                    observed_render_frame_count=self._automanim_observed_render_frame_count,
-                ),
             }
             if self._automanim_geometry_export_error is not None:
                 payload["export_error"] = self._automanim_geometry_export_error
@@ -844,6 +851,176 @@ def _serialize_play_record(play_record):
     }
 
 
+def _compact_object_catalog_entry(entry):
+    return {
+        "stable_id": entry.get("stable_id"),
+        "semantic_name": entry.get("semantic_name"),
+        "semantic_name_source": entry.get("semantic_name_source"),
+        "class_name": entry.get("class_name"),
+        "semantic_class": entry.get("semantic_class"),
+        "display_text": entry.get("display_text"),
+        "created_in_method": entry.get("created_in_method"),
+        "created_at_line": entry.get("created_at_line"),
+        "created_from": entry.get("created_from"),
+    }
+
+
+def _frame_bounds_from_config():
+    x_radius = _safe_float(config["frame_x_radius"]) or 0.0
+    y_radius = _safe_float(config["frame_y_radius"]) or 0.0
+    return {
+        "min": [-x_radius, -y_radius, 0.0],
+        "max": [x_radius, y_radius, 0.0],
+        "width": _safe_float(config["frame_width"]) or 0.0,
+        "height": _safe_float(config["frame_height"]) or 0.0,
+    }
+
+
+def _should_descend_layout_children(mobject, child_descriptors):
+    if not child_descriptors:
+        return False
+
+    if _semantic_class(mobject) in _PRIMITIVE_LAYOUT_CLASSES:
+        return False
+
+    if mobject.__class__.__name__ in _COMPOSITE_GROUP_CLASSES:
+        return True
+
+    if len(child_descriptors) == 1:
+        return True
+
+    child_names = [child.__class__.__name__ for _, child in child_descriptors]
+    if any(child_name in _COMPOSITE_GROUP_CLASSES for child_name in child_names):
+        return True
+
+    return False
+
+
+def _derived_semantic_name(parent_entry, child_index):
+    parent_name = parent_entry.get("semantic_name") or parent_entry.get("stable_id") or "mobject"
+    return f"{parent_name}.{child_index}"
+
+
+def _build_layout_assessment(elements, frame_bounds):
+    offscreen_elements = []
+    overlap_issues = []
+
+    for element in elements:
+        overflow = _frame_overflow(element.get("bounds"), frame_bounds)
+        if overflow is not None:
+            offscreen_elements.append(
+                {
+                    "stable_id": element.get("stable_id"),
+                    "semantic_name": element.get("semantic_name"),
+                    "class_name": element.get("class_name"),
+                    "overflow": overflow,
+                }
+            )
+
+    for index, left in enumerate(elements):
+        for right in elements[index + 1 :]:
+            if not _should_report_layout_overlap(left, right):
+                continue
+            overlap = _bbox_overlap_metrics(left.get("bounds"), right.get("bounds"))
+            if overlap is None:
+                continue
+            if overlap["area"] < _LAYOUT_MIN_OVERLAP_AREA:
+                continue
+            if overlap["min_area_ratio"] < _LAYOUT_MIN_OVERLAP_RATIO:
+                continue
+            overlap_issues.append(
+                {
+                    "left": _layout_object_ref(left),
+                    "right": _layout_object_ref(right),
+                    "intersection_area": overlap["area"],
+                    "intersection_bounds": overlap["bounds"],
+                    "min_area_ratio": overlap["min_area_ratio"],
+                }
+            )
+
+    return {
+        "is_layout_normal": len(offscreen_elements) == 0 and len(overlap_issues) == 0,
+        "issue_count": len(offscreen_elements) + len(overlap_issues),
+        "offscreen_count": len(offscreen_elements),
+        "overlap_issue_count": len(overlap_issues),
+        "offscreen_elements": offscreen_elements,
+        "overlap_issues": overlap_issues,
+    }
+
+
+def _frame_overflow(bounds, frame_bounds):
+    if bounds is None or frame_bounds is None:
+        return None
+
+    min_corner = bounds.get("min")
+    max_corner = bounds.get("max")
+    frame_min = frame_bounds.get("min")
+    frame_max = frame_bounds.get("max")
+    if min_corner is None or max_corner is None or frame_min is None or frame_max is None:
+        return None
+
+    overflow = {
+        "left": max(_safe_float(frame_min[0] - min_corner[0]) or 0.0, 0.0),
+        "right": max(_safe_float(max_corner[0] - frame_max[0]) or 0.0, 0.0),
+        "bottom": max(_safe_float(frame_min[1] - min_corner[1]) or 0.0, 0.0),
+        "top": max(_safe_float(max_corner[1] - frame_max[1]) or 0.0, 0.0),
+    }
+    if max(overflow.values()) <= _LAYOUT_OFFSCREEN_TOLERANCE:
+        return None
+    return overflow
+
+
+def _should_report_layout_overlap(left, right):
+    left_class = left.get("semantic_class")
+    right_class = right.get("semantic_class")
+    if left_class not in _TEXTUAL_CLASSES and right_class not in _TEXTUAL_CLASSES:
+        return False
+    return True
+
+
+def _bbox_overlap_metrics(left_bounds, right_bounds):
+    if left_bounds is None or right_bounds is None:
+        return None
+
+    left_min = left_bounds.get("min")
+    left_max = left_bounds.get("max")
+    right_min = right_bounds.get("min")
+    right_max = right_bounds.get("max")
+    if left_min is None or left_max is None or right_min is None or right_max is None:
+        return None
+
+    overlap_min_x = max(left_min[0], right_min[0])
+    overlap_max_x = min(left_max[0], right_max[0])
+    overlap_min_y = max(left_min[1], right_min[1])
+    overlap_max_y = min(left_max[1], right_max[1])
+    overlap_width = overlap_max_x - overlap_min_x
+    overlap_height = overlap_max_y - overlap_min_y
+    if overlap_width <= _EPSILON or overlap_height <= _EPSILON:
+        return None
+
+    area = overlap_width * overlap_height
+    left_area = max((left_max[0] - left_min[0]) * (left_max[1] - left_min[1]), _EPSILON)
+    right_area = max((right_max[0] - right_min[0]) * (right_max[1] - right_min[1]), _EPSILON)
+    return {
+        "area": _safe_float(area) or 0.0,
+        "min_area_ratio": _safe_float(area / min(left_area, right_area)) or 0.0,
+        "bounds": {
+            "min": _safe_point([overlap_min_x, overlap_min_y, 0.0]),
+            "max": _safe_point([overlap_max_x, overlap_max_y, 0.0]),
+        },
+    }
+
+
+def _layout_object_ref(element):
+    return {
+        "stable_id": element.get("stable_id"),
+        "semantic_name": element.get("semantic_name"),
+        "class_name": element.get("class_name"),
+        "element_path": element.get("element_path"),
+        "top_level_semantic_name": element.get("top_level_semantic_name"),
+    }
+
+
 def _build_report_summary(samples, object_catalog, play_records, observed_render_frame_count):
     root_counts = [sample["root_object_count"] for sample in samples]
     textual_counts = [sample["textual_object_count"] for sample in samples]
@@ -889,7 +1066,7 @@ def _unique_roots(scene):
     return roots
 
 
-def _build_semantic_mobject_record(mobject, registry_entry, foreground_ids):
+def _build_semantic_mobject_record(mobject, registry_entry, foreground_ids, require_visible=True):
     points = _safe_points(mobject)
     width = _safe_float(getattr(mobject, "width", None))
     height = _safe_float(getattr(mobject, "height", None))
@@ -905,7 +1082,10 @@ def _build_semantic_mobject_record(mobject, registry_entry, foreground_ids):
         depth=depth,
     )
 
-    if bounds is None or not _is_visible(int(points.shape[0]), bounds, max_opacity):
+    if bounds is None:
+        return None
+    visible = _is_visible(int(points.shape[0]), bounds, max_opacity)
+    if require_visible and not visible:
         return None
 
     return {
@@ -916,7 +1096,7 @@ def _build_semantic_mobject_record(mobject, registry_entry, foreground_ids):
         "class_name": registry_entry["class_name"],
         "semantic_class": registry_entry["semantic_class"],
         "display_text": registry_entry["display_text"],
-        "visible": True,
+        "visible": visible,
         "is_foreground": id(mobject) in foreground_ids,
         "submobject_count": len(getattr(mobject, "submobjects", []) or []),
         "z_index": _safe_float(getattr(mobject, "z_index", 0.0)),
@@ -1019,10 +1199,10 @@ def _mobject_name(mobject):
     return mobject.__class__.__name__
 
 
-def _resolve_semantic_name(mobject, semantic_hint=None):
+def _resolve_semantic_name(mobject, semantic_hint=None, semantic_hint_source=None):
     semantic_hint = _normalize_semantic_name(semantic_hint)
     if semantic_hint is not None:
-        return semantic_hint, "source_argument"
+        return semantic_hint, semantic_hint_source or "source_argument"
 
     raw_name = getattr(mobject, "name", None)
     if isinstance(raw_name, str):
