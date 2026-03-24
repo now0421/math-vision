@@ -36,7 +36,6 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
     private static final Logger log = LoggerFactory.getLogger(NarrativeNode.class);
     private static final String TRUNCATION_MARKER = "\n[...truncated...]\n";
-
     private static final String NARRATIVE_TOOL = "["
             + "{"
             + "  \"type\": \"function\","

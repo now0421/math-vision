@@ -946,6 +946,7 @@ Principles:
 * If a point, endpoint, vertex, or marker moves, then its label must also be dynamic. Do not write a one-time `label = Text(...).next_to(dot, ...)` and then animate the dot separately.
 * For moving geometry, labels should usually use `always_redraw(lambda: MathTex(...).next_to(moving_obj, ...))` or `always_redraw(lambda: Text(...).next_to(moving_obj, ...))`.
 * The same rule applies to helper lines, braces, angle markers, and any annotation whose placement depends on a moving object.
+* If a label should appear only after a point finishes moving, either create the label after the motion has finished, or still use `always_redraw`. Do not precompute `next_to(...)` before the move and merely `FadeIn` it later, because that keeps the old coordinates.
 * Do not abuse it for large and complex static objects.
 
 ---
