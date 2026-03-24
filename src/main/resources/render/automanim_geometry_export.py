@@ -175,6 +175,7 @@ def patch_scene_for_geometry_export(scene_cls):
                 "sample_ids": [],
                 "visibility_change_count": 0,
                 "visibility_change_sample_ids": [],
+                "expected_removed_object_ids": [],
                 "_last_visible_signature": None,
             }
             self._automanim_play_records.append(play_record)
@@ -184,6 +185,12 @@ def patch_scene_for_geometry_export(scene_cls):
                 args,
                 source_hint,
                 play_argument_hints=play_argument_hints,
+            )
+            play_record["expected_removed_object_ids"] = self._automanim_expected_removed_object_ids(
+                pre_removal_descriptors,
+                source_hint=source_hint,
+                play_index=play_record["play_index"],
+                scene_time=getattr(self, "time", 0.0),
             )
 
             try:
@@ -344,6 +351,34 @@ def patch_scene_for_geometry_export(scene_cls):
                     semantic_hint=descriptor.get("semantic_name"),
                     semantic_hint_source="source_argument",
                 )
+
+        def _automanim_expected_removed_object_ids(
+            self,
+            descriptors,
+            source_hint,
+            play_index,
+            scene_time,
+        ):
+            expected_ids = []
+            seen_ids = set()
+            for descriptor in descriptors or []:
+                mobject = descriptor.get("mobject")
+                if not _should_track_object(mobject):
+                    continue
+                registry_entry = self._automanim_register_mobject(
+                    mobject,
+                    source_hint=source_hint,
+                    play_index=play_index,
+                    scene_time=_safe_float(scene_time),
+                    semantic_hint=descriptor.get("semantic_name"),
+                    semantic_hint_source="source_argument",
+                )
+                stable_id = registry_entry.get("stable_id") if registry_entry is not None else None
+                if stable_id is None or stable_id in seen_ids:
+                    continue
+                seen_ids.add(stable_id)
+                expected_ids.append(stable_id)
+            return expected_ids
 
         def _automanim_register_mobject(
             self,
@@ -565,6 +600,13 @@ def patch_scene_for_geometry_export(scene_cls):
             added_ids = [object_id for object_id in visible_signature if object_id not in previous_signature]
             removed_ids = [object_id for object_id in previous_signature if object_id not in visible_signature]
             if not removed_ids:
+                return None
+            expected_removed_ids = current_play.get("expected_removed_object_ids") or []
+            if expected_removed_ids:
+                removed_ids = [object_id for object_id in removed_ids if object_id in expected_removed_ids]
+                if not removed_ids:
+                    return None
+            else:
                 return None
             return {
                 "added_visible_ids": added_ids,
@@ -824,7 +866,9 @@ def _pre_removal_descriptors(args, play_argument_hints=None):
         if arg is None or arg.__class__.__name__ not in _PRE_REMOVAL_ANIMATION_TYPES:
             continue
         semantic_hint = play_argument_hints[index] if index < len(play_argument_hints) else None
-        descriptors.extend(_iter_mobject_descriptors_from_arg(arg, semantic_hint=semantic_hint))
+        descriptors.extend(
+            _iter_removal_target_descriptors_from_arg(arg, semantic_hint=semantic_hint)
+        )
     return descriptors
 
 
@@ -849,6 +893,34 @@ def _iter_mobject_descriptors_from_arg(arg, semantic_hint=None):
 
     semantic_hint = semantic_hint or {}
     for attr_name in ("mobject", "target_mobject", "starting_mobject"):
+        mobject = getattr(arg, attr_name, None)
+        if mobject is not None and _looks_like_mobject(mobject):
+            yield {
+                "mobject": mobject,
+                "semantic_name": semantic_hint.get(attr_name) or semantic_hint.get("primary"),
+            }
+
+    if _looks_like_mobject(arg):
+        yield {
+            "mobject": arg,
+            "semantic_name": semantic_hint.get("primary"),
+        }
+
+
+def _iter_removal_target_descriptors_from_arg(arg, semantic_hint=None):
+    if arg is None:
+        return
+
+    if hasattr(arg, "animations"):
+        nested_hints = []
+        if isinstance(semantic_hint, dict):
+            nested_hints = semantic_hint.get("nested", []) or []
+        for index, nested in enumerate(getattr(arg, "animations", [])):
+            nested_hint = nested_hints[index] if index < len(nested_hints) else None
+            yield from _iter_removal_target_descriptors_from_arg(nested, semantic_hint=nested_hint)
+
+    semantic_hint = semantic_hint or {}
+    for attr_name in ("mobject", "starting_mobject"):
         mobject = getattr(arg, attr_name, None)
         if mobject is not None and _looks_like_mobject(mobject):
             yield {

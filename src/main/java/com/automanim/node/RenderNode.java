@@ -39,7 +39,6 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
     private static final int MAX_TRACEBACK_LINES = 30;
     private static final int TRACEBACK_CONTEXT_RADIUS = 4;
     private static final int MAX_STDOUT_ERROR_LINES = 12;
-    private static final int MAX_CONSECUTIVE_SAME_ERROR_ATTEMPTS = 3;
     private static final String TRACEBACK_MARKER = "Traceback (most recent call last)";
     private static final String GENERATED_SCENE_FILE = "scene_render.py";
     private static final Pattern ANY_SCENE_CLASS = Pattern.compile("class\\s+[^\\s(]+\\s*\\((.*?Scene.*?)\\)");
@@ -220,18 +219,6 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
 
         String focusedError = extractFocusedError(renderAttempt);
         String errorSignature = summarizeErrorSignature(focusedError);
-        if (errorSignature.equals(retryState.previousErrorSignature)) {
-            retryState.consecutiveSameErrorCount++;
-        } else {
-            retryState.consecutiveSameErrorCount = 1;
-        }
-
-        if (retryState.consecutiveSameErrorCount >= MAX_CONSECUTIVE_SAME_ERROR_ATTEMPTS) {
-            log.warn("  Same error repeated {} times in a row, stopping retries",
-                    retryState.consecutiveSameErrorCount);
-            return failureResult(currentCode, sceneName, attemptNumber, lastError, geometryPath, retryState.fixToolCalls);
-        }
-
         retryState.previousErrorSignature = errorSignature;
         retryState.fixHistory.add(errorSignature);
         retryState.requestFix = true;
@@ -493,7 +480,6 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         private int fixToolCalls;
         private boolean requestFix;
         private String previousErrorSignature;
-        private int consecutiveSameErrorCount;
         private final List<String> fixHistory = new ArrayList<>();
         private String pendingFocusedError;
 
@@ -502,7 +488,6 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
             fixToolCalls = 0;
             requestFix = false;
             previousErrorSignature = null;
-            consecutiveSameErrorCount = 0;
             fixHistory.clear();
             pendingFocusedError = null;
         }
