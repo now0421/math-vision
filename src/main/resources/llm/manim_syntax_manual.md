@@ -943,6 +943,9 @@ line = always_redraw(lambda: Line(dot1.get_center(), dot2.get_center()))
 Principles:
 
 * Prefer it for objects that "depend on position changes of other objects."
+* If a point, endpoint, vertex, or marker moves, then its label must also be dynamic. Do not write a one-time `label = Text(...).next_to(dot, ...)` and then animate the dot separately.
+* For moving geometry, labels should usually use `always_redraw(lambda: MathTex(...).next_to(moving_obj, ...))` or `always_redraw(lambda: Text(...).next_to(moving_obj, ...))`.
+* The same rule applies to helper lines, braces, angle markers, and any annotation whose placement depends on a moving object.
 * Do not abuse it for large and complex static objects.
 
 ---

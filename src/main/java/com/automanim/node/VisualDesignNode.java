@@ -56,7 +56,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
             + "        \"animation_description\": { \"type\": \"string\", \"description\": \"Animation feel and transitions\" },"
             + "        \"transitions\": { \"type\": \"string\", \"description\": \"Scene transition style\" },"
             + "        \"duration\": { \"type\": \"number\", \"description\": \"Duration in seconds\" },"
-            + "        \"layout\": { \"type\": \"string\", \"description\": \"Concrete projected screen-space layout inside a 16:9 frame\" },"
+            + "        \"layout\": { \"type\": \"string\", \"description\": \"Relative projected layout intent inside a 16:9 frame, without absolute coordinates\" },"
             + "        \"color_palette\": { \"type\": \"array\", \"items\": { \"type\": \"string\" }, \"description\": \"Preferred Manim color names\" }"
             + "      },"
             + "      \"required\": [\"visual_description\", \"color_scheme\", \"layout\"]"
@@ -238,7 +238,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                 sb.append("  Color scheme: ").append(prerequisiteSpec.get("color_scheme")).append("\n");
             }
             if (prerequisiteSpec.containsKey("layout")) {
-                sb.append("  Layout style: ").append(prerequisiteSpec.get("layout")).append("\n");
+                sb.append("  Relative layout: ").append(prerequisiteSpec.get("layout")).append("\n");
             }
             if (prerequisiteSpec.containsKey("visual_description")) {
                 sb.append("  Visual style: ").append(prerequisiteSpec.get("visual_description")).append("\n");
@@ -359,8 +359,8 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
             sb.append("Ordered solution-step chain (do not invent extra steps):\n")
                     .append(solutionChain);
         }
-        sb.append("Design only the current step, but keep object identities, notation, and spatial"
-                + " anchors consistent with the full solution.\n");
+        sb.append("Design only the current step, but keep object identities, notation, and"
+                + " relative spatial relationships consistent with the full solution.\n");
         return sb.toString().trim();
     }
 
