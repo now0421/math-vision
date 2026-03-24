@@ -189,17 +189,18 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
     private String selectSystemPrompt(CodeFixRequest request) {
         String targetConcept = firstNonBlank(request.getTargetConcept(), request.getSceneName(), "Unknown target");
         String targetDescription = firstNonBlank(request.getTargetDescription(), "");
+        String systemPrompt;
 
         if (request.getSource() == CodeFixSource.EVALUATION_REVIEW) {
-            return PromptTemplates.codeRevisionSystemPrompt(targetConcept, targetDescription);
+            systemPrompt = PromptTemplates.codeRevisionSystemPrompt(targetConcept, targetDescription);
+        } else if (request.getSource() == CodeFixSource.GENERATION_VALIDATION) {
+            systemPrompt = PromptTemplates.codeValidationFixSystemPrompt(targetConcept, targetDescription);
+        } else if (request.getSource() == CodeFixSource.SCENE_LAYOUT_EVALUATION) {
+            systemPrompt = PromptTemplates.sceneLayoutFixSystemPrompt(targetConcept, targetDescription);
+        } else {
+            systemPrompt = PromptTemplates.renderFixSystemPrompt(targetConcept, targetDescription);
         }
-        if (request.getSource() == CodeFixSource.GENERATION_VALIDATION) {
-            return PromptTemplates.codeValidationFixSystemPrompt(targetConcept, targetDescription);
-        }
-        if (request.getSource() == CodeFixSource.SCENE_LAYOUT_EVALUATION) {
-            return PromptTemplates.sceneLayoutFixSystemPrompt(targetConcept, targetDescription);
-        }
-        return PromptTemplates.renderFixSystemPrompt(targetConcept, targetDescription);
+        return PromptTemplates.ensureManimSyntaxManual(systemPrompt);
     }
 
     private String selectUserPrompt(CodeFixRequest request) {

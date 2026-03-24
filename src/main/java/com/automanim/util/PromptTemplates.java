@@ -63,6 +63,16 @@ public final class PromptTemplates {
                 + ManimSyntaxManualHolder.VALUE;
     }
 
+    public static String ensureManimSyntaxManual(String prompt) {
+        if (prompt == null || prompt.isBlank()) {
+            return appendManimSyntaxManual("");
+        }
+        if (prompt.contains(ManimSyntaxManualHolder.VALUE)) {
+            return prompt;
+        }
+        return appendManimSyntaxManual(prompt);
+    }
+
     private static String loadPromptResource(String resourceName) {
         try (InputStream input = PromptTemplates.class.getClassLoader().getResourceAsStream(resourceName)) {
             if (input == null) {
@@ -908,6 +918,10 @@ public final class PromptTemplates {
                         + "Rewrite the FULL code so it satisfies all validation rules while preserving"
                         + " the original teaching goal. Keep `%s` as the exact scene class name and"
                         + " use ASCII-only Python identifiers.\n"
+                        + "While rewriting, also proactively check for common Python and Manim mistakes"
+                        + " that would still break execution, such as undefined names, invalid API calls,"
+                        + " missing imports, broken helper references, and mismatched scene class usage.\n"
+                        + "Return complete syntactically valid, runnable Python that can render successfully.\n"
                         + "Return ONLY the full Python code block.",
                 sceneName, manimCode, problemList, sceneName);
     }
@@ -959,7 +973,10 @@ public final class PromptTemplates {
                 + " labels, braces, markers, or highlights attached to the wrong geometry,"
                 + " better match scene pacing to narration, and in 3D scenes keep the camera"
                 + " readable while fixing overlays that should stay fixed in frame.\n"
-                + "Do not focus on execution unless it directly affects visual continuity.\n"
+                + "While making those revisions, also check for common Python and Manim runtime"
+                + " mistakes such as undefined names, stale object references, invalid API usage,"
+                + " missing imports, and scene-type mismatches, and fix them if found.\n"
+                + "Return complete syntactically valid, runnable Python that can render successfully.\n"
                 + "Preserve the scene class name and the teaching goal.\n"
                 + "Return ONLY the full Python code block.",
                 targetConcept, sceneName, storyboardJson, staticAnalysisJson, reviewJson, manimCode);
@@ -1065,7 +1082,10 @@ public final class PromptTemplates {
             + "- Preserve the intended teaching content and visual story.\n"
             + "- Keep the required scene class name exactly as requested.\n"
             + "- Use ASCII-only class names, method names, variables, and helper identifiers.\n"
-            + "- Return complete valid Python source only, never a patch or explanation.\n"
+            + "- Return complete, syntactically valid, runnable Python source only, never a patch or explanation.\n"
+            + "- Proactively check for common execution mistakes such as undefined names,"
+            + " invalid Manim API calls, missing imports, broken helper references, and"
+            + " scene-class mismatches, and fix them in the same pass.\n"
             + "\n"
             + "Also enforce these workflow rules:\n"
             + "- Do not store mobjects on `self` just to reuse them across scene methods.\n"
@@ -1149,11 +1169,15 @@ public final class PromptTemplates {
             + " aligned edges, and safe-area scaling.\n"
             + "- Match animation beats to the storyboard durations and narration density.\n"
             + "- Keep the main geometry or motion in the center safe area.\n"
+            + "- Also check for common execution mistakes such as undefined names, invalid"
+            + " Manim API usage, missing imports, stale helper references, and scene-type"
+            + " mismatches, and fix them if they appear.\n"
             + "\n"
             + "Requirements:\n"
             + "- Return ONE SINGLE ```python ... ``` block containing the FULL corrected code.\n"
             + "- Preserve the storyboard intent and scene class name.\n"
             + "- Preserve ASCII-only identifiers.\n"
+            + "- Ensure the returned code is complete, syntactically valid, and runnable.\n"
             + "- Do not explain the changes. Return only the full code block.";
 
     // =====================================================================
@@ -1177,6 +1201,7 @@ public final class PromptTemplates {
             + "- Preserve the original scene class name and intended animation meaning.\n"
             + "- Use only Manim Community APIs.\n"
             + "- All identifiers must remain ASCII English only.\n"
+            + "- Ensure the returned code is complete, syntactically valid, and runnable.\n"
             + "\n"
             + "When fixing the reported error, do not stop at the first failing line.\n"
             + "- Inspect surrounding code and other structurally similar locations for the same"
@@ -1186,6 +1211,9 @@ public final class PromptTemplates {
             + "- Check repeated MathTex, Tex, Text, animation, helper-method, and scene-transition"
             + " patterns for the same risk.\n"
             + "- Prefer a systematic fix over a one-off local edit.\n"
+            + "- Also check for other common runtime mistakes such as undefined names, missing"
+            + " imports, invalid API calls, stale helper references, wrong scene base classes,"
+            + " and incompatible camera usage, and fix them if present.\n"
             + "\n"
             + "You must also enforce these rules:\n"
             + "- Rule 1: Do not store mobjects across scene methods via `self.xxx` for reuse in"
@@ -1217,6 +1245,10 @@ public final class PromptTemplates {
         sb.append("\nPlease fix the reported error and also inspect nearby and structurally"
                 + " similar code paths for the same root cause. If the same kind of failure could"
                 + " happen elsewhere in this file, fix those places too in the returned full code.\n"
+                + "Also proactively check for common Python and Manim runtime mistakes such as"
+                + " undefined names, missing imports, invalid API calls, stale object references,"
+                + " and wrong scene or camera usage.\n"
+                + "Return complete syntactically valid, runnable Python.\n"
                 + "\nRemember: Return ONLY the single Python code block containing the full file. No explanation.\n");
 
         if (fixHistory != null && !fixHistory.isEmpty()) {
@@ -1259,6 +1291,10 @@ public final class PromptTemplates {
                 + " overlapping or going outside the frame. Preserve the intended teaching flow"
                 + " and animation meaning. Prefer adjusting positioning, scaling, layout grouping,"
                 + " and spacing instead of deleting explanatory content.\n"
+                + "Also proactively check for common Python and Manim runtime mistakes such as"
+                + " undefined names, missing imports, invalid API calls, stale helper references,"
+                + " and scene-type mismatches, and fix them if present.\n"
+                + "Return complete syntactically valid, runnable Python.\n"
                 + "\nRemember: Return ONLY the single Python code block containing the full file. No explanation.\n");
 
         if (fixHistory != null && !fixHistory.isEmpty()) {

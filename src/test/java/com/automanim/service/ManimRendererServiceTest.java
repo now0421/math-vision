@@ -78,6 +78,39 @@ class ManimRendererServiceTest {
     }
 
     @Test
+    void geometryExportHelperTracksOnlyExplicitRemovalTargets() {
+        ManimRendererService service = new ManimRendererService() {
+            @Override
+            protected Process startProcess(List<String> cmd, Path workingDir, Path geometryOutputPath)
+                    throws IOException {
+                String helperScript = Files.readString(workingDir.resolve("automanim_geometry_export.py"));
+                assertTrue(helperScript.contains("\"expected_removed_object_ids\": []"));
+                assertTrue(helperScript.contains("def _iter_removal_target_descriptors_from_arg"));
+                assertTrue(helperScript.contains("for attr_name in (\"mobject\", \"starting_mobject\")"));
+                throw new IOException("stop after inspection");
+            }
+        };
+
+        ManimRendererService.RenderAttemptResult result = service.render(
+                String.join("\n",
+                        "from manim import *",
+                        "",
+                        "class DemoScene(Scene):",
+                        "    def construct(self):",
+                        "        dot = Dot()",
+                        "        self.add(dot)",
+                        "        self.play(Flash(dot))"),
+                "DemoScene",
+                "low",
+                tempDir
+        );
+
+        assertFalse(result.success());
+        assertTrue(result.stderr().contains("stop after inspection"));
+        assertFalse(Files.exists(tempDir.resolve("scene_render.py")));
+    }
+
+    @Test
     void stripsMarkdownFencesBeforeWritingTemporaryRenderScript() {
         ManimRendererService service = new ManimRendererService() {
             @Override
