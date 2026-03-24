@@ -87,6 +87,8 @@ class ManimRendererServiceTest {
                 assertTrue(helperScript.contains("\"expected_removed_object_ids\": []"));
                 assertTrue(helperScript.contains("def _iter_removal_target_descriptors_from_arg"));
                 assertTrue(helperScript.contains("for attr_name in (\"mobject\", \"starting_mobject\")"));
+                assertTrue(helperScript.contains("\"fixed_in_frame_mobjects\""));
+                assertTrue(helperScript.contains("\"fixed_orientation_mobjects\""));
                 throw new IOException("stop after inspection");
             }
         };

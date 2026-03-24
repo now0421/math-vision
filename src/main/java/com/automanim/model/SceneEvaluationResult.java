@@ -22,6 +22,7 @@ public class SceneEvaluationResult {
     private int totalIssueCount;
     private int overlapIssueCount;
     private int offscreenIssueCount;
+    private int blockingIssueCount;
     private int toolCalls;
     private double executionTimeSeconds;
     private List<SampleEvaluation> samples = new ArrayList<>();
@@ -65,6 +66,9 @@ public class SceneEvaluationResult {
     public int getOffscreenIssueCount() { return offscreenIssueCount; }
     public void setOffscreenIssueCount(int offscreenIssueCount) { this.offscreenIssueCount = offscreenIssueCount; }
 
+    public int getBlockingIssueCount() { return blockingIssueCount; }
+    public void setBlockingIssueCount(int blockingIssueCount) { this.blockingIssueCount = blockingIssueCount; }
+
     public int getToolCalls() { return toolCalls; }
     public void setToolCalls(int toolCalls) { this.toolCalls = toolCalls; }
 
@@ -88,6 +92,7 @@ public class SceneEvaluationResult {
         private int issueCount;
         private int overlapIssueCount;
         private int offscreenIssueCount;
+        private int blockingIssueCount;
         private List<LayoutIssue> issues = new ArrayList<>();
 
         public String getSampleId() { return sampleId; }
@@ -123,6 +128,9 @@ public class SceneEvaluationResult {
         public int getOffscreenIssueCount() { return offscreenIssueCount; }
         public void setOffscreenIssueCount(int offscreenIssueCount) { this.offscreenIssueCount = offscreenIssueCount; }
 
+        public int getBlockingIssueCount() { return blockingIssueCount; }
+        public void setBlockingIssueCount(int blockingIssueCount) { this.blockingIssueCount = blockingIssueCount; }
+
         public List<LayoutIssue> getIssues() { return issues; }
         public void setIssues(List<LayoutIssue> issues) {
             this.issues = issues != null ? new ArrayList<>(issues) : new ArrayList<>();
@@ -132,6 +140,10 @@ public class SceneEvaluationResult {
     public static class LayoutIssue {
         private String type;
         private String message;
+        private String severity;
+        private String reasonCode;
+        private Boolean likelyFalsePositive;
+        private String recommendedAction;
         private ElementRef primaryElement;
         private ElementRef secondaryElement;
         private Overflow overflow;
@@ -143,6 +155,18 @@ public class SceneEvaluationResult {
 
         public String getMessage() { return message; }
         public void setMessage(String message) { this.message = message; }
+
+        public String getSeverity() { return severity; }
+        public void setSeverity(String severity) { this.severity = severity; }
+
+        public String getReasonCode() { return reasonCode; }
+        public void setReasonCode(String reasonCode) { this.reasonCode = reasonCode; }
+
+        public Boolean getLikelyFalsePositive() { return likelyFalsePositive; }
+        public void setLikelyFalsePositive(Boolean likelyFalsePositive) { this.likelyFalsePositive = likelyFalsePositive; }
+
+        public String getRecommendedAction() { return recommendedAction; }
+        public void setRecommendedAction(String recommendedAction) { this.recommendedAction = recommendedAction; }
 
         public ElementRef getPrimaryElement() { return primaryElement; }
         public void setPrimaryElement(ElementRef primaryElement) { this.primaryElement = primaryElement; }

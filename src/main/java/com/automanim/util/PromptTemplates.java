@@ -527,7 +527,7 @@ public final class PromptTemplates {
             + " are not supported by the provided problem context and step graph.\n"
             + "\n"
             + "Screen-space constraints for a 16:9 frame (roughly 14x8 units):\n"
-            + "- Keep important content within x in [-6.5, 6.5] and y in [-3.5, 3.5].\n"
+            + "- Keep important content within x in [-7, 7] and y in [-4, 4].\n"
             + "- Leave at least 1 unit of margin from the frame edge.\n"
             + "- A scene should usually contain no more than 6 to 8 main visual elements.\n"
             + "- The layout field must describe concrete projected placement.\n"
@@ -594,7 +594,7 @@ public final class PromptTemplates {
             + "      \"camera_anchor\": \"main visual anchor or focus region\",\n"
             + "      \"camera_plan\": \"camera orientation or motion for this scene\",\n"
             + "      \"layout_goal\": \"explicit spatial arrangement\",\n"
-            + "      \"safe_area_plan\": \"how the projected screen layout stays inside x in [-6.5, 6.5] and y in [-3.5, 3.5]\",\n"
+            + "      \"safe_area_plan\": \"how the projected screen layout stays inside x in [-7, 7] and y in [-4, 4]\",\n"
             + "      \"screen_overlay_plan\": \"text or formulas that stay fixed in frame when needed\",\n"
             + "      \"step_refs\": [\"relevant step or node names\"],\n"
             + "      \"entering_objects\": [\n"
@@ -699,7 +699,7 @@ public final class PromptTemplates {
             + "\n"
             + "Screen-space constraints for storyboard design:\n"
             + "- Treat the frame as 16:9 with important projected content kept inside"
-            + " x in [-6.5, 6.5] and y in [-3.5, 3.5].\n"
+            + " x in [-7, 7] and y in [-4, 4].\n"
             + "- Leave about 1 unit of margin from the frame edge.\n"
             + "- Keep the number of simultaneous main visual elements to about 6 to 8.\n"
             + "- Put large formulas near an edge or corner rather than over the main geometry.\n"
@@ -1047,7 +1047,7 @@ public final class PromptTemplates {
             + "- Judge layout in projected screen space, not raw world coordinates.\n"
             + "\n"
             + "Layout rules:\n"
-            + "- Keep content within x in [-6.5, 6.5] and y in [-3.5, 3.5].\n"
+            + "- Keep content within x in [-7, 7] and y in [-4, 4].\n"
             + "- Prefer `VGroup(...).arrange(...)` for multi-element layouts.\n"
             + "- Use `.scale_to_fit_width()` or `.scale_to_fit_height()` to prevent overflow.\n"
             + "- Keep simultaneous main visual elements roughly within 6 to 8.\n"
@@ -1223,7 +1223,7 @@ public final class PromptTemplates {
             + "- Rule 3: Do not hardcode numeric subobject indexing into `MathTex`.\n"
             + "- Rule 4: All class names, method names, and variable names must use ASCII English"
             + " only.\n"
-            + "- Keep layout within the safe area: x in [-6.5, 6.5], y in [-3.5, 3.5].\n";
+            + "- Keep layout within the safe area: x in [-7, 7], y in [-4, 4].\n";
 
     public static String renderFixUserPrompt(String code, String error) {
         return renderFixUserPrompt(code, error, Collections.emptyList());

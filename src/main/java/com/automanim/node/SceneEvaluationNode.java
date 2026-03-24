@@ -48,6 +48,8 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     private static final double MIN_OVERLAP_AREA = 0.015;
     private static final double MIN_OVERLAP_RATIO = 0.08;
     private static final double SPATIAL_BUCKET_SIZE = 1.25;
+    private static final double GEOMETRIC_TOUCH_TOLERANCE = 0.12;
+    private static final double GEOMETRIC_ENDPOINT_TOLERANCE = 0.18;
     private static final int DEFAULT_MAX_FIX_ATTEMPTS = 2;
     private static final int MAX_FIX_REPORT_SAMPLES = 12;
     private static final int MAX_ISSUES_PER_SAMPLE_IN_FIX_REPORT = 6;
@@ -160,6 +162,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             List<SampleEvaluation> sampleEvaluations = new ArrayList<>();
             int overlapIssues = 0;
             int offscreenIssues = 0;
+            int blockingIssues = 0;
             int totalIssues = 0;
             int issueSamples = 0;
 
@@ -173,6 +176,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                     }
                     overlapIssues += sampleEvaluation.getOverlapIssueCount();
                     offscreenIssues += sampleEvaluation.getOffscreenIssueCount();
+                    blockingIssues += sampleEvaluation.getBlockingIssueCount();
                     totalIssues += sampleEvaluation.getIssueCount();
                 }
             }
@@ -182,13 +186,20 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             result.setIssueSampleCount(issueSamples);
             result.setOverlapIssueCount(overlapIssues);
             result.setOffscreenIssueCount(offscreenIssues);
+            result.setBlockingIssueCount(blockingIssues);
             result.setTotalIssueCount(totalIssues);
             result.setEvaluated(true);
-            result.setApproved(totalIssues == 0);
+            result.setApproved(blockingIssues == 0);
 
             int attemptsSoFar = retryState.attempts;
             if (result.isApproved()) {
-                result.setGateReason("Scene evaluation passed: no overlap or offscreen issues detected");
+                if (totalIssues == 0) {
+                    result.setGateReason("Scene evaluation passed: no overlap or offscreen issues detected");
+                } else {
+                    result.setGateReason(String.format(
+                            "Scene evaluation passed: %d non-blocking layout observations were ignored",
+                            totalIssues));
+                }
                 result.setRevisionTriggered(attemptsSoFar > 0);
                 result.setRevisionAttempts(attemptsSoFar);
                 finalizeResult(result, retryState, start, true);
@@ -207,9 +218,10 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 result.setRevisionTriggered(true);
                 result.setRevisionAttempts(retryState.attempts);
                 result.setGateReason(String.format(
-                        "Detected %d layout issues across %d samples; routing to code fix (attempt %d/%d)",
-                        totalIssues,
+                        "Detected %d blocking layout issues across %d samples (%d total observations); routing to code fix (attempt %d/%d)",
+                        blockingIssues,
                         issueSamples,
+                        totalIssues,
                         retryState.attempts,
                         maxFixAttempts));
                 finalizeResult(result, retryState, start, false);
@@ -287,6 +299,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         List<LayoutIssue> issues = new ArrayList<>();
         int offscreenCount = 0;
         int overlapCount = 0;
+        int blockingCount = 0;
 
         for (ElementGeometry element : elements) {
             OverflowMetrics overflow = frameOverflow(element, frameMin, frameMax);
@@ -298,19 +311,26 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             issue.setMessage(String.format(
                     "Element %s extends outside the frame bounds",
                     element.displayName()));
+            issue.setSeverity("blocking");
+            issue.setReasonCode("OFFSCREEN");
+            issue.setLikelyFalsePositive(false);
+            issue.setRecommendedAction("move_or_scale_into_safe_frame");
             issue.setPrimaryElement(toElementRef(element, sample.getSampleRole()));
             issue.setOverflow(toOverflow(overflow));
             issues.add(issue);
             offscreenCount++;
+            blockingCount++;
         }
 
         List<LayoutIssue> overlapIssues = evaluateOverlapIssues(elements, sample.getSampleRole());
         issues.addAll(overlapIssues);
         overlapCount = overlapIssues.size();
+        blockingCount += countBlockingIssues(overlapIssues);
 
         sample.setIssues(issues);
         sample.setOffscreenIssueCount(offscreenCount);
         sample.setOverlapIssueCount(overlapCount);
+        sample.setBlockingIssueCount(blockingCount);
         sample.setIssueCount(issues.size());
         sample.setHasIssues(!issues.isEmpty());
         return sample;
@@ -323,6 +343,10 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         }
 
         for (JsonNode elementNode : elementsNode) {
+            boolean visible = elementNode.path("visible").asBoolean(true);
+            if (!visible) {
+                continue;
+            }
             JsonNode boundsNode = preferredBoundsNode(elementNode);
             double[] min = readPoint(boundsNode.path("min"), null);
             double[] max = readPoint(boundsNode.path("max"), null);
@@ -339,8 +363,16 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             element.semanticClass = readNullableText(elementNode, "semantic_class");
             element.displayText = readNullableText(elementNode, "display_text");
             element.topLevelStableId = readNullableText(elementNode, "top_level_stable_id");
-            element.visible = elementNode.path("visible").asBoolean(true);
+            element.visible = visible;
             element.sampleRole = sampleRole;
+            element.center = readPoint(preferredCenterNode(elementNode), centerFromBounds(min, max));
+            element.width = round(Math.max(max[0] - min[0], 0.0));
+            element.height = round(Math.max(max[1] - min[1], 0.0));
+            JsonNode shapeHints = elementNode.path("shape_hints");
+            element.start = readPoint(shapeHints.path("start"), null);
+            element.end = readPoint(shapeHints.path("end"), null);
+            element.arcCenter = readPoint(shapeHints.path("arc_center"), null);
+            element.radius = shapeHints.hasNonNull("radius") ? round(shapeHints.get("radius").asDouble()) : null;
             element.min = min;
             element.max = max;
             elements.add(element);
@@ -360,6 +392,21 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             return screenBounds;
         }
         return elementNode.path("bounds");
+    }
+
+    private JsonNode preferredCenterNode(JsonNode elementNode) {
+        if (elementNode == null || elementNode.isMissingNode()) {
+            return MAPPER.createArrayNode();
+        }
+        JsonNode screenCenter = elementNode.path("screen_center");
+        if (screenCenter.isArray() && screenCenter.size() >= 2) {
+            return screenCenter;
+        }
+        JsonNode center = elementNode.path("center");
+        if (center.isArray() && center.size() >= 2) {
+            return center;
+        }
+        return MAPPER.createArrayNode();
     }
 
     private OverflowMetrics frameOverflow(ElementGeometry element, double[] frameMin, double[] frameMax) {
@@ -408,12 +455,23 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                             continue;
                         }
 
+                        OverlapDisposition disposition = classifyOverlap(left, right, overlap);
+                        if (disposition == null || disposition.ignore) {
+                            continue;
+                        }
+
                         LayoutIssue issue = new LayoutIssue();
                         issue.setType("overlap");
-                        issue.setMessage(String.format(
-                                "Elements %s and %s overlap in sampled frame",
-                                left.displayName(),
-                                right.displayName()));
+                        issue.setMessage(disposition.message != null
+                                ? disposition.message
+                                : String.format(
+                                        "Elements %s and %s overlap in sampled frame",
+                                        left.displayName(),
+                                        right.displayName()));
+                        issue.setSeverity(disposition.severity);
+                        issue.setReasonCode(disposition.reasonCode);
+                        issue.setLikelyFalsePositive(disposition.likelyFalsePositive);
+                        issue.setRecommendedAction(disposition.recommendedAction);
                         issue.setPrimaryElement(toElementRef(left, sampleRole));
                         issue.setSecondaryElement(toElementRef(right, sampleRole));
                         issue.setIntersectionArea(overlap.area);
@@ -457,6 +515,12 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     }
 
     private boolean shouldCheckOverlap(ElementGeometry left, ElementGeometry right) {
+        if (left == null || right == null) {
+            return false;
+        }
+        if (!left.visible || !right.visible) {
+            return false;
+        }
         if (left.stableId != null && left.stableId.equals(right.stableId)) {
             return false;
         }
@@ -465,24 +529,12 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 && left.topLevelStableId.equals(right.topLevelStableId)) {
             return false;
         }
-        return isTextual(left) || isTextual(right);
-    }
-
-    private boolean isTextual(ElementGeometry element) {
-        if (element == null) {
+        if (left.className.equals(right.className)
+                && isZeroArea(left)
+                && isZeroArea(right)) {
             return false;
         }
-        String semanticClass = element.semanticClass != null ? element.semanticClass : "";
-        if ("text".equalsIgnoreCase(semanticClass) || "formula".equalsIgnoreCase(semanticClass)) {
-            return true;
-        }
-        String className = element.className != null ? element.className : "";
-        return className.equals("Text")
-                || className.equals("MathTex")
-                || className.equals("Tex")
-                || className.equals("DecimalNumber")
-                || className.equals("Integer")
-                || (element.displayText != null && !element.displayText.isBlank());
+        return true;
     }
 
     private OverlapMetrics overlap(ElementGeometry left, ElementGeometry right) {
@@ -509,6 +561,272 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 new double[] {round(overlapMinX), round(overlapMinY), 0.0},
                 new double[] {round(overlapMaxX), round(overlapMaxY), 0.0}
         );
+    }
+
+    private OverlapDisposition classifyOverlap(ElementGeometry left,
+                                               ElementGeometry right,
+                                               OverlapMetrics overlap) {
+        boolean leftText = left.isTextual();
+        boolean rightText = right.isTextual();
+
+        if (leftText && rightText) {
+            return blockingDisposition(
+                    "TEXT_TEXT_OVERLAP",
+                    String.format("Text elements %s and %s overlap in sampled frame",
+                            left.displayName(), right.displayName()),
+                    "separate_text_blocks");
+        }
+
+        if (leftText || rightText) {
+            ElementGeometry text = leftText ? left : right;
+            ElementGeometry other = leftText ? right : left;
+            if (sameSemanticFamily(text, other)) {
+                return warningDisposition(
+                        "TEXT_ATTACHED_TO_OWN_OBJECT",
+                        String.format("Label %s overlaps its attached object %s",
+                                text.displayName(), other.displayName()),
+                        "ignore_or_adjust_label_buffer");
+            }
+            return blockingDisposition(
+                    "TEXT_GEOMETRY_OVERLAP",
+                    String.format("Text element %s overlaps geometry element %s",
+                            text.displayName(), other.displayName()),
+                    "move_text_away_from_geometry");
+        }
+
+        if (isOptimalPointAlignment(left, right)) {
+            return infoDisposition(
+                    "OPTIMAL_POINT_ALIGNMENT",
+                    String.format("Elements %s and %s are intentionally aligned at the optimal point",
+                            left.displayName(), right.displayName()),
+                    "keep_alignment");
+        }
+
+        if (isPointLineContact(left, right)) {
+            return ignoredDisposition();
+        }
+
+        if (isLineLineSharedEndpoint(left, right) || isLineLineNearCollinear(left, right, overlap)) {
+            return infoDisposition(
+                    "GEOMETRIC_LINE_CONTACT",
+                    String.format("Lines %s and %s make geometric contact that is acceptable in a proof scene",
+                            left.displayName(), right.displayName()),
+                    "ignore_unless_textual_occlusion");
+        }
+
+        if (sameSemanticFamily(left, right)) {
+            return infoDisposition(
+                    "SAME_FAMILY_CONTACT",
+                    String.format("Elements %s and %s belong to the same semantic family and overlap",
+                            left.displayName(), right.displayName()),
+                    "ignore_unless_readability_suffers");
+        }
+
+        return warningDisposition(
+                "GEOMETRY_GEOMETRY_OVERLAP",
+                String.format("Geometry elements %s and %s overlap in sampled frame",
+                        left.displayName(), right.displayName()),
+                "review_if_overlap_obscures_teaching_focus");
+    }
+
+    private int countBlockingIssues(List<LayoutIssue> issues) {
+        int count = 0;
+        if (issues == null) {
+            return 0;
+        }
+        for (LayoutIssue issue : issues) {
+            if (issue != null && "blocking".equalsIgnoreCase(issue.getSeverity())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private OverlapDisposition blockingDisposition(String reasonCode, String message, String action) {
+        return new OverlapDisposition(false, "blocking", reasonCode, false, action, message);
+    }
+
+    private OverlapDisposition warningDisposition(String reasonCode, String message, String action) {
+        return new OverlapDisposition(false, "warning", reasonCode, false, action, message);
+    }
+
+    private OverlapDisposition infoDisposition(String reasonCode, String message, String action) {
+        return new OverlapDisposition(false, "info", reasonCode, true, action, message);
+    }
+
+    private OverlapDisposition ignoredDisposition() {
+        return new OverlapDisposition(true, "info", "IGNORED_GEOMETRIC_CONTACT", true, "ignore", null);
+    }
+
+    private boolean isPointLineContact(ElementGeometry left, ElementGeometry right) {
+        if (left.isPointLike() && right.isLineLike()) {
+            return pointTouchesLine(left, right);
+        }
+        if (right.isPointLike() && left.isLineLike()) {
+            return pointTouchesLine(right, left);
+        }
+        return false;
+    }
+
+    private boolean pointTouchesLine(ElementGeometry point, ElementGeometry line) {
+        double[] pointCenter = bestPointCenter(point);
+        if (pointCenter == null || line.start == null || line.end == null) {
+            return false;
+        }
+        double distance = distancePointToSegment(pointCenter, line.start, line.end);
+        if (distance > GEOMETRIC_TOUCH_TOLERANCE) {
+            return false;
+        }
+        return distance(pointCenter, line.start) <= GEOMETRIC_ENDPOINT_TOLERANCE
+                || distance(pointCenter, line.end) <= GEOMETRIC_ENDPOINT_TOLERANCE
+                || isPointOnSegment(pointCenter, line.start, line.end, GEOMETRIC_TOUCH_TOLERANCE);
+    }
+
+    private boolean isLineLineSharedEndpoint(ElementGeometry left, ElementGeometry right) {
+        if (!left.isLineLike() || !right.isLineLike() || left.start == null || left.end == null
+                || right.start == null || right.end == null) {
+            return false;
+        }
+        return anyPointClose(left.start, right.start, GEOMETRIC_ENDPOINT_TOLERANCE)
+                || anyPointClose(left.start, right.end, GEOMETRIC_ENDPOINT_TOLERANCE)
+                || anyPointClose(left.end, right.start, GEOMETRIC_ENDPOINT_TOLERANCE)
+                || anyPointClose(left.end, right.end, GEOMETRIC_ENDPOINT_TOLERANCE);
+    }
+
+    private boolean isLineLineNearCollinear(ElementGeometry left,
+                                            ElementGeometry right,
+                                            OverlapMetrics overlap) {
+        if (!left.isLineLike() || !right.isLineLike() || left.start == null || left.end == null
+                || right.start == null || right.end == null) {
+            return false;
+        }
+        double angle = angleBetweenSegments(left.start, left.end, right.start, right.end);
+        if (Double.isNaN(angle)) {
+            return false;
+        }
+        boolean nearlyParallel = angle <= 8.0 || Math.abs(angle - 180.0) <= 8.0;
+        boolean largeThinOverlap = overlap.area >= 0.15 && (left.height <= 0.25 || left.width <= 0.25
+                || right.height <= 0.25 || right.width <= 0.25);
+        return nearlyParallel && largeThinOverlap;
+    }
+
+    private boolean isOptimalPointAlignment(ElementGeometry left, ElementGeometry right) {
+        if (!left.isPointLike() || !right.isPointLike()) {
+            return false;
+        }
+        String leftName = safeLower(left.semanticName);
+        String rightName = safeLower(right.semanticName);
+        boolean pFamily = (leftName.contains("point_p") && rightName.contains("point_pstar"))
+                || (leftName.contains("point_pstar") && rightName.contains("point_p"));
+        if (!pFamily) {
+            return false;
+        }
+        double[] leftCenter = bestPointCenter(left);
+        double[] rightCenter = bestPointCenter(right);
+        return leftCenter != null && rightCenter != null
+                && distance(leftCenter, rightCenter) <= GEOMETRIC_ENDPOINT_TOLERANCE;
+    }
+
+    private boolean sameSemanticFamily(ElementGeometry left, ElementGeometry right) {
+        String leftKey = semanticFamilyKey(left.semanticName);
+        String rightKey = semanticFamilyKey(right.semanticName);
+        return leftKey != null && leftKey.equals(rightKey);
+    }
+
+    private String semanticFamilyKey(String semanticName) {
+        String value = safeLower(semanticName);
+        if (value.isBlank()) {
+            return null;
+        }
+        value = value.replace("label_", "")
+                .replace("point_", "")
+                .replace("seg_", "")
+                .replace("line_", "")
+                .replace("brace_", "")
+                .replace("bar_", "");
+        int underscore = value.indexOf('_');
+        return underscore > 0 ? value.substring(0, underscore) : value;
+    }
+
+    private String safeLower(String value) {
+        return value == null ? "" : value.trim().toLowerCase();
+    }
+
+    private boolean isZeroArea(ElementGeometry element) {
+        return element != null && element.width <= 1e-9 && element.height <= 1e-9;
+    }
+
+    private double[] bestPointCenter(ElementGeometry element) {
+        if (element == null) {
+            return null;
+        }
+        if (element.arcCenter != null && element.center != null
+                && distance(element.arcCenter, element.center) <= GEOMETRIC_ENDPOINT_TOLERANCE) {
+            return element.arcCenter;
+        }
+        if (element.center != null) {
+            return element.center;
+        }
+        return element.arcCenter;
+    }
+
+    private double[] centerFromBounds(double[] min, double[] max) {
+        if (min == null || max == null) {
+            return null;
+        }
+        return new double[] {
+                round((min[0] + max[0]) / 2.0),
+                round((min[1] + max[1]) / 2.0),
+                0.0
+        };
+    }
+
+    private boolean isPointOnSegment(double[] point, double[] start, double[] end, double tolerance) {
+        return distancePointToSegment(point, start, end) <= tolerance;
+    }
+
+    private double distancePointToSegment(double[] point, double[] start, double[] end) {
+        if (point == null || start == null || end == null) {
+            return Double.POSITIVE_INFINITY;
+        }
+        double vx = end[0] - start[0];
+        double vy = end[1] - start[1];
+        double wx = point[0] - start[0];
+        double wy = point[1] - start[1];
+        double lengthSquared = vx * vx + vy * vy;
+        if (lengthSquared <= 1e-9) {
+            return distance(point, start);
+        }
+        double t = Math.max(0.0, Math.min(1.0, (wx * vx + wy * vy) / lengthSquared));
+        double projX = start[0] + t * vx;
+        double projY = start[1] + t * vy;
+        return Math.hypot(point[0] - projX, point[1] - projY);
+    }
+
+    private double distance(double[] a, double[] b) {
+        if (a == null || b == null) {
+            return Double.POSITIVE_INFINITY;
+        }
+        return Math.hypot(a[0] - b[0], a[1] - b[1]);
+    }
+
+    private boolean anyPointClose(double[] a, double[] b, double tolerance) {
+        return a != null && b != null && distance(a, b) <= tolerance;
+    }
+
+    private double angleBetweenSegments(double[] start1, double[] end1, double[] start2, double[] end2) {
+        double v1x = end1[0] - start1[0];
+        double v1y = end1[1] - start1[1];
+        double v2x = end2[0] - start2[0];
+        double v2y = end2[1] - start2[1];
+        double len1 = Math.hypot(v1x, v1y);
+        double len2 = Math.hypot(v2x, v2y);
+        if (len1 <= 1e-9 || len2 <= 1e-9) {
+            return Double.NaN;
+        }
+        double cosine = (v1x * v2x + v1y * v2y) / (len1 * len2);
+        cosine = Math.max(-1.0, Math.min(1.0, cosine));
+        return Math.toDegrees(Math.acos(cosine));
     }
 
     private ElementRef toElementRef(ElementGeometry element, String sampleRole) {
@@ -557,10 +875,11 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     private String buildIssueSummary(SceneEvaluationResult result) {
         StringBuilder sb = new StringBuilder();
         sb.append(String.format(
-                "Scene evaluation found %d issues across %d/%d samples (%d overlap, %d offscreen).",
+                "Scene evaluation found %d issues across %d/%d samples (%d blocking, %d overlap, %d offscreen).",
                 result.getTotalIssueCount(),
                 result.getIssueSampleCount(),
                 result.getSampleCount(),
+                result.getBlockingIssueCount(),
                 result.getOverlapIssueCount(),
                 result.getOffscreenIssueCount()));
 
@@ -579,7 +898,8 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 sb.append(": ").append(sample.getSourceCode());
             }
             for (int i = 0; i < Math.min(sample.getIssues().size(), 3); i++) {
-                sb.append("\n  * ").append(sample.getIssues().get(i).getMessage());
+                LayoutIssue issue = sample.getIssues().get(i);
+                sb.append("\n  * [").append(issue.getSeverity()).append("] ").append(issue.getMessage());
             }
             if (listedSamples >= MAX_FIX_REPORT_SAMPLES) {
                 break;
@@ -603,6 +923,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         payload.put("sample_count", result.getSampleCount());
         payload.put("issue_sample_count", result.getIssueSampleCount());
         payload.put("total_issue_count", result.getTotalIssueCount());
+        payload.put("blocking_issue_count", result.getBlockingIssueCount());
         payload.put("overlap_issue_count", result.getOverlapIssueCount());
         payload.put("offscreen_issue_count", result.getOffscreenIssueCount());
 
@@ -620,6 +941,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             sampleMap.put("scene_method", sample.getSceneMethod());
             sampleMap.put("source_code", sample.getSourceCode());
             sampleMap.put("issue_count", sample.getIssueCount());
+            sampleMap.put("blocking_issue_count", sample.getBlockingIssueCount());
 
             List<Map<String, Object>> issues = new ArrayList<>();
             for (int i = 0; i < Math.min(sample.getIssues().size(), MAX_ISSUES_PER_SAMPLE_IN_FIX_REPORT); i++) {
@@ -627,6 +949,10 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 Map<String, Object> issueMap = new LinkedHashMap<>();
                 issueMap.put("type", issue.getType());
                 issueMap.put("message", issue.getMessage());
+                issueMap.put("severity", issue.getSeverity());
+                issueMap.put("reason_code", issue.getReasonCode());
+                issueMap.put("likely_false_positive", issue.getLikelyFalsePositive());
+                issueMap.put("recommended_action", issue.getRecommendedAction());
                 issueMap.put("primary_element", elementRefMap(issue.getPrimaryElement()));
                 if (issue.getSecondaryElement() != null) {
                     issueMap.put("secondary_element", elementRefMap(issue.getSecondaryElement()));
@@ -769,11 +1095,39 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         private String topLevelStableId;
         private String sampleRole;
         private boolean visible;
+        private double[] center;
+        private double width;
+        private double height;
+        private double[] start;
+        private double[] end;
+        private double[] arcCenter;
+        private Double radius;
         private double[] min;
         private double[] max;
 
         private String displayName() {
             return firstNonBlank(semanticName, displayText, className, stableId, "element");
+        }
+
+        private boolean isTextual() {
+            return "text".equalsIgnoreCase(semanticClass)
+                    || "Text".equals(className)
+                    || "MathTex".equals(className)
+                    || "MarkupText".equals(className)
+                    || displayText != null;
+        }
+
+        private boolean isPointLike() {
+            return "point".equalsIgnoreCase(semanticClass)
+                    || "Dot".equals(className)
+                    || "Dot3D".equals(className);
+        }
+
+        private boolean isLineLike() {
+            return "line".equalsIgnoreCase(semanticClass)
+                    || "Line".equals(className)
+                    || "DashedLine".equals(className)
+                    || "Arrow".equals(className);
         }
 
         private String firstNonBlank(String... values) {
@@ -826,6 +1180,29 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             this.maxX = maxX;
             this.minY = minY;
             this.maxY = maxY;
+        }
+    }
+
+    private static final class OverlapDisposition {
+        private final boolean ignore;
+        private final String severity;
+        private final String reasonCode;
+        private final boolean likelyFalsePositive;
+        private final String recommendedAction;
+        private final String message;
+
+        private OverlapDisposition(boolean ignore,
+                                   String severity,
+                                   String reasonCode,
+                                   boolean likelyFalsePositive,
+                                   String recommendedAction,
+                                   String message) {
+            this.ignore = ignore;
+            this.severity = severity;
+            this.reasonCode = reasonCode;
+            this.likelyFalsePositive = likelyFalsePositive;
+            this.recommendedAction = recommendedAction;
+            this.message = message;
         }
     }
 }

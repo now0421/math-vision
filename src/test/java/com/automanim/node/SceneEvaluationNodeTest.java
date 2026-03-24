@@ -74,6 +74,42 @@ class SceneEvaluationNodeTest {
     }
 
     @Test
+    void detectsOverlapForNonTextElementsToo() throws IOException {
+        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Files.writeString(geometryPath, nonTextOverlapGeometryJson());
+
+        Map<String, Object> ctx = buildContext(geometryPath);
+        SceneEvaluationNode node = new SceneEvaluationNode();
+
+        SceneEvaluationNode.SceneEvaluationInput input = node.prep(ctx);
+        SceneEvaluationResult result = node.exec(input);
+        String action = node.post(ctx, input, result);
+
+        assertTrue(result.isEvaluated());
+        assertFalse(result.isApproved());
+        assertTrue(result.getOverlapIssueCount() > 0);
+        assertEquals(WorkflowActions.FIX_CODE, action);
+    }
+
+    @Test
+    void ignoresInvisibleElementsDuringOverlapEvaluation() throws IOException {
+        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Files.writeString(geometryPath, invisibleOverlapGeometryJson());
+
+        Map<String, Object> ctx = buildContext(geometryPath);
+        SceneEvaluationNode node = new SceneEvaluationNode();
+
+        SceneEvaluationNode.SceneEvaluationInput input = node.prep(ctx);
+        SceneEvaluationResult result = node.exec(input);
+        String action = node.post(ctx, input, result);
+
+        assertTrue(result.isEvaluated());
+        assertTrue(result.isApproved());
+        assertEquals(0, result.getOverlapIssueCount());
+        assertNull(action);
+    }
+
+    @Test
     void prefersProjectedScreenBoundsWhenPresent() throws IOException {
         Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
         Files.writeString(geometryPath, projectedGeometryJson());
@@ -240,6 +276,88 @@ class SceneEvaluationNodeTest {
                 "          \"screen_bounds\": {",
                 "            \"min\": [-1.5, -1.0, -0.2],",
                 "            \"max\": [1.5, 1.0, 0.2]",
+                "          }",
+                "        }",
+                "      ]",
+                "    }",
+                "  ]",
+                "}");
+    }
+
+    private String nonTextOverlapGeometryJson() {
+        return String.join("\n",
+                "{",
+                "  \"scene_name\": \"MainScene\",",
+                "  \"frame_bounds\": {",
+                "    \"min\": [-7.111111, -4.0, 0.0],",
+                "    \"max\": [7.111111, 4.0, 0.0]",
+                "  },",
+                "  \"samples\": [",
+                "    {",
+                "      \"sample_id\": \"sample-0001\",",
+                "      \"sample_role\": \"scene_final\",",
+                "      \"elements\": [",
+                "        {",
+                "          \"stable_id\": \"brace\",",
+                "          \"semantic_name\": \"brace\",",
+                "          \"class_name\": \"Brace\",",
+                "          \"semantic_class\": \"other\",",
+                "          \"visible\": true,",
+                "          \"bounds\": {",
+                "            \"min\": [3.8, -0.4, 0.0],",
+                "            \"max\": [4.4, 0.9, 0.0]",
+                "          }",
+                "        },",
+                "        {",
+                "          \"stable_id\": \"bar\",",
+                "          \"semantic_name\": \"bar\",",
+                "          \"class_name\": \"Rectangle\",",
+                "          \"semantic_class\": \"shape\",",
+                "          \"visible\": true,",
+                "          \"bounds\": {",
+                "            \"min\": [4.0, 0.1, 0.0],",
+                "            \"max\": [5.2, 1.1, 0.0]",
+                "          }",
+                "        }",
+                "      ]",
+                "    }",
+                "  ]",
+                "}");
+    }
+
+    private String invisibleOverlapGeometryJson() {
+        return String.join("\n",
+                "{",
+                "  \"scene_name\": \"MainScene\",",
+                "  \"frame_bounds\": {",
+                "    \"min\": [-7.111111, -4.0, 0.0],",
+                "    \"max\": [7.111111, 4.0, 0.0]",
+                "  },",
+                "  \"samples\": [",
+                "    {",
+                "      \"sample_id\": \"sample-0001\",",
+                "      \"sample_role\": \"scene_final\",",
+                "      \"elements\": [",
+                "        {",
+                "          \"stable_id\": \"hidden_formula\",",
+                "          \"semantic_name\": \"hidden_formula\",",
+                "          \"class_name\": \"MathTex\",",
+                "          \"semantic_class\": \"formula\",",
+                "          \"visible\": false,",
+                "          \"bounds\": {",
+                "            \"min\": [-1.0, -0.5, 0.0],",
+                "            \"max\": [1.0, 0.5, 0.0]",
+                "          }",
+                "        },",
+                "        {",
+                "          \"stable_id\": \"shown_box\",",
+                "          \"semantic_name\": \"shown_box\",",
+                "          \"class_name\": \"Rectangle\",",
+                "          \"semantic_class\": \"shape\",",
+                "          \"visible\": true,",
+                "          \"bounds\": {",
+                "            \"min\": [-0.8, -0.4, 0.0],",
+                "            \"max\": [0.8, 0.4, 0.0]",
                 "          }",
                 "        }",
                 "      ]",

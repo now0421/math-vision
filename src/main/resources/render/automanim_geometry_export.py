@@ -1151,9 +1151,13 @@ def _frame_overflow(bounds, frame_bounds):
 
 
 def _should_report_layout_overlap(left, right):
-    left_class = left.get("semantic_class")
-    right_class = right.get("semantic_class")
-    if left_class not in _TEXTUAL_CLASSES and right_class not in _TEXTUAL_CLASSES:
+    if not left.get("visible", True) or not right.get("visible", True):
+        return False
+    if left.get("stable_id") == right.get("stable_id"):
+        return False
+    left_top = left.get("top_level_stable_id")
+    right_top = right.get("top_level_stable_id")
+    if left_top is not None and left_top == right_top:
         return False
     return True
 
@@ -1236,7 +1240,12 @@ def _build_report_summary(samples, object_catalog, play_records, observed_render
 def _unique_roots(scene):
     roots = []
     seen = set()
-    for collection_name in ("mobjects", "foreground_mobjects"):
+    for collection_name in (
+        "mobjects",
+        "foreground_mobjects",
+        "fixed_in_frame_mobjects",
+        "fixed_orientation_mobjects",
+    ):
         for mobject in getattr(scene, collection_name, []) or []:
             object_id = id(mobject)
             if object_id in seen:

@@ -214,7 +214,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         sb.append("- Treat equations and definitions as optional supporting material.\n");
         sb.append("- Use equations and definitions only when they help the main point.\n");
         sb.append("- It is acceptable to ignore optional math details that would make scenes crowded or repetitive.\n");
-        sb.append("- Keep important screen-space content inside x in [-6.5, 6.5], y in [-3.5, 3.5].\n");
+        sb.append("- Keep important screen-space content inside x in [-7, 7], y in [-4, 4].\n");
         sb.append("- If a planned layout would overflow, split content across scenes instead of squeezing it.\n");
         sb.append("- Follow the provided topological order when deciding what should be established before later beats.\n");
         if (problemMode) {
@@ -368,7 +368,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
             }
             if (scene.getSafeAreaPlan() == null || scene.getSafeAreaPlan().isBlank()) {
                 scene.setSafeAreaPlan(
-                        "Keep important screen-space content inside x in [-6.5, 6.5] and y in [-3.5, 3.5] with edge margin.");
+                        "Keep important screen-space content inside x in [-7, 7] and y in [-4, 4] with edge margin.");
             }
             if (scene.getScreenOverlayPlan() == null || scene.getScreenOverlayPlan().isBlank()) {
                 scene.setScreenOverlayPlan(isThreeDSceneMode(scene)
