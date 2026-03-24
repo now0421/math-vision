@@ -1,6 +1,7 @@
 package com.automanim.service;
 
 import com.automanim.model.CodeResult;
+import com.automanim.model.CodeFixTraceReport;
 import com.automanim.model.KnowledgeGraph;
 import com.automanim.model.Narrative;
 import com.automanim.model.RenderResult;
@@ -167,6 +168,11 @@ public class FileOutputService {
     public static void saveSceneEvaluation(Path outputDir, SceneEvaluationResult sceneEvaluationResult) {
         writeJson(outputDir.resolve("6_scene_evaluation.json"),
                 sceneEvaluationResult, "scene evaluation");
+    }
+
+    public static void saveCodeFixTrace(Path outputDir, CodeFixTraceReport codeFixTraceReport) {
+        writeJson(outputDir.resolve("8_code_fix_trace.json"),
+                codeFixTraceReport, "code fix trace");
     }
 
     public static void saveWorkflowSummary(Path outputDir, Map<String, Object> summary) {

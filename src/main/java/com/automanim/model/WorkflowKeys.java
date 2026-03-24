@@ -32,6 +32,7 @@ public final class WorkflowKeys {
     // ---- Shared code-fix routing state ----
     public static final String CODE_FIX_REQUEST = "codeFixRequest";
     public static final String CODE_FIX_RESULT = "codeFixResult";
+    public static final String CODE_FIX_TRACE = "codeFixTrace";
     public static final String CODE_GENERATION_FIX_STATE = "codeGenerationFixState";
     public static final String CODE_EVALUATION_FIX_STATE = "codeEvaluationFixState";
     public static final String RENDER_RETRY_STATE = "renderRetryState";

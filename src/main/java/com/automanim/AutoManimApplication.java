@@ -4,6 +4,8 @@ import com.automanim.config.ConfigLoader;
 import com.automanim.config.ModelConfig;
 import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeResult;
+import com.automanim.model.CodeFixTraceEntry;
+import com.automanim.model.CodeFixTraceReport;
 import com.automanim.model.KnowledgeGraph;
 import com.automanim.model.RenderResult;
 import com.automanim.model.CodeEvaluationResult;
@@ -21,8 +23,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -215,6 +219,7 @@ public class AutoManimApplication {
         Map<String, Object> summary = buildSummary(ctx, elapsed);
         printSummary(summary);
         FileOutputService.saveWorkflowSummary(outputDir, summary);
+        FileOutputService.saveCodeFixTrace(outputDir, buildCodeFixTraceReport(ctx));
 
         log.info("Workflow completed in {}", formatDuration(elapsed));
     }
@@ -306,9 +311,21 @@ public class AutoManimApplication {
             summary.put("scene_evaluation_offscreen_issues", sceneEvaluationResult.getOffscreenIssueCount());
         }
 
+        summary.put("code_fix_event_count", buildCodeFixTraceReport(ctx).getTotalFixEvents());
+
         summary.put("total_api_calls_estimate", apiCalls);
         summary.put("duration_human", formatDuration(elapsed));
         return summary;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static CodeFixTraceReport buildCodeFixTraceReport(Map<String, Object> ctx) {
+        List<CodeFixTraceEntry> entries =
+                (List<CodeFixTraceEntry>) ctx.getOrDefault(WorkflowKeys.CODE_FIX_TRACE, new ArrayList<>());
+        CodeFixTraceReport report = new CodeFixTraceReport();
+        report.setTotalFixEvents(entries.size());
+        report.setEntries(entries);
+        return report;
     }
 
     private static void printSummary(Map<String, Object> summary) {

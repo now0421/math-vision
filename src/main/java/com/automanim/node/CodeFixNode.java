@@ -4,9 +4,12 @@ import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeFixRequest;
 import com.automanim.model.CodeFixResult;
 import com.automanim.model.CodeFixSource;
+import com.automanim.model.CodeFixTraceEntry;
+import com.automanim.model.CodeFixTraceReport;
 import com.automanim.model.CodeResult;
 import com.automanim.model.WorkflowKeys;
 import com.automanim.service.AiClient;
+import com.automanim.service.FileOutputService;
 import com.automanim.util.ConcurrencyUtils;
 import com.automanim.util.JsonUtils;
 import com.automanim.util.NodeConversationContext;
@@ -17,6 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -34,6 +38,7 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
+    private Path outputDir;
     private int toolCalls;
 
     public CodeFixNode() {
@@ -44,6 +49,7 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
     public CodeFixRequest prep(Map<String, Object> ctx) {
         this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
         this.workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
+        this.outputDir = (Path) ctx.get(WorkflowKeys.OUTPUT_DIR);
         this.toolCalls = 0;
         return (CodeFixRequest) ctx.get(WorkflowKeys.CODE_FIX_REQUEST);
     }
@@ -74,9 +80,12 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
                 ? workflowConfig.getModelConfig().getMaxInputTokens()
                 : 131072;
         NodeConversationContext conversationContext = new NodeConversationContext(maxInputTokens);
-        conversationContext.setSystemMessage(selectSystemPrompt(request));
+        String systemPrompt = selectSystemPrompt(request);
+        conversationContext.setSystemMessage(systemPrompt);
+        result.setSystemPrompt(systemPrompt);
 
         String userPrompt = selectUserPrompt(request);
+        result.setUserPrompt(userPrompt);
         if (userPrompt == null || userPrompt.isBlank()) {
             result.setFailureReason("Code fix prompt was empty");
             result.setExecutionTimeSeconds(toSeconds(start));
@@ -115,6 +124,7 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
     public String post(Map<String, Object> ctx, CodeFixRequest request, CodeFixResult result) {
         ctx.remove(WorkflowKeys.CODE_FIX_REQUEST);
         ctx.put(WorkflowKeys.CODE_FIX_RESULT, result);
+        appendTraceEntry(ctx, request, result);
 
         if (result != null && result.isApplied()) {
             CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
@@ -133,6 +143,47 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         }
 
         return result != null ? result.getReturnAction() : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void appendTraceEntry(Map<String, Object> ctx,
+                                  CodeFixRequest request,
+                                  CodeFixResult result) {
+        List<CodeFixTraceEntry> entries =
+                (List<CodeFixTraceEntry>) ctx.get(WorkflowKeys.CODE_FIX_TRACE);
+        if (entries == null) {
+            entries = new java.util.ArrayList<>();
+            ctx.put(WorkflowKeys.CODE_FIX_TRACE, entries);
+        }
+
+        CodeFixTraceEntry entry = new CodeFixTraceEntry();
+        entry.setSequence(entries.size() + 1);
+        if (request != null) {
+            entry.setSource(request.getSource());
+            entry.setReturnAction(request.getReturnAction());
+            entry.setSceneName(request.getSceneName());
+            entry.setExpectedSceneName(request.getExpectedSceneName());
+            entry.setTargetConcept(request.getTargetConcept());
+            entry.setErrorReason(request.getErrorReason());
+            entry.setFixHistory(request.getFixHistory());
+        }
+        if (result != null) {
+            entry.setApplied(result.isApplied());
+            entry.setFailureReason(result.getFailureReason());
+            entry.setToolCalls(result.getToolCalls());
+            entry.setExecutionTimeSeconds(result.getExecutionTimeSeconds());
+            entry.setSystemPrompt(result.getSystemPrompt());
+            entry.setUserPrompt(result.getUserPrompt());
+        }
+
+        entries.add(entry);
+
+        if (outputDir != null) {
+            CodeFixTraceReport report = new CodeFixTraceReport();
+            report.setTotalFixEvents(entries.size());
+            report.setEntries(entries);
+            FileOutputService.saveCodeFixTrace(outputDir, report);
+        }
     }
 
     private String selectSystemPrompt(CodeFixRequest request) {
