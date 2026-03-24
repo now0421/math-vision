@@ -26,6 +26,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -42,6 +43,8 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
     private static final String TRACEBACK_MARKER = "Traceback (most recent call last)";
     private static final String GENERATED_SCENE_FILE = "scene_render.py";
     private static final Pattern ANY_SCENE_CLASS = Pattern.compile("class\\s+[^\\s(]+\\s*\\((.*?Scene.*?)\\)");
+    private static final Pattern ERROR_SIGNATURE_PATTERN = Pattern.compile(
+            "\\b(?:[A-Za-z_][A-Za-z0-9_]*Error|[A-Za-z_][A-Za-z0-9_]*Exception)\\s*:\\s*.+");
 
     // Error patterns that indicate non-code (environment) errors
     private static final List<Pattern> NON_CODE_ERROR_PATTERNS = Arrays.asList(
@@ -451,6 +454,17 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         if (focusedError == null || focusedError.isBlank()) {
             return "";
         }
+
+        String[] lines = focusedError.split("\\R");
+        for (int i = lines.length - 1; i >= 0; i--) {
+            String line = lines[i].trim();
+            Matcher matcher = ERROR_SIGNATURE_PATTERN.matcher(line);
+            if (matcher.find()) {
+                String signature = matcher.group().trim();
+                return signature.length() > 200 ? signature.substring(0, 200) : signature;
+            }
+        }
+
         String normalized = focusedError.replaceAll("\\s+", " ").trim();
         return normalized.length() > 200 ? normalized.substring(0, 200) : normalized;
     }

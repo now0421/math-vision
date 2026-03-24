@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -320,19 +321,49 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         if (!code.contains("def construct(")) {
             violations.add("Missing construct() method");
         }
-        if (NON_ASCII_IDENTIFIER.matcher(code).find()) {
-            violations.add("Contains non-ASCII class, method, or variable identifiers");
+        String nonAsciiEvidence = findFirstMatchEvidence(code, NON_ASCII_IDENTIFIER);
+        if (nonAsciiEvidence != null) {
+            violations.add("Contains non-ASCII class, method, or variable identifiers"
+                    + " (" + nonAsciiEvidence + ")");
         }
 
-        if (RULE1_VIOLATION.matcher(code).find()) {
-            violations.add("Rule 1 violation: stores mobjects on instance fields across scenes");
+        String rule1Evidence = findFirstMatchEvidence(code, RULE1_VIOLATION);
+        if (rule1Evidence != null) {
+            violations.add("Rule 1 violation: stores mobjects on instance fields across scenes"
+                    + " (" + rule1Evidence + ")");
         }
 
-        if (RULE3_VIOLATION.matcher(code).find()) {
-            violations.add("Rule 3 violation: hardcoded MathTex subobject indexing");
+        String rule3Evidence = findFirstMatchEvidence(code, RULE3_VIOLATION);
+        if (rule3Evidence != null) {
+            violations.add("Rule 3 violation: hardcoded MathTex subobject indexing"
+                    + " (" + rule3Evidence + ")");
         }
 
         return violations;
+    }
+
+    private String findFirstMatchEvidence(String code, Pattern pattern) {
+        if (code == null || code.isBlank() || pattern == null) {
+            return null;
+        }
+
+        String[] lines = code.split("\\R");
+        for (int i = 0; i < lines.length; i++) {
+            Matcher matcher = pattern.matcher(lines[i]);
+            if (matcher.find()) {
+                String fragment = matcher.group();
+                if (fragment == null || fragment.isBlank()) {
+                    fragment = lines[i].trim();
+                }
+                fragment = fragment.replace("\t", " ").trim();
+                if (fragment.length() > 120) {
+                    fragment = fragment.substring(0, 120) + "...";
+                }
+                return "line " + (i + 1) + ": " + fragment;
+            }
+        }
+
+        return null;
     }
 
     private CodeFixRequest buildValidationFixRequest(CodeResult codeResult, GenerationFixState fixState) {

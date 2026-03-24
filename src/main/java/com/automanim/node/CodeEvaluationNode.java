@@ -377,7 +377,11 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         request.setSource(CodeFixSource.EVALUATION_REVIEW);
         request.setReturnAction(WorkflowActions.RETRY_CODE_EVALUATION);
         request.setCode(codeResult.getManimCode());
-        request.setErrorReason(result.getGateReason());
+        request.setErrorReason(buildDetailedEvaluationFixReason(
+                codeResult.getManimCode(),
+                result.getFinalStaticAnalysis(),
+                result.getFinalReview(),
+                result.getGateReason()));
         request.setTargetConcept(codeResult.getTargetConcept());
         request.setTargetDescription(codeResult.getTargetDescription());
         request.setSceneName(sceneName);
@@ -388,6 +392,123 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         request.setStaticAnalysisJson(JsonUtils.toPrettyJson(result.getFinalStaticAnalysis()));
         request.setReviewJson(JsonUtils.toPrettyJson(result.getFinalReview()));
         return request;
+    }
+
+    private String buildDetailedEvaluationFixReason(String code,
+                                                    StaticAnalysis analysis,
+                                                    ReviewSnapshot review,
+                                                    String gateReason) {
+        List<String> reasons = new ArrayList<>();
+        if (gateReason != null && !gateReason.isBlank()) {
+            reasons.add("Gate summary: " + gateReason.trim());
+        }
+
+        if (analysis != null && analysis.getFindings() != null) {
+            for (StaticFinding finding : analysis.getFindings()) {
+                if (!"fail".equalsIgnoreCase(finding.getSeverity())
+                        && !"warn".equalsIgnoreCase(finding.getSeverity())) {
+                    continue;
+                }
+
+                StringBuilder item = new StringBuilder();
+                item.append(finding.getSummary());
+                if (finding.getEvidence() != null && !finding.getEvidence().isBlank()) {
+                    item.append(" [evidence: ").append(finding.getEvidence().trim()).append("]");
+                }
+
+                List<String> snippets = extractRelevantCodeEvidence(code, finding.getRuleId());
+                if (!snippets.isEmpty()) {
+                    item.append(" [code: ").append(String.join(" | ", snippets)).append("]");
+                }
+                reasons.add(item.toString());
+            }
+        }
+
+        if (review != null && review.getBlockingIssues() != null) {
+            for (String issue : review.getBlockingIssues()) {
+                if (issue == null || issue.isBlank()) {
+                    continue;
+                }
+                reasons.add("Review blocking issue: " + issue.trim());
+            }
+        }
+
+        return String.join("\n", reasons);
+    }
+
+    private List<String> extractRelevantCodeEvidence(String code, String ruleId) {
+        List<String> snippets = new ArrayList<>();
+        if (code == null || code.isBlank() || ruleId == null || ruleId.isBlank()) {
+            return snippets;
+        }
+
+        List<Pattern> patterns = patternsForRule(ruleId);
+        if (patterns.isEmpty()) {
+            return snippets;
+        }
+
+        String[] lines = code.split("\\R");
+        for (int i = 0; i < lines.length && snippets.size() < 3; i++) {
+            String line = lines[i];
+            for (Pattern pattern : patterns) {
+                if (pattern.matcher(line).find()) {
+                    String snippet = line.trim();
+                    if (snippet.length() > 140) {
+                        snippet = snippet.substring(0, 140) + "...";
+                    }
+                    snippets.add("line " + (i + 1) + ": " + snippet);
+                    break;
+                }
+            }
+        }
+
+        return snippets;
+    }
+
+    private List<Pattern> patternsForRule(String ruleId) {
+        List<Pattern> patterns = new ArrayList<>();
+        switch (ruleId) {
+            case "scene_object_overload":
+            case "visible_object_overload":
+                patterns.add(FADE_IN_PATTERN);
+                patterns.add(Pattern.compile("\\bCreate\\s*\\("));
+                patterns.add(Pattern.compile("\\bWrite\\s*\\("));
+                break;
+            case "text_stack_clutter":
+            case "spacing_strategy_missing":
+                patterns.add(TEXT_PATTERN);
+                patterns.add(MATH_TEX_PATTERN);
+                patterns.add(ARRANGE_PATTERN);
+                patterns.add(NEXT_TO_PATTERN);
+                break;
+            case "edge_push_abuse":
+                patterns.add(TO_EDGE_PATTERN);
+                patterns.add(SHIFT_PATTERN);
+                break;
+            case "weak_transform_continuity":
+                patterns.add(FADE_IN_PATTERN);
+                patterns.add(FADE_OUT_PATTERN);
+                patterns.add(TRANSFORM_PATTERN);
+                patterns.add(ANIMATE_PATTERN);
+                break;
+            case "three_d_scene_required":
+            case "three_d_camera_plan_missing":
+            case "three_d_camera_motion_missing":
+                patterns.add(THREE_D_OBJECT_PATTERN);
+                patterns.add(CAMERA_ORIENTATION_PATTERN);
+                patterns.add(CAMERA_MOTION_PATTERN);
+                break;
+            case "three_d_overlay_missing":
+            case "three_d_overlay_unfixed":
+                patterns.add(TEXT_PATTERN);
+                patterns.add(MATH_TEX_PATTERN);
+                patterns.add(FIXED_IN_FRAME_PATTERN);
+                patterns.add(FIXED_ORIENTATION_PATTERN);
+                break;
+            default:
+                break;
+        }
+        return patterns;
     }
 
     private CodeFixResult consumeFixResult(Map<String, Object> ctx, CodeFixSource expectedSource) {
