@@ -9,5 +9,5 @@
   "render_quality": "low",
   "render_max_retries": 4,
   "input_mode": "auto",
-  "model": "kimi-k2-turbo-preview"
+  "model": "deepseek-reasoner"
 }

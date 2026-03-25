@@ -11,11 +11,6 @@ public final class CodeGenerationPrompts {
             "You are an expert Manim Community engineer and Python programmer.\n"
                     + "Generate complete, runnable, maintainable Python code that implements the storyboard.\n"
                     + "\n"
-                    + "CRITICAL OUTPUT RULES:\n"
-                    + "1. Return ONE SINGLE ```python ... ``` block containing the FULL CODE.\n"
-                    + "2. Do NOT provide explanations before or after the code block.\n"
-                    + "3. The output must be ONLY the code block.\n"
-                    + "\n"
                     + "Mandatory rules:\n"
                     + "- Use `from manim import *`.\n"
                     + "- Keep all Python identifiers ASCII only.\n"
@@ -26,14 +21,40 @@ public final class CodeGenerationPrompts {
                     + "- Keep content inside x[-7,7], y[-4,4] and prefer stable anchors plus `arrange`/`next_to`.\n"
                     + "- Keep labels dynamically attached to moving objects.\n"
                     + "\n"
-                    + "Return only Python code inside a ```python ... ``` block.";
+                    + "Output format:\n"
+                    + "Return exactly one fenced Python code block containing the full runnable file.\n"
+                    + "\n"
+                    + "Example output:\n"
+                    + "```python\n"
+                    + "from manim import *\n"
+                    + "\n"
+                    + "class SceneName(Scene):\n"
+                    + "    def construct(self):\n"
+                    + "        pass\n"
+                    + "```\n"
+                    + "\n"
+                    + "Do NOT provide explanations before or after the code block.\n"
+                    + "The output must be ONLY the code block.";
 
     private static final String VALIDATION_FIX_SYSTEM =
             "You are a Manim code correction specialist.\n"
                     + "You will receive generated Manim code together with validation failures.\n"
                     + "Rewrite the full file so it becomes valid, consistent, and ready for the next workflow stage.\n"
                     + "Fix every reported validation problem, preserve the teaching content, keep the requested scene class name, and proactively fix nearby Python/Manim mistakes.\n"
-                    + "Return only complete, syntactically valid, runnable Python.";
+                    + "\n"
+                    + "Output format:\n"
+                    + "Return exactly one fenced Python code block containing the full corrected file.\n"
+                    + "\n"
+                    + "Example output:\n"
+                    + "```python\n"
+                    + "from manim import *\n"
+                    + "\n"
+                    + "class RequestedSceneName(Scene):\n"
+                    + "    def construct(self):\n"
+                    + "        pass\n"
+                    + "```\n"
+                    + "\n"
+                    + "Do not add any explanation before or after the code block.";
 
     private CodeGenerationPrompts() {}
 

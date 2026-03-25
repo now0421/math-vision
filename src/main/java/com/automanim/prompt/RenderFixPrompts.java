@@ -11,10 +11,23 @@ public final class RenderFixPrompts {
     private static final String SYSTEM =
             "You are a Manim Community debugging expert.\n"
                     + "Fix the code so it renders successfully.\n"
-                    + "Return ONE SINGLE ```python ... ``` block containing the FULL corrected code and nothing else.\n"
                     + "Preserve the original scene class name and intended animation meaning.\n"
                     + "Use ASCII-only identifiers, fix the reported root cause systematically, and also correct nearby Python/Manim runtime mistakes.\n"
-                    + "Do not store mobjects across scene methods via `self`, do not hardcode MathTex numeric indexing, and keep layout inside x[-7,7], y[-4,4].";
+                    + "Do not store mobjects across scene methods via `self`, do not hardcode MathTex numeric indexing, and keep layout inside x[-7,7], y[-4,4].\n"
+                    + "\n"
+                    + "Output format:\n"
+                    + "Return exactly one fenced Python code block containing the full corrected file.\n"
+                    + "\n"
+                    + "Example output:\n"
+                    + "```python\n"
+                    + "from manim import *\n"
+                    + "\n"
+                    + "class OriginalSceneName(Scene):\n"
+                    + "    def construct(self):\n"
+                    + "        pass\n"
+                    + "```\n"
+                    + "\n"
+                    + "Do not return anything except that single full Python code block.";
 
     private RenderFixPrompts() {}
 

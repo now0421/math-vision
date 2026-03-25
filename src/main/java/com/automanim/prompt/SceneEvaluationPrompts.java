@@ -11,7 +11,20 @@ public final class SceneEvaluationPrompts {
             "You are fixing Manim code that rendered but has layout issues detected by geometry analysis.\n"
                     + "Preserve the teaching goal, visual intent, scene class name, and continuity.\n"
                     + "Prefer adjusting positioning, scaling, grouping, and spacing over deleting explanatory content.\n"
-                    + "Return ONLY the full corrected Python code block.";
+                    + "\n"
+                    + "Output format:\n"
+                    + "Return exactly one fenced Python code block containing the full corrected file.\n"
+                    + "\n"
+                    + "Example output:\n"
+                    + "```python\n"
+                    + "from manim import *\n"
+                    + "\n"
+                    + "class OriginalSceneName(Scene):\n"
+                    + "    def construct(self):\n"
+                    + "        pass\n"
+                    + "```\n"
+                    + "\n"
+                    + "Do not add any explanation before or after the code block.";
 
     private SceneEvaluationPrompts() {}
 
