@@ -13,6 +13,8 @@ import com.automanim.model.SceneEvaluationResult.Overflow;
 import com.automanim.model.SceneEvaluationResult.SampleEvaluation;
 import com.automanim.model.WorkflowActions;
 import com.automanim.model.WorkflowKeys;
+import com.automanim.node.support.FixRetryState;
+import com.automanim.util.ErrorSummarizer;
 import com.automanim.service.FileOutputService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -104,7 +106,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     public SceneEvaluationResult exec(SceneEvaluationInput input) {
         Instant start = Instant.now();
         SceneEvaluationRetryState retryState = input.retryState();
-        retryState.requestFix = false;
+        retryState.setRequestFix(false);
         retryState.pendingIssueSummary = null;
         retryState.pendingSceneEvaluationJson = null;
 
@@ -191,7 +193,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             result.setEvaluated(true);
             result.setApproved(blockingIssues == 0);
 
-            int attemptsSoFar = retryState.attempts;
+            int attemptsSoFar = retryState.getAttempts();
             if (result.isApproved()) {
                 if (totalIssues == 0) {
                     result.setGateReason("Scene evaluation passed: no overlap or offscreen issues detected");
@@ -211,18 +213,18 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             retryState.fixHistory.add(summarizeFixHistory(issueSummary));
 
             if (attemptsSoFar < maxFixAttempts) {
-                retryState.attempts = attemptsSoFar + 1;
-                retryState.requestFix = true;
+                retryState.setAttempts(attemptsSoFar + 1);
+                retryState.setRequestFix(true);
                 retryState.pendingIssueSummary = issueSummary;
                 retryState.pendingSceneEvaluationJson = buildFixReportJson(result);
                 result.setRevisionTriggered(true);
-                result.setRevisionAttempts(retryState.attempts);
+                result.setRevisionAttempts(retryState.getAttempts());
                 result.setGateReason(String.format(
                         "Detected %d blocking layout issues across %d samples (%d total observations); routing to code fix (attempt %d/%d)",
                         blockingIssues,
                         issueSamples,
                         totalIssues,
-                        retryState.attempts,
+                        retryState.getAttempts(),
                         maxFixAttempts));
                 finalizeResult(result, retryState, start, false);
                 return result;
@@ -253,7 +255,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             FileOutputService.saveSceneEvaluation(input.outputDir(), result);
         }
 
-        if (input.retryState().requestFix) {
+        if (input.retryState().isRequestFix()) {
             ctx.put(WorkflowKeys.CODE_FIX_REQUEST, buildSceneEvaluationFixRequest(input, result));
             return WorkflowActions.FIX_CODE;
         }
@@ -622,7 +624,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                     "ignore_unless_readability_suffers");
         }
 
-        return warningDisposition(
+        return blockingDisposition(
                 "GEOMETRY_GEOMETRY_OVERLAP",
                 String.format("Geometry elements %s and %s overlap in sampled frame",
                         left.displayName(), right.displayName()),
@@ -912,8 +914,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         if (issueSummary == null || issueSummary.isBlank()) {
             return "";
         }
-        String normalized = issueSummary.replaceAll("\\s+", " ").trim();
-        return normalized.length() > 200 ? normalized.substring(0, 200) : normalized;
+        return ErrorSummarizer.compactSummary(issueSummary, 200);
     }
 
     private String buildFixReportJson(SceneEvaluationResult result) {
@@ -1070,16 +1071,14 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         return Duration.between(start, Instant.now()).toMillis() / 1000.0;
     }
 
-    static final class SceneEvaluationRetryState {
-        private int attempts;
-        private boolean requestFix;
-        private final List<String> fixHistory = new ArrayList<>();
-        private String pendingIssueSummary;
-        private String pendingSceneEvaluationJson;
+    static final class SceneEvaluationRetryState extends FixRetryState {
+        final List<String> fixHistory = new ArrayList<>();
+        String pendingIssueSummary;
+        String pendingSceneEvaluationJson;
 
-        void reset() {
-            attempts = 0;
-            requestFix = false;
+        @Override
+        public void reset() {
+            super.reset();
             fixHistory.clear();
             pendingIssueSummary = null;
             pendingSceneEvaluationJson = null;

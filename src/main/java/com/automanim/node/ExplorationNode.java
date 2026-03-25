@@ -4,6 +4,8 @@ import com.automanim.config.WorkflowConfig;
 import com.automanim.model.KnowledgeGraph;
 import com.automanim.model.KnowledgeNode;
 import com.automanim.model.WorkflowKeys;
+import com.automanim.prompt.ExplorationPrompts;
+import com.automanim.prompt.ToolSchemas;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
 import com.automanim.util.AiRequestUtils;
@@ -11,7 +13,7 @@ import com.automanim.util.ConceptUtils;
 import com.automanim.util.ConcurrencyUtils;
 import com.automanim.util.JsonUtils;
 import com.automanim.util.NodeConversationContext;
-import com.automanim.util.PromptTemplates;
+import com.automanim.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.the_pocket.PocketFlow;
@@ -46,112 +48,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, String> {
 
     private static final Logger log = LoggerFactory.getLogger(ExplorationNode.class);
-
-    private static final String PREREQUISITES_TOOL = "["
-            + "{"
-            + "  \"type\": \"function\","
-            + "  \"function\": {"
-            + "    \"name\": \"write_prerequisites\","
-            + "    \"description\": \"Return the list of direct prerequisite teaching beats.\","
-            + "    \"parameters\": {"
-            + "      \"type\": \"object\","
-            + "      \"properties\": {"
-            + "        \"prerequisites\": {"
-            + "          \"type\": \"array\","
-            + "          \"items\": {"
-            + "            \"type\": \"object\","
-            + "            \"properties\": {"
-            + "              \"step\": { \"type\": \"string\", \"description\": \"Short description of the prerequisite teaching beat\" },"
-            + "              \"reason\": { \"type\": \"string\", \"description\": \"Why this prerequisite beat matters in the learning path\" }"
-            + "            },"
-            + "            \"required\": [\"step\", \"reason\"]"
-            + "          }"
-            + "        }"
-            + "      },"
-            + "      \"required\": [\"prerequisites\"]"
-            + "    }"
-            + "  }"
-            + "}"
-            + "]";
-
-    private static final String FOUNDATION_CHECK_TOOL = "["
-            + "{"
-            + "  \"type\": \"function\","
-            + "  \"function\": {"
-            + "    \"name\": \"write_foundation_decision\","
-            + "    \"description\": \"Return whether the concept is already foundational enough.\","
-            + "    \"parameters\": {"
-            + "      \"type\": \"object\","
-            + "      \"properties\": {"
-            + "        \"is_foundation\": { \"type\": \"boolean\", \"description\": \"Whether the concept should stop expanding\" },"
-            + "        \"reason\": { \"type\": \"string\", \"description\": \"Short justification\" }"
-            + "      },"
-            + "      \"required\": [\"is_foundation\"]"
-            + "    }"
-            + "  }"
-            + "}"
-            + "]";
-
-    private static final String INPUT_MODE_TOOL = "["
-            + "{"
-            + "  \"type\": \"function\","
-            + "  \"function\": {"
-            + "    \"name\": \"write_input_mode\","
-            + "    \"description\": \"Classify the workflow input mode.\","
-            + "    \"parameters\": {"
-            + "      \"type\": \"object\","
-            + "      \"properties\": {"
-            + "        \"input_mode\": {"
-            + "          \"type\": \"string\","
-            + "          \"enum\": [\"concept\", \"problem\"],"
-            + "          \"description\": \"Workflow mode for the input\""
-            + "        },"
-            + "        \"reason\": { \"type\": \"string\", \"description\": \"Short routing rationale\" }"
-            + "      },"
-            + "      \"required\": [\"input_mode\"]"
-            + "    }"
-            + "  }"
-            + "}"
-            + "]";
-
-    private static final String PROBLEM_GRAPH_TOOL = "["
-            + "{"
-            + "  \"type\": \"function\","
-            + "  \"function\": {"
-            + "    \"name\": \"write_problem_step_graph\","
-            + "    \"description\": \"Return a compact graph of animation-ready teaching beats for solving the problem.\","
-            + "    \"parameters\": {"
-            + "      \"type\": \"object\","
-            + "      \"properties\": {"
-            + "        \"root_id\": { \"type\": \"string\", \"description\": \"Root node id\" },"
-            + "        \"nodes\": {"
-            + "          \"type\": \"array\","
-            + "          \"items\": {"
-            + "            \"type\": \"object\","
-            + "            \"properties\": {"
-            + "              \"id\": { \"type\": \"string\" },"
-            + "              \"step\": { \"type\": \"string\" },"
-            + "              \"reason\": { \"type\": \"string\", \"description\": \"Why this teaching beat matters, what the viewer should understand, and why it matters next\" },"
-            + "              \"node_type\": { \"type\": \"string\" },"
-            + "              \"min_depth\": { \"type\": \"integer\" },"
-            + "              \"is_foundation\": { \"type\": \"boolean\" }"
-            + "            },"
-            + "            \"required\": [\"id\", \"step\", \"node_type\", \"min_depth\", \"is_foundation\"]"
-            + "          }"
-            + "        },"
-            + "        \"prerequisite_edges\": {"
-            + "          \"type\": \"object\","
-            + "          \"additionalProperties\": {"
-            + "            \"type\": \"array\","
-            + "            \"items\": { \"type\": \"string\" }"
-            + "          }"
-            + "        }"
-            + "      },"
-            + "      \"required\": [\"root_id\", \"nodes\", \"prerequisite_edges\"]"
-            + "    }"
-            + "  }"
-            + "}"
-            + "]";
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
@@ -276,7 +172,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                     normalizedProblem,
                     problemGraphContext,
                     prompt,
-                    PROBLEM_GRAPH_TOOL,
+                    ToolSchemas.PROBLEM_GRAPH,
                     () -> apiCalls.incrementAndGet(),
                     this::parseProblemGraphTextResponse
             )).join();
@@ -744,7 +640,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                         concept,
                         foundationContext,
                         prompt,
-                        FOUNDATION_CHECK_TOOL,
+                        ToolSchemas.FOUNDATION_CHECK,
                         () -> apiCalls.incrementAndGet(),
                         this::parseFoundationDecisionTextResponse
                 ))
@@ -796,7 +692,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                         concept,
                         prerequisiteContext,
                         prompt,
-                        PREREQUISITES_TOOL,
+                        ToolSchemas.PREREQUISITES,
                         () -> apiCalls.incrementAndGet(),
                         this::parsePrerequisitesTextResponse
                 ))
@@ -967,7 +863,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                     normalizedInput,
                     routingContext,
                     prompt,
-                    INPUT_MODE_TOOL,
+                    ToolSchemas.INPUT_MODE,
                     () -> apiCalls.incrementAndGet(),
                     this::parseInputModeTextResponse
             )).join();
@@ -1015,7 +911,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
     private void initializeRoutingContext(int maxInputTokens, String input) {
         routingContext = new NodeConversationContext(maxInputTokens);
-        routingContext.setSystemMessage(PromptTemplates.inputModeClassifierSystemPrompt(input));
+        routingContext.setSystemMessage(ExplorationPrompts.inputModeSystemPrompt(input));
     }
 
     private void initializeExplorationContexts(int maxInputTokens, String input, String resolvedMode) {
@@ -1023,24 +919,24 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
         prerequisiteContext = new NodeConversationContext(maxInputTokens);
         prerequisiteContext.setSystemMessage(
-                PromptTemplates.prerequisitesSystemPrompt(input, targetDescription));
+                ExplorationPrompts.prerequisiteSystemPrompt(input, targetDescription));
 
         foundationContext = new NodeConversationContext(maxInputTokens);
         foundationContext.setSystemMessage(
-                PromptTemplates.foundationCheckSystemPrompt(input, targetDescription));
+                ExplorationPrompts.foundationSystemPrompt(input, targetDescription));
 
         problemGraphContext = new NodeConversationContext(maxInputTokens);
         problemGraphContext.setSystemMessage(
-                PromptTemplates.problemStepGraphSystemPrompt(input, targetDescription));
+                ExplorationPrompts.problemGraphSystemPrompt(input, targetDescription));
     }
 
     private String buildExplorationTargetDescription(String input, String resolvedMode) {
         String trimmedInput = input == null ? "" : input.trim();
         if (WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)) {
-            return PromptTemplates.workflowTargetDescription(
+            return TargetDescriptionBuilder.workflowTargetDescription(
                     trimmedInput, trimmedInput, trimmedInput, true);
         }
-        return PromptTemplates.workflowTargetDescription(
+        return TargetDescriptionBuilder.workflowTargetDescription(
                 trimmedInput, trimmedInput, "", false);
     }
 

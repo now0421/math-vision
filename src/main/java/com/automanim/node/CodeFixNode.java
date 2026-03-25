@@ -8,12 +8,16 @@ import com.automanim.model.CodeFixTraceEntry;
 import com.automanim.model.CodeFixTraceReport;
 import com.automanim.model.CodeResult;
 import com.automanim.model.WorkflowKeys;
+import com.automanim.prompt.CodeEvaluationPrompts;
+import com.automanim.prompt.CodeGenerationPrompts;
+import com.automanim.prompt.RenderFixPrompts;
+import com.automanim.prompt.SceneEvaluationPrompts;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
+import com.automanim.util.CodeUtils;
 import com.automanim.util.ConcurrencyUtils;
 import com.automanim.util.JsonUtils;
 import com.automanim.util.NodeConversationContext;
-import com.automanim.util.PromptTemplates;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -102,7 +106,8 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             String fixedCode = extractReturnedCode(response);
             if (fixedCode == null || fixedCode.isBlank()) {
                 result.setFailureReason("Code fix returned no parseable Python code");
-            } else if (normalizeCode(fixedCode).equals(normalizeCode(request.getCode()))) {
+            } else if (CodeUtils.normalizeForComparison(fixedCode)
+                    .equals(CodeUtils.normalizeForComparison(request.getCode()))) {
                 result.setFailureReason("Code fix produced no meaningful code change");
             } else {
                 result.setApplied(true);
@@ -192,20 +197,20 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         String systemPrompt;
 
         if (request.getSource() == CodeFixSource.EVALUATION_REVIEW) {
-            systemPrompt = PromptTemplates.codeRevisionSystemPrompt(targetConcept, targetDescription);
+            systemPrompt = CodeEvaluationPrompts.revisionSystemPrompt(targetConcept, targetDescription);
         } else if (request.getSource() == CodeFixSource.GENERATION_VALIDATION) {
-            systemPrompt = PromptTemplates.codeValidationFixSystemPrompt(targetConcept, targetDescription);
+            systemPrompt = CodeGenerationPrompts.validationFixSystemPrompt(targetConcept, targetDescription);
         } else if (request.getSource() == CodeFixSource.SCENE_LAYOUT_EVALUATION) {
-            systemPrompt = PromptTemplates.sceneLayoutFixSystemPrompt(targetConcept, targetDescription);
+            systemPrompt = SceneEvaluationPrompts.layoutFixSystemPrompt(targetConcept, targetDescription);
         } else {
-            systemPrompt = PromptTemplates.renderFixSystemPrompt(targetConcept, targetDescription);
+            systemPrompt = RenderFixPrompts.systemPrompt(targetConcept, targetDescription);
         }
-        return PromptTemplates.ensureManimSyntaxManual(systemPrompt);
+        return systemPrompt;
     }
 
     private String selectUserPrompt(CodeFixRequest request) {
         if (request.getSource() == CodeFixSource.EVALUATION_REVIEW) {
-            return PromptTemplates.codeRevisionUserPrompt(
+            return CodeEvaluationPrompts.revisionUserPrompt(
                     firstNonBlank(request.getTargetConcept(), request.getSceneName(), "Unknown target"),
                     firstNonBlank(request.getSceneName(), request.getExpectedSceneName(), "MainScene"),
                     defaultJson(request.getStoryboardJson(), "{\"scenes\":[]}"),
@@ -215,21 +220,21 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             );
         }
         if (request.getSource() == CodeFixSource.GENERATION_VALIDATION) {
-            return PromptTemplates.codeValidationFixUserPrompt(
+            return CodeGenerationPrompts.validationFixUserPrompt(
                     firstNonBlank(request.getExpectedSceneName(), request.getSceneName(), "MainScene"),
                     request.getCode(),
                     splitValidationProblems(request.getErrorReason())
             );
         }
         if (request.getSource() == CodeFixSource.SCENE_LAYOUT_EVALUATION) {
-            return PromptTemplates.sceneLayoutFixUserPrompt(
+            return SceneEvaluationPrompts.layoutFixUserPrompt(
                     request.getCode(),
                     firstNonBlank(request.getErrorReason(), "Unknown scene evaluation issue"),
                     defaultJson(request.getSceneEvaluationJson(), "{}"),
                     request.getFixHistory() != null ? request.getFixHistory() : Collections.emptyList()
             );
         }
-        return PromptTemplates.renderFixUserPrompt(
+        return RenderFixPrompts.userPrompt(
                 request.getCode(),
                 firstNonBlank(request.getErrorReason(), "Unknown render failure"),
                 request.getFixHistory() != null ? request.getFixHistory() : Collections.emptyList()
@@ -276,10 +281,6 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             }
         }
         return null;
-    }
-
-    private String normalizeCode(String code) {
-        return code == null ? "" : code.trim().replace("\r\n", "\n");
     }
 
     private double toSeconds(Instant start) {

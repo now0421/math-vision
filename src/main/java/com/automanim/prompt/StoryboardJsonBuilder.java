@@ -1,0 +1,139 @@
+package com.automanim.prompt;
+
+import com.automanim.model.Narrative.Storyboard;
+import com.automanim.model.Narrative.StoryboardScene;
+import com.automanim.model.Narrative.StoryboardObject;
+import com.automanim.model.Narrative.StoryboardAction;
+import com.automanim.util.JsonUtils;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import java.util.List;
+
+/**
+ * Builds compact storyboard JSON for code generation prompts.
+ *
+ * Canonical compact storyboard serializer for code-generation and review prompts.
+ */
+public final class StoryboardJsonBuilder {
+
+    private StoryboardJsonBuilder() {}
+
+    /**
+     * Builds a compact storyboard JSON string optimized for code generation.
+     */
+    public static String buildForCodegen(Storyboard storyboard) {
+        ObjectNode root = JsonUtils.mapper().createObjectNode();
+        if (storyboard == null) {
+            root.putArray("scenes");
+            return JsonUtils.toPrettyJson(root);
+        }
+
+        putNonBlank(root, "continuity_plan", storyboard.getContinuityPlan());
+        putTrimmedStringArray(root, "global_visual_rules", storyboard.getGlobalVisualRules());
+
+        ArrayNode scenesArray = root.putArray("scenes");
+        if (storyboard.getScenes() != null) {
+            for (StoryboardScene scene : storyboard.getScenes()) {
+                if (scene == null) {
+                    continue;
+                }
+                addSceneNode(scenesArray, scene);
+            }
+        }
+
+        return JsonUtils.toPrettyJson(root);
+    }
+
+    private static void addSceneNode(ArrayNode scenesArray, StoryboardScene scene) {
+        ObjectNode sceneNode = scenesArray.addObject();
+
+        putNonBlank(sceneNode, "scene_id", scene.getSceneId());
+        putNonBlank(sceneNode, "title", scene.getTitle());
+        putNonBlank(sceneNode, "narration", scene.getNarration());
+
+        if (scene.getDurationSeconds() > 0) {
+            sceneNode.put("duration_seconds", scene.getDurationSeconds());
+        }
+
+        putNonBlank(sceneNode, "scene_mode", scene.getSceneMode());
+        putNonBlank(sceneNode, "camera_anchor", scene.getCameraAnchor());
+        putNonBlank(sceneNode, "camera_plan", scene.getCameraPlan());
+        putNonBlank(sceneNode, "safe_area_plan", scene.getSafeAreaPlan());
+        putNonBlank(sceneNode, "screen_overlay_plan", scene.getScreenOverlayPlan());
+        putTrimmedStringArray(sceneNode, "step_refs", scene.getStepRefs());
+
+        addEnteringObjects(sceneNode, scene.getEnteringObjects());
+        putTrimmedStringArray(sceneNode, "persistent_objects", scene.getPersistentObjects());
+        putTrimmedStringArray(sceneNode, "exiting_objects", scene.getExitingObjects());
+        addActions(sceneNode, scene.getActions());
+        putTrimmedStringArray(sceneNode, "notes_for_codegen", scene.getNotesForCodegen());
+    }
+
+    private static void addEnteringObjects(ObjectNode sceneNode, List<StoryboardObject> objects) {
+        ArrayNode enteringObjects = sceneNode.putArray("entering_objects");
+        if (objects == null) {
+            return;
+        }
+
+        for (StoryboardObject object : objects) {
+            if (object == null) {
+                continue;
+            }
+            ObjectNode objectNode = enteringObjects.addObject();
+            putNonBlank(objectNode, "id", object.getId());
+            putNonBlank(objectNode, "kind", object.getKind());
+            putNonBlank(objectNode, "content", object.getContent());
+            putNonBlank(objectNode, "placement", object.getPlacement());
+            putNonBlank(objectNode, "style", object.getStyle());
+            putNonBlank(objectNode, "source_node", object.getSourceNode());
+        }
+    }
+
+    private static void addActions(ObjectNode sceneNode, List<StoryboardAction> actions) {
+        ArrayNode actionsArray = sceneNode.putArray("actions");
+        if (actions == null) {
+            return;
+        }
+
+        for (StoryboardAction action : actions) {
+            if (action == null) {
+                continue;
+            }
+            ObjectNode actionNode = actionsArray.addObject();
+            if (action.getOrder() > 0) {
+                actionNode.put("order", action.getOrder());
+            }
+            putNonBlank(actionNode, "type", action.getType());
+            putTrimmedStringArray(actionNode, "targets", action.getTargets());
+            putNonBlank(actionNode, "description", action.getDescription());
+        }
+    }
+
+    private static void putNonBlank(ObjectNode node, String fieldName, String value) {
+        String normalized = sanitize(value);
+        if (!normalized.isEmpty()) {
+            node.put(fieldName, normalized);
+        }
+    }
+
+    private static void putTrimmedStringArray(ObjectNode node, String fieldName, List<String> values) {
+        ArrayNode array = node.putArray(fieldName);
+        if (values == null) {
+            return;
+        }
+        for (String value : values) {
+            String normalized = sanitize(value);
+            if (!normalized.isEmpty()) {
+                array.add(normalized);
+            }
+        }
+    }
+
+    private static String sanitize(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        return text.trim().replaceAll("\\s+", " ");
+    }
+}

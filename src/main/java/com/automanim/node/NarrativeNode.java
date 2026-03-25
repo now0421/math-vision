@@ -9,11 +9,13 @@ import com.automanim.model.Narrative.StoryboardAction;
 import com.automanim.model.Narrative.StoryboardObject;
 import com.automanim.model.Narrative.StoryboardScene;
 import com.automanim.model.WorkflowKeys;
+import com.automanim.prompt.NarrativePrompts;
+import com.automanim.prompt.ToolSchemas;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
 import com.automanim.util.ConcurrencyUtils;
 import com.automanim.util.JsonUtils;
-import com.automanim.util.PromptTemplates;
+import com.automanim.util.TargetDescriptionBuilder;
 import com.automanim.util.TokenEstimator;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
@@ -36,24 +38,6 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
     private static final Logger log = LoggerFactory.getLogger(NarrativeNode.class);
     private static final String TRUNCATION_MARKER = "\n[...truncated...]\n";
-    private static final String NARRATIVE_TOOL = "["
-            + "{"
-            + "  \"type\": \"function\","
-            + "  \"function\": {"
-            + "    \"name\": \"write_storyboard\","
-            + "    \"description\": \"Return a structured storyboard JSON for the planned step progression.\","
-            + "    \"parameters\": {"
-            + "      \"type\": \"object\","
-            + "      \"properties\": {"
-            + "        \"storyboard\": { \"type\": \"object\", \"description\": \"Structured storyboard with continuity-aware scenes and object ids\" },"
-            + "        \"scene_count\": { \"type\": \"integer\", \"description\": \"Estimated number of scenes\" },"
-            + "        \"estimated_duration\": { \"type\": \"integer\", \"description\": \"Estimated total duration in seconds\" }"
-            + "      },"
-            + "      \"required\": [\"storyboard\"]"
-            + "    }"
-            + "  }"
-            + "}"
-            + "]";
 
     private AiClient aiClient;
     private int toolCalls = 0;
@@ -86,7 +70,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
                 .collect(java.util.stream.Collectors.toList());
         String workflowTargetDetails = buildWorkflowTargetDescription(graph, problemMode);
         String workflowTarget = graph.getTargetConcept();
-        String systemPrompt = PromptTemplates.narrativeSystemPrompt(
+        String systemPrompt = NarrativePrompts.systemPrompt(
                 workflowTarget, workflowTargetDetails);
 
         log.info("  Narrative mode: {}, order: {}", resolvedMode, stepOrder);
@@ -113,7 +97,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
             throw new RuntimeException("Narrative composition failed: " + cause.getMessage(), cause);
         }
 
-        String codegenPrompt = PromptTemplates.storyboardCodegenPrompt(
+        String codegenPrompt = NarrativePrompts.storyboardCodegenPrompt(
                 graph.getTargetConcept(), storyboard);
 
         Narrative narrative = new Narrative(
@@ -138,7 +122,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
                                                                     String systemPrompt,
                                                                     int defaultSceneCount,
                                                                     int defaultTotalDuration) {
-        return aiClient.chatWithToolsRawAsync(userPrompt, systemPrompt, NARRATIVE_TOOL)
+        return aiClient.chatWithToolsRawAsync(userPrompt, systemPrompt, ToolSchemas.STORYBOARD)
                 .thenApply(rawResponse -> {
                     toolCalls++;
                     NarrativeDraft draft = buildNarrativeDraft(
@@ -174,8 +158,8 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
                                    int sceneCount,
                                    boolean problemMode) {
         return problemMode
-                ? PromptTemplates.problemNarrativeUserPrompt(targetConcept, context, sceneCount)
-                : PromptTemplates.narrativeUserPrompt(targetConcept, context);
+                ? NarrativePrompts.problemUserPrompt(targetConcept, context, sceneCount)
+                : NarrativePrompts.conceptUserPrompt(targetConcept, context);
     }
 
     private String buildTruncatedContext(String targetConcept,
@@ -614,7 +598,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
 
     private String buildWorkflowTargetDescription(KnowledgeGraph graph, boolean problemMode) {
         KnowledgeNode root = graph.getRootNode();
-        return PromptTemplates.workflowTargetDescription(
+        return TargetDescriptionBuilder.workflowTargetDescription(
                 graph.getTargetConcept(),
                 root != null ? root.getStep() : "",
                 "",

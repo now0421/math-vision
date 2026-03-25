@@ -8,12 +8,17 @@ import com.automanim.model.CodeResult;
 import com.automanim.model.Narrative;
 import com.automanim.model.WorkflowActions;
 import com.automanim.model.WorkflowKeys;
+import com.automanim.node.support.FixRetryState;
+import com.automanim.prompt.CodeGenerationPrompts;
+import com.automanim.prompt.NarrativePrompts;
+import com.automanim.prompt.ToolSchemas;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
+import com.automanim.util.CodeUtils;
 import com.automanim.util.ConcurrencyUtils;
 import com.automanim.util.JsonUtils;
 import com.automanim.util.NodeConversationContext;
-import com.automanim.util.PromptTemplates;
+import com.automanim.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
@@ -25,8 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Stage 2: Code Generation - generates executable Manim Python code
@@ -35,37 +38,7 @@ import java.util.regex.Pattern;
 public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeGenerationInput, CodeResult, String> {
 
     private static final Logger log = LoggerFactory.getLogger(CodeGenerationNode.class);
-    private static final Pattern MAIN_SCENE_CLASS = Pattern.compile("class\\s+MainScene\\s*\\(.*?Scene.*?\\)");
-    private static final Pattern ANY_SCENE_CLASS = Pattern.compile("class\\s+[^\\s(]+\\s*\\((.*?Scene.*?)\\)");
-    private static final Pattern NON_ASCII_IDENTIFIER = Pattern.compile(
-            "(?:class|def)\\s+[^\\x00-\\x7F]+|self\\.[^\\x00-\\x7F]+|\\b[^\\x00-\\x7F_][^\\s(=:,]*");
     private static final int MAX_VALIDATION_FIX_ATTEMPTS = 1;
-    private static final String EXPECTED_SCENE_NAME = "MainScene";
-
-    private static final String MANIM_CODE_TOOL = "["
-            + "{"
-            + "  \"type\": \"function\","
-            + "  \"function\": {"
-            + "    \"name\": \"write_manim_code\","
-            + "    \"description\": \"Return complete Manim Community Python animation code.\","
-            + "    \"parameters\": {"
-            + "      \"type\": \"object\","
-            + "      \"properties\": {"
-            + "        \"code\": { \"type\": \"string\", \"description\": \"Complete Manim Python source code\" },"
-            + "        \"scene_name\": { \"type\": \"string\", \"description\": \"Primary scene class name in ASCII\" },"
-            + "        \"description\": { \"type\": \"string\", \"description\": \"Short summary of the animation\" }"
-            + "      },"
-            + "      \"required\": [\"code\"]"
-            + "    }"
-            + "  }"
-            + "}"
-            + "]";
-
-    // Validation patterns for mandatory rules
-    private static final Pattern RULE1_VIOLATION = Pattern.compile(
-            "self\\.\\w+\\s*=\\s*(?:MathTex|Text|VGroup|Circle|Square|Line|Dot|Arrow|Axes|NumberPlane)");
-    private static final Pattern RULE3_VIOLATION = Pattern.compile(
-            "\\w+\\[\\d+\\]\\[\\d+:\\d+\\]");
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
@@ -73,19 +46,19 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     private int toolCalls = 0;
 
     public CodeGenerationNode() {
-        super(2, 2000); // 2 retries with 2-second wait
+        super(2, 2000);
     }
 
     public static class CodeGenerationInput {
         private final Narrative narrative;
         private final CodeResult existingCodeResult;
         private final CodeFixResult previousFixResult;
-        private final GenerationFixState fixState;
+        private final FixRetryState fixState;
 
         public CodeGenerationInput(Narrative narrative,
                                    CodeResult existingCodeResult,
                                    CodeFixResult previousFixResult,
-                                   GenerationFixState fixState) {
+                                   FixRetryState fixState) {
             this.narrative = narrative;
             this.existingCodeResult = existingCodeResult;
             this.previousFixResult = previousFixResult;
@@ -95,7 +68,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         public Narrative narrative() { return narrative; }
         public CodeResult existingCodeResult() { return existingCodeResult; }
         public CodeFixResult previousFixResult() { return previousFixResult; }
-        public GenerationFixState fixState() { return fixState; }
+        public FixRetryState fixState() { return fixState; }
     }
 
     @Override
@@ -103,15 +76,15 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
         this.workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
 
-        GenerationFixState fixState = (GenerationFixState) ctx.get(WorkflowKeys.CODE_GENERATION_FIX_STATE);
+        FixRetryState fixState = (FixRetryState) ctx.get(WorkflowKeys.CODE_GENERATION_FIX_STATE);
         if (fixState == null) {
-            fixState = new GenerationFixState();
+            fixState = new FixRetryState();
             ctx.put(WorkflowKeys.CODE_GENERATION_FIX_STATE, fixState);
         }
 
         CodeFixResult previousFixResult = consumeFixResult(ctx, CodeFixSource.GENERATION_VALIDATION);
         if (previousFixResult != null) {
-            fixState.fixToolCalls += previousFixResult.getToolCalls();
+            fixState.addFixToolCalls(previousFixResult.getToolCalls());
         }
 
         return new CodeGenerationInput(
@@ -128,15 +101,13 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         toolCalls = 0;
 
         if (this.conversationContext == null) {
-            int maxInputTokens = (workflowConfig != null && workflowConfig.getModelConfig() != null)
-                    ? workflowConfig.getModelConfig().getMaxInputTokens()
-                    : 131072;
+            int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
             this.conversationContext = new NodeConversationContext(maxInputTokens);
         }
 
         Narrative narrative = input.narrative();
-        GenerationFixState fixState = input.fixState();
-        fixState.requestFix = false;
+        FixRetryState fixState = input.fixState();
+        fixState.setRequestFix(false);
 
         if (narrative == null && input.existingCodeResult() == null) {
             log.warn("Narrative is empty, cannot generate code");
@@ -148,58 +119,54 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         String targetDescription = narrative != null ? narrative.getTargetDescription()
                 : input.existingCodeResult().getTargetDescription();
         this.conversationContext.setSystemMessage(
-                PromptTemplates.codeGenerationSystemPrompt(targetConcept, targetDescription));
+                CodeGenerationPrompts.systemPrompt(targetConcept, targetDescription));
 
         String code;
-        String sceneName = EXPECTED_SCENE_NAME;
+        String sceneName = CodeUtils.EXPECTED_SCENE_NAME;
         if (input.previousFixResult() != null) {
             log.info("  Re-validating code returned from shared CodeFixNode");
             code = extractRetriedCode(input);
         } else {
-            String userPrompt = buildGenerationPrompt(narrative, EXPECTED_SCENE_NAME);
+            String userPrompt = buildGenerationPrompt(narrative, CodeUtils.EXPECTED_SCENE_NAME);
             if (userPrompt.isBlank()) {
                 log.warn("Narrative prompt is empty, cannot generate code");
                 return new CodeResult("", "", "Empty narrative", targetConcept, targetDescription);
             }
 
             try {
-                CodeDraft draft = requestCodeAsync(userPrompt, EXPECTED_SCENE_NAME).join();
-                code = enforceMainSceneClassName(draft.code);
+                CodeDraft draft = requestCodeAsync(userPrompt, CodeUtils.EXPECTED_SCENE_NAME).join();
+                code = CodeUtils.enforceMainSceneName(draft.code);
                 sceneName = draft.sceneName;
             } catch (CompletionException e) {
                 Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
                 log.error("  Code generation failed: {}", cause.getMessage());
                 code = "";
             }
-            sceneName = EXPECTED_SCENE_NAME;
+            sceneName = CodeUtils.EXPECTED_SCENE_NAME;
         }
 
-        code = enforceMainSceneClassName(code);
-        List<String> violations = validateCode(code);
+        code = CodeUtils.enforceMainSceneName(code);
+        List<String> violations = CodeUtils.validateFull(code);
 
         if (input.previousFixResult() != null) {
             if (!violations.isEmpty()) {
-                if (fixState.originalCodeBeforeFix != null
-                        && violations.size() >= fixState.originalViolationCount) {
+                if (fixState.getOriginalCodeBeforeFix() != null
+                        && violations.size() >= fixState.getOriginalIssueCount()) {
                     log.warn("  Shared code fix did not improve validation violations ({} -> {}),"
                                     + " keeping original generated code",
-                            fixState.originalViolationCount, violations.size());
-                    code = fixState.originalCodeBeforeFix;
-                    violations = validateCode(code);
+                            fixState.getOriginalIssueCount(), violations.size());
+                    code = fixState.getOriginalCodeBeforeFix();
+                    violations = CodeUtils.validateFull(code);
                 } else {
                     log.info("  Shared code fix reduced violations from {} to {}",
-                            fixState.originalViolationCount, violations.size());
+                            fixState.getOriginalIssueCount(), violations.size());
                 }
             }
             fixState.clearPending();
-        } else if (!violations.isEmpty() && fixState.attempts < MAX_VALIDATION_FIX_ATTEMPTS) {
+        } else if (!violations.isEmpty() && fixState.getAttempts() < MAX_VALIDATION_FIX_ATTEMPTS) {
             log.warn("  Code validation found {} violations, routing to shared CodeFixNode",
                     violations.size());
-            fixState.requestFix = true;
-            fixState.attempts++;
-            fixState.originalCodeBeforeFix = code;
-            fixState.originalViolationCount = violations.size();
-            fixState.validationIssues = new ArrayList<>(violations);
+            fixState.recordFixRequest(code, violations);
         }
 
         CodeResult result = new CodeResult(
@@ -209,7 +176,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                 targetConcept,
                 targetDescription
         );
-        result.setToolCalls(toolCalls + fixState.fixToolCalls + fixState.generationToolCallsCarryover);
+        result.setToolCalls(toolCalls + fixState.totalToolCalls());
 
         log.info("Code generated: {} lines, scene={}", result.codeLineCount(), sceneName);
         return result;
@@ -218,7 +185,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     private CompletableFuture<CodeDraft> requestCodeAsync(String userPrompt, String expectedSceneName) {
         conversationContext.addUserMessage(userPrompt);
 
-        return aiClient.chatWithToolsRawAsync(conversationContext, MANIM_CODE_TOOL)
+        return aiClient.chatWithToolsRawAsync(conversationContext, ToolSchemas.MANIM_CODE)
                 .thenApply(rawResponse -> {
                     toolCalls++;
 
@@ -233,7 +200,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                     if (code == null || code.isBlank()) {
                         String textContent = JsonUtils.extractBestEffortTextFromResponse(rawResponse);
                         if (textContent != null) {
-                            code = JsonUtils.extractCodeBlock(textContent);
+                            code = CodeUtils.extractCode(textContent);
                         }
                     }
 
@@ -260,7 +227,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                             .thenApply(response -> {
                                 toolCalls++;
                                 conversationContext.addAssistantMessage(response);
-                                return new CodeDraft(JsonUtils.extractCodeBlock(response), expectedSceneName);
+                                return new CodeDraft(CodeUtils.extractCode(response), expectedSceneName);
                             });
                 });
     }
@@ -274,8 +241,8 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             FileOutputService.saveCodeResult(outputDir, codeResult);
         }
 
-        if (input.fixState().requestFix) {
-            input.fixState().generationToolCallsCarryover += toolCalls;
+        if (input.fixState().isRequestFix()) {
+            input.fixState().addCarryoverToolCalls(toolCalls);
             ctx.put(WorkflowKeys.CODE_FIX_REQUEST, buildValidationFixRequest(codeResult, input.fixState()));
             return WorkflowActions.FIX_CODE;
         }
@@ -287,7 +254,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     private String buildGenerationPrompt(Narrative narrative, String expectedSceneName) {
         String basePrompt;
         if (narrative.hasStoryboard()) {
-            basePrompt = PromptTemplates.storyboardCodegenPrompt(
+            basePrompt = NarrativePrompts.storyboardCodegenPrompt(
                     narrative.getTargetConcept(),
                     narrative.getStoryboard());
         } else {
@@ -305,77 +272,16 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                 + "\nDo not use Chinese, pinyin, mojibake, or any non-ASCII text in Python identifiers.";
     }
 
-    private List<String> validateCode(String code) {
-        List<String> violations = new ArrayList<>();
-        if (code == null || code.isBlank()) {
-            violations.add("Code is empty");
-            return violations;
-        }
-
-        if (!code.contains("from manim import")) {
-            violations.add("Missing 'from manim import' statement");
-        }
-        if (!MAIN_SCENE_CLASS.matcher(code).find()) {
-            violations.add("Scene class must be named MainScene");
-        }
-        if (!code.contains("def construct(")) {
-            violations.add("Missing construct() method");
-        }
-        String nonAsciiEvidence = findFirstMatchEvidence(code, NON_ASCII_IDENTIFIER);
-        if (nonAsciiEvidence != null) {
-            violations.add("Contains non-ASCII class, method, or variable identifiers"
-                    + " (" + nonAsciiEvidence + ")");
-        }
-
-        String rule1Evidence = findFirstMatchEvidence(code, RULE1_VIOLATION);
-        if (rule1Evidence != null) {
-            violations.add("Rule 1 violation: stores mobjects on instance fields across scenes"
-                    + " (" + rule1Evidence + ")");
-        }
-
-        String rule3Evidence = findFirstMatchEvidence(code, RULE3_VIOLATION);
-        if (rule3Evidence != null) {
-            violations.add("Rule 3 violation: hardcoded MathTex subobject indexing"
-                    + " (" + rule3Evidence + ")");
-        }
-
-        return violations;
-    }
-
-    private String findFirstMatchEvidence(String code, Pattern pattern) {
-        if (code == null || code.isBlank() || pattern == null) {
-            return null;
-        }
-
-        String[] lines = code.split("\\R");
-        for (int i = 0; i < lines.length; i++) {
-            Matcher matcher = pattern.matcher(lines[i]);
-            if (matcher.find()) {
-                String fragment = matcher.group();
-                if (fragment == null || fragment.isBlank()) {
-                    fragment = lines[i].trim();
-                }
-                fragment = fragment.replace("\t", " ").trim();
-                if (fragment.length() > 120) {
-                    fragment = fragment.substring(0, 120) + "...";
-                }
-                return "line " + (i + 1) + ": " + fragment;
-            }
-        }
-
-        return null;
-    }
-
-    private CodeFixRequest buildValidationFixRequest(CodeResult codeResult, GenerationFixState fixState) {
+    private CodeFixRequest buildValidationFixRequest(CodeResult codeResult, FixRetryState fixState) {
         CodeFixRequest request = new CodeFixRequest();
         request.setSource(CodeFixSource.GENERATION_VALIDATION);
         request.setReturnAction(WorkflowActions.RETRY_CODE_GENERATION);
         request.setCode(codeResult.getManimCode());
-        request.setErrorReason(String.join("\n", fixState.validationIssues));
+        request.setErrorReason(String.join("\n", fixState.getCurrentIssues()));
         request.setTargetConcept(codeResult.getTargetConcept());
         request.setTargetDescription(codeResult.getTargetDescription());
         request.setSceneName(codeResult.getSceneName());
-        request.setExpectedSceneName(EXPECTED_SCENE_NAME);
+        request.setExpectedSceneName(CodeUtils.EXPECTED_SCENE_NAME);
         return request;
     }
 
@@ -398,38 +304,6 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             return input.previousFixResult().getFixedCode();
         }
         return "";
-    }
-
-    private String enforceMainSceneClassName(String code) {
-        if (code == null || code.isBlank()) {
-            return code;
-        }
-        return ANY_SCENE_CLASS.matcher(code)
-                .replaceFirst("class MainScene($1)");
-    }
-
-    static final class GenerationFixState {
-        private int attempts;
-        private int fixToolCalls;
-        private int generationToolCallsCarryover;
-        private boolean requestFix;
-        private String originalCodeBeforeFix;
-        private int originalViolationCount;
-        private List<String> validationIssues = new ArrayList<>();
-
-        void clearPending() {
-            requestFix = false;
-            originalCodeBeforeFix = null;
-            originalViolationCount = 0;
-            validationIssues = new ArrayList<>();
-        }
-
-        void reset() {
-            attempts = 0;
-            fixToolCalls = 0;
-            generationToolCallsCarryover = 0;
-            clearPending();
-        }
     }
 
     private static final class CodeDraft {

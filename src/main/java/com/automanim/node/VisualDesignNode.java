@@ -4,12 +4,14 @@ import com.automanim.config.WorkflowConfig;
 import com.automanim.model.KnowledgeGraph;
 import com.automanim.model.KnowledgeNode;
 import com.automanim.model.WorkflowKeys;
+import com.automanim.prompt.ToolSchemas;
+import com.automanim.prompt.VisualDesignPrompts;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
 import com.automanim.util.AiRequestUtils;
 import com.automanim.util.ConcurrencyUtils;
 import com.automanim.util.NodeConversationContext;
-import com.automanim.util.PromptTemplates;
+import com.automanim.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
@@ -17,7 +19,6 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,32 +39,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeGraph, String> {
 
     private static final Logger log = LoggerFactory.getLogger(VisualDesignNode.class);
-
-    private static final String VISUAL_DESIGN_TOOL = "["
-            + "{"
-            + "  \"type\": \"function\","
-            + "  \"function\": {"
-            + "    \"name\": \"write_visual_design\","
-            + "    \"description\": \"Return a visual design spec for a teaching-step animation scene.\","
-            + "    \"parameters\": {"
-            + "      \"type\": \"object\","
-            + "      \"properties\": {"
-            + "        \"visual_description\": { \"type\": \"string\", \"description\": \"Main visual objects and shapes\" },"
-            + "        \"scene_mode\": { \"type\": \"string\", \"description\": \"Use '2d' by default, or '3d' only when depth/camera control is genuinely needed\" },"
-            + "        \"camera_plan\": { \"type\": \"string\", \"description\": \"Concise camera orientation or motion plan, especially for 3D scenes\" },"
-            + "        \"screen_overlay_plan\": { \"type\": \"string\", \"description\": \"What text or formulas stay fixed in frame when the camera moves\" },"
-            + "        \"color_scheme\": { \"type\": \"string\", \"description\": \"Color scheme summary\" },"
-            + "        \"animation_description\": { \"type\": \"string\", \"description\": \"Animation feel and transitions\" },"
-            + "        \"transitions\": { \"type\": \"string\", \"description\": \"Scene transition style\" },"
-            + "        \"duration\": { \"type\": \"number\", \"description\": \"Duration in seconds\" },"
-            + "        \"layout\": { \"type\": \"string\", \"description\": \"Relative projected layout intent inside a 16:9 frame, without absolute coordinates\" },"
-            + "        \"color_palette\": { \"type\": \"array\", \"items\": { \"type\": \"string\" }, \"description\": \"Preferred Manim color names\" }"
-            + "      },"
-            + "      \"required\": [\"visual_description\", \"color_scheme\", \"layout\"]"
-            + "    }"
-            + "  }"
-            + "}"
-            + "]";
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
@@ -102,14 +77,12 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         this.graph = graph;
         this.globalStyleGuide = buildGlobalStyleGuide(graph);
 
-        int maxInputTokens = (workflowConfig != null && workflowConfig.getModelConfig() != null)
-                ? workflowConfig.getModelConfig().getMaxInputTokens()
-                : 131072;
+        int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
         String workflowTarget = graph != null ? graph.getTargetConcept() : "";
         this.conversationContext = new NodeConversationContext(maxInputTokens);
-        this.conversationContext.setSystemMessage(PromptTemplates.visualDesignSystemPrompt(
+        this.conversationContext.setSystemMessage(VisualDesignPrompts.systemPrompt(
                 workflowTarget,
-                buildWorkflowTargetDescription(graph)));
+                TargetDescriptionBuilder.build(graph, null)));
 
         try {
             return designGraph(graph);
@@ -199,7 +172,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                         node.getStep(),
                         conversationContext,
                         userPrompt.toString(),
-                        VISUAL_DESIGN_TOOL,
+                        ToolSchemas.VISUAL_DESIGN,
                         () -> toolCalls.incrementAndGet()
                 ))
                 .thenAccept(data -> {
@@ -215,10 +188,6 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                 });
     }
 
-    /**
-     * Designs from foundations upward, so direct prerequisites are finalized
-     * before their dependent step is designed.
-     */
     private String buildPrerequisiteSpecContext(KnowledgeNode node) {
         List<KnowledgeNode> prerequisites = getNearestPrerequisites(node);
         if (prerequisites.isEmpty()) {
@@ -280,31 +249,6 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         return node != null;
     }
 
-    private String buildWorkflowTargetDescription(KnowledgeGraph graph) {
-        KnowledgeNode root = graph != null ? graph.getRootNode() : null;
-        if (graph != null && graph.isProblemMode()) {
-            StringBuilder sb = new StringBuilder();
-            appendLabeledLine(sb, "Original problem", graph.getTargetConcept());
-            appendLabeledLine(sb, "Final conclusion", root != null ? root.getStep() : "");
-            String solutionChain = buildProblemSolutionChainSummary();
-            if (!solutionChain.isBlank()) {
-                if (sb.length() > 0) {
-                    sb.append("\n");
-                }
-                sb.append("Ordered solution-step chain:\n").append(solutionChain);
-            }
-            String detailedTarget = sb.toString().trim();
-            if (!detailedTarget.isEmpty()) {
-                return detailedTarget;
-            }
-        }
-        return PromptTemplates.workflowTargetDescription(
-                graph != null ? graph.getTargetConcept() : "",
-                root != null ? root.getStep() : "",
-                "",
-                graph != null && graph.isProblemMode());
-    }
-
     private String buildCurrentStepPrompt(KnowledgeNode node) {
         StringBuilder sb = new StringBuilder();
         sb.append("Current step:\n");
@@ -328,7 +272,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
             if (!dependents.isEmpty()) {
                 sb.append("Direct downstream steps:\n");
                 for (KnowledgeNode dependent : dependents) {
-                    appendStepLine(sb, dependent);
+                    sb.append("- ").append(dependent.getStep()).append("\n");
                 }
             }
         }
@@ -344,17 +288,17 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
 
         StringBuilder sb = new StringBuilder();
         sb.append("Problem context (source of truth):\n");
-        appendLabeledLine(sb, "- Statement", graph.getTargetConcept());
+        sb.append("- Statement: ").append(graph.getTargetConcept()).append("\n");
 
         List<KnowledgeNode> prerequisites = graph.getPrerequisites(currentStep.getId());
         if (!prerequisites.isEmpty()) {
             sb.append("Direct prerequisite steps for this node:\n");
             for (KnowledgeNode prerequisite : prerequisites) {
-                appendStepLine(sb, prerequisite);
+                sb.append("- ").append(prerequisite.getStep()).append("\n");
             }
         }
 
-        String solutionChain = buildProblemSolutionChainSummary(currentStep);
+        String solutionChain = TargetDescriptionBuilder.buildSolutionChain(graph, currentStep);
         if (!solutionChain.isBlank()) {
             sb.append("Ordered solution-step chain (do not invent extra steps):\n")
                     .append(solutionChain);
@@ -362,47 +306,6 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         sb.append("Design only the current step, but keep object identities, notation, and"
                 + " relative spatial relationships consistent with the full solution.\n");
         return sb.toString().trim();
-    }
-
-    private String buildProblemSolutionChainSummary() {
-        return buildProblemSolutionChainSummary(null);
-    }
-
-    private String buildProblemSolutionChainSummary(KnowledgeNode currentStep) {
-        if (graph == null || !graph.isProblemMode()) {
-            return "";
-        }
-
-        List<KnowledgeNode> steps = graph.topologicalOrder();
-        if (steps.isEmpty()) {
-            return "";
-        }
-
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < steps.size(); i++) {
-            KnowledgeNode step = steps.get(i);
-            String marker = currentStep != null && step.getId().equals(currentStep.getId()) ? "-> " : "   ";
-            sb.append(marker)
-                    .append(i + 1)
-                    .append(". ")
-                    .append(step.getStep());
-            sb.append("\n");
-        }
-        return sb.toString();
-    }
-
-    private void appendLabeledLine(StringBuilder sb, String label, String value) {
-        if (sb == null || value == null || value.isBlank()) {
-            return;
-        }
-        sb.append(label).append(": ").append(value.trim()).append("\n");
-    }
-
-    private void appendStepLine(StringBuilder sb, KnowledgeNode step) {
-        if (sb == null || step == null) {
-            return;
-        }
-        sb.append("- ").append(step.getStep()).append("\n");
     }
 
     private void applyVisualSpec(KnowledgeNode node, JsonNode data) {

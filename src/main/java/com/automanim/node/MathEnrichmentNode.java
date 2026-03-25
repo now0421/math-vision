@@ -4,20 +4,20 @@ import com.automanim.config.WorkflowConfig;
 import com.automanim.model.KnowledgeGraph;
 import com.automanim.model.KnowledgeNode;
 import com.automanim.model.WorkflowKeys;
+import com.automanim.prompt.EnrichmentPrompts;
+import com.automanim.prompt.ToolSchemas;
 import com.automanim.service.AiClient;
 import com.automanim.util.AiRequestUtils;
 import com.automanim.util.ConceptUtils;
 import com.automanim.util.ConcurrencyUtils;
-import com.automanim.util.JsonUtils;
 import com.automanim.util.NodeConversationContext;
-import com.automanim.util.PromptTemplates;
+import com.automanim.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,35 +29,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Stage 1a: Mathematical Enrichment - adds equations and definitions to each
  * node in the knowledge graph.
- *
- * Enrichment is fully independent across nodes, so the whole graph is scheduled
- * immediately and only limited by maxConcurrent. Repeated steps with the
- * same animation intent share the same in-flight future so concurrent
- * duplicates do not trigger duplicate calls.
  */
 public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeGraph, String> {
 
     private static final Logger log = LoggerFactory.getLogger(MathEnrichmentNode.class);
-
-    private static final String MATH_CONTENT_TOOL = "["
-            + "{"
-            + "  \"type\": \"function\","
-            + "  \"function\": {"
-            + "    \"name\": \"write_mathematical_content\","
-            + "    \"description\": \"Return mathematical content for a teaching step.\","
-            + "    \"parameters\": {"
-            + "      \"type\": \"object\","
-            + "      \"properties\": {"
-            + "        \"equations\": { \"type\": \"array\", \"items\": { \"type\": \"string\" }, \"description\": \"LaTeX equations\" },"
-            + "        \"definitions\": { \"type\": \"object\", \"additionalProperties\": { \"type\": \"string\" }, \"description\": \"Symbol-to-meaning map\" },"
-            + "        \"interpretation\": { \"type\": \"string\", \"description\": \"Short explanation when useful\" },"
-            + "        \"examples\": { \"type\": \"array\", \"items\": { \"type\": \"string\" }, \"description\": \"Optional examples when useful\" }"
-            + "      },"
-            + "      \"required\": [\"equations\", \"definitions\"]"
-            + "    }"
-            + "  }"
-            + "}"
-            + "]";
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
@@ -94,14 +69,12 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         aiCallLimiter = new ConcurrencyUtils.AsyncLimiter(concurrency);
         this.graph = graph;
 
-        int maxInputTokens = (workflowConfig != null && workflowConfig.getModelConfig() != null)
-                ? workflowConfig.getModelConfig().getMaxInputTokens()
-                : 131072;
+        int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
         String workflowTarget = graph != null ? graph.getTargetConcept() : "";
         this.conversationContext = new NodeConversationContext(maxInputTokens);
-        this.conversationContext.setSystemMessage(PromptTemplates.mathEnrichmentSystemPrompt(
+        this.conversationContext.setSystemMessage(EnrichmentPrompts.systemPrompt(
                 workflowTarget,
-                buildWorkflowTargetDescription(graph)));
+                TargetDescriptionBuilder.build(graph, null)));
 
         try {
             return enrichGraph(graph);
@@ -203,7 +176,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
                 node.getStep(),
                 conversationContext,
                 userPrompt,
-                MATH_CONTENT_TOOL,
+                ToolSchemas.MATH_ENRICHMENT,
                 () -> toolCalls.incrementAndGet()
         ));
     }
@@ -220,28 +193,6 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         return node != null;
     }
 
-    private String buildWorkflowTargetDescription(KnowledgeGraph graph) {
-        KnowledgeNode root = graph != null ? graph.getRootNode() : null;
-        boolean problemMode = graph != null && graph.isProblemMode();
-        if (problemMode && graph != null) {
-            StringBuilder sb = new StringBuilder();
-            sb.append("Target problem: ").append(graph.getTargetConcept()).append("\n");
-            if (root != null) {
-                sb.append("Final conclusion: ").append(root.getStep()).append("\n");
-            }
-            String stepChain = buildProblemSolutionChainSummary(graph, null);
-            if (!stepChain.isBlank()) {
-                sb.append("Ordered solution-step chain:\n").append(stepChain);
-            }
-            return sb.toString().trim();
-        }
-        return PromptTemplates.workflowTargetDescription(
-                graph != null ? graph.getTargetConcept() : "",
-                root != null ? root.getStep() : "",
-                "",
-                problemMode);
-    }
-
     private String buildCurrentStepPrompt(KnowledgeNode node) {
         StringBuilder sb = new StringBuilder();
         sb.append("Current step:\n");
@@ -254,7 +205,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
             if (!prerequisites.isEmpty()) {
                 sb.append("Direct prerequisite steps:\n");
                 for (KnowledgeNode prerequisite : prerequisites) {
-                    appendStepLine(sb, prerequisite);
+                    sb.append("- ").append(prerequisite.getStep()).append("\n");
                 }
             }
 
@@ -262,11 +213,11 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
             if (!dependents.isEmpty()) {
                 sb.append("Direct downstream steps:\n");
                 for (KnowledgeNode dependent : dependents) {
-                    appendStepLine(sb, dependent);
+                    sb.append("- ").append(dependent.getStep()).append("\n");
                 }
             }
 
-            String stepChain = buildProblemSolutionChainSummary(graph, node);
+            String stepChain = TargetDescriptionBuilder.buildSolutionChain(graph, node);
             if (!stepChain.isBlank()) {
                 sb.append("Current step inside the ordered solution-step chain:\n")
                         .append(stepChain);
@@ -275,36 +226,6 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
 
         sb.append("Return only the mathematical content needed for this current step.");
         return sb.toString();
-    }
-
-    private String buildProblemSolutionChainSummary(KnowledgeGraph graph, KnowledgeNode currentStep) {
-        if (graph == null || !graph.isProblemMode()) {
-            return "";
-        }
-
-        List<KnowledgeNode> steps = graph.topologicalOrder();
-        if (steps.isEmpty()) {
-            return "";
-        }
-
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < steps.size(); i++) {
-            KnowledgeNode step = steps.get(i);
-            String marker = currentStep != null && step.getId().equals(currentStep.getId()) ? "-> " : "   ";
-            sb.append(marker)
-                    .append(i + 1)
-                    .append(". ")
-                    .append(step.getStep());
-            sb.append("\n");
-        }
-        return sb.toString();
-    }
-
-    private void appendStepLine(StringBuilder sb, KnowledgeNode step) {
-        if (sb == null || step == null) {
-            return;
-        }
-        sb.append("- ").append(step.getStep()).append("\n");
     }
 
     private void applyContent(KnowledgeNode node, JsonNode data) {
