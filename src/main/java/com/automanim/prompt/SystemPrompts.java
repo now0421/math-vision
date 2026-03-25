@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 public final class SystemPrompts {
 
     private static final String MANIM_SYNTAX_MANUAL_RESOURCE = "llm/manim_syntax_manual.md";
+    private static final String MANIM_STYLE_REFERENCE_RESOURCE = "llm/manim_style_reference.md";
     private static final String WORKFLOW_OVERVIEW =
             "Stage 0 Exploration -> Stage 1a Mathematical Enrichment -> Stage 1b Visual Design"
                     + " -> Stage 1c Narrative Composition -> Stage 2 Code Generation"
@@ -19,6 +20,10 @@ public final class SystemPrompts {
 
     private static final class ManimSyntaxManualHolder {
         private static final String VALUE = loadPromptResource(MANIM_SYNTAX_MANUAL_RESOURCE);
+    }
+
+    private static final class ManimStyleReferenceHolder {
+        private static final String VALUE = loadPromptResource(MANIM_STYLE_REFERENCE_RESOURCE);
     }
 
     public static String sanitize(String text, String defaultValue) {
@@ -57,6 +62,17 @@ public final class SystemPrompts {
                 + "\n\nManim syntax reference manual:\n"
                 + "Follow the guidance below whenever you generate or revise Manim code.\n\n"
                 + ManimSyntaxManualHolder.VALUE;
+    }
+
+    public static String ensureManimStyleReference(String prompt) {
+        String base = prompt == null ? "" : prompt;
+        if (base.contains(ManimStyleReferenceHolder.VALUE)) {
+            return base;
+        }
+        return base
+                + "\n\nManim style reference:\n"
+                + "Follow the guidance below whenever you assign storyboard-level colors or style instructions.\n\n"
+                + ManimStyleReferenceHolder.VALUE;
     }
 
     private static String loadPromptResource(String resourceName) {

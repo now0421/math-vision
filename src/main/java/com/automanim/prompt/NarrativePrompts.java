@@ -18,6 +18,7 @@ public final class NarrativePrompts {
                     + "- Keep simultaneous main visual elements around 6 to 8\n"
                     + "- Place formulas near edges, not over the main geometry\n"
                     + "- Keep the diagram stable across scenes and change only the necessary layer\n"
+                    + "- When an object depends on another object's position, encode that dependency explicitly with `behavior`, `anchor_id`, and `dependency_note`\n"
                     + "\n"
                     + "3D rules:\n"
                     + "- Use `scene_mode = 3d` only when depth is genuinely needed\n"
@@ -29,6 +30,7 @@ public final class NarrativePrompts {
                     + "- Use enrichment fields only when they sharpen the explanation\n"
                     + "- If the target is a problem, every scene must directly advance the solution\n"
                     + "- Prefer 3 to 5 strong scenes for problem-solving unless more are truly needed\n"
+                    + "- If a point or marker moves, its label should usually be a separate object with `behavior = follows_anchor`\n"
                     + "\n"
                     + "Output format:\n"
                     + "Return a JSON object with this shape:\n"
@@ -62,7 +64,10 @@ public final class NarrativePrompts {
                     + "          \"content\": \"string, mathematical or visual content shown by the object\",\n"
                     + "          \"placement\": \"string, explicit placement relative to the frame or existing anchors\",\n"
                     + "          \"style\": \"string, optional style or emphasis instructions\",\n"
-                    + "          \"source_node\": \"string, originating step or node when relevant\"\n"
+                    + "          \"source_node\": \"string, originating step or node when relevant\",\n"
+                    + "          \"behavior\": \"string, object behavior such as static|follows_anchor|derived|fixed_overlay\",\n"
+                    + "          \"anchor_id\": \"string, id of the object this one should stay attached to when relevant\",\n"
+                    + "          \"dependency_note\": \"string, short implementation note describing dynamic attachment or derivation\"\n"
                     + "        }\n"
                     + "      ],\n"
                     + "      \"persistent_objects\": [\n"
@@ -118,7 +123,10 @@ public final class NarrativePrompts {
                     + "          \"content\": \"The main geometry or visual setup for the scene\",\n"
                     + "          \"placement\": \"Centered slightly left of frame center\",\n"
                     + "          \"style\": \"Primary visual anchor\",\n"
-                    + "          \"source_node\": \"problem_setup\"\n"
+                    + "          \"source_node\": \"problem_setup\",\n"
+                    + "          \"behavior\": \"static\",\n"
+                    + "          \"anchor_id\": \"\",\n"
+                    + "          \"dependency_note\": \"\"\n"
                     + "        }\n"
                     + "      ],\n"
                     + "      \"persistent_objects\": [],\n"
@@ -144,13 +152,13 @@ public final class NarrativePrompts {
     private NarrativePrompts() {}
 
     public static String systemPrompt(String targetConcept, String targetDescription) {
-        return SystemPrompts.buildWorkflowPrefix(
+        return SystemPrompts.ensureManimStyleReference(SystemPrompts.buildWorkflowPrefix(
                 "Stage 1c / Narrative Composition",
                 "Storyboard composition",
                 targetConcept,
                 targetDescription,
                 true
-        ) + SYSTEM;
+        ) + SYSTEM);
     }
 
     public static String conceptUserPrompt(String targetConcept, String stepContext) {
@@ -183,7 +191,8 @@ public final class NarrativePrompts {
                         + "- If an id persists, keep or transform the same mobject instead of redrawing it.\n"
                         + "- If a scene uses `scene_mode = 3d`, use `ThreeDScene`, follow `camera_plan`, and judge layout in projected screen space.\n"
                         + "- Use `screen_overlay_plan` with `add_fixed_in_frame_mobjects` for fixed explanatory text.\n"
-                        + "- Respect `safe_area_plan` and dynamic attachment for labels on moving objects.\n\n"
+                        + "- Respect `safe_area_plan` and dynamic attachment for labels on moving objects.\n"
+                        + "- Read `behavior`, `anchor_id`, and `dependency_note` literally: if an object follows a moving anchor, implement it with `always_redraw(...)` or an updater.\n\n"
                         + "Compact storyboard JSON:\n```json\n%s\n```\n\n"
                         + "Remember: Return ONLY the single Python code block. No explanation.",
                 targetConcept, storyboardJson);

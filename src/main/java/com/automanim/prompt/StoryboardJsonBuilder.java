@@ -87,6 +87,9 @@ public final class StoryboardJsonBuilder {
             putNonBlank(objectNode, "placement", object.getPlacement());
             putNonBlank(objectNode, "style", object.getStyle());
             putNonBlank(objectNode, "source_node", object.getSourceNode());
+            putNonBlank(objectNode, "behavior", object.getBehavior());
+            putNonBlank(objectNode, "anchor_id", object.getAnchorId());
+            putNonBlank(objectNode, "dependency_note", object.getDependencyNote());
         }
     }
 

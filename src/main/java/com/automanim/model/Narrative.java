@@ -250,6 +250,11 @@ public class Narrative {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class StoryboardObject {
 
+        public static final String BEHAVIOR_STATIC = "static";
+        public static final String BEHAVIOR_FOLLOWS_ANCHOR = "follows_anchor";
+        public static final String BEHAVIOR_DERIVED = "derived";
+        public static final String BEHAVIOR_FIXED_OVERLAY = "fixed_overlay";
+
         @JsonProperty("id")
         private String id;
 
@@ -267,6 +272,15 @@ public class Narrative {
 
         @JsonProperty("source_node")
         private String sourceNode;
+
+        @JsonProperty("behavior")
+        private String behavior;
+
+        @JsonProperty("anchor_id")
+        private String anchorId;
+
+        @JsonProperty("dependency_note")
+        private String dependencyNote;
 
         public StoryboardObject() {}
 
@@ -287,6 +301,15 @@ public class Narrative {
 
         public String getSourceNode() { return sourceNode; }
         public void setSourceNode(String sourceNode) { this.sourceNode = sourceNode; }
+
+        public String getBehavior() { return behavior; }
+        public void setBehavior(String behavior) { this.behavior = behavior; }
+
+        public String getAnchorId() { return anchorId; }
+        public void setAnchorId(String anchorId) { this.anchorId = anchorId; }
+
+        public String getDependencyNote() { return dependencyNote; }
+        public void setDependencyNote(String dependencyNote) { this.dependencyNote = dependencyNote; }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
