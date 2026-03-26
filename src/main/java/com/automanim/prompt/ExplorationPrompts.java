@@ -7,12 +7,12 @@ public final class ExplorationPrompts {
 
     private static final String FOUNDATION_CHECK_SYSTEM =
             "Decide whether the current node is already small, concrete, and self-contained"
-                    + " enough to serve as one animation-ready teaching beat for middle-school learners.\n"
+                    + " enough to serve as one presentation-ready teaching beat for middle-school learners.\n"
                     + "\n"
                     + "Workflow context:\n"
-                    + "- The DAG will be topologically traversed to produce a sequence of animated scenes.\n"
+                    + "- The DAG will be topologically traversed to produce a sequence of teaching scenes or steps.\n"
                     + "- Each node becomes one scene; foundation nodes must be truly self-explanatory.\n"
-                    + "- Judge whether this node can support one clear animated teaching beat with a concrete focus.\n"
+                    + "- Judge whether this node can support one clear visual teaching beat with a concrete focus.\n"
                     + "\n"
                     + "Rules:\n"
                     + "1. Junior-high-school math is the default foundation layer.\n"
@@ -25,7 +25,7 @@ public final class ExplorationPrompts {
                     + "Output format:\n"
                     + "Return a JSON object with this shape:\n"
                     + "{\n"
-                    + "  \"is_foundation\": \"boolean, whether the node can already serve as one self-contained animation-ready teaching beat\",\n"
+                    + "  \"is_foundation\": \"boolean, whether the node can already serve as one self-contained presentation-ready teaching beat\",\n"
                     + "  \"reason\": \"string, brief justification for the decision\"\n"
                     + "}\n"
                     + "\n"
@@ -41,7 +41,7 @@ public final class ExplorationPrompts {
 
     private static final String PREREQUISITES_SYSTEM =
             "Return the direct prerequisite teaching beats needed before the current node can"
-                    + " be animated clearly for middle-school learners.\n"
+                    + " be presented clearly for middle-school learners.\n"
                     + "\n"
                     + "Rules:\n"
                     + "1. Return only truly necessary prerequisites, not helpful background.\n"
@@ -50,7 +50,7 @@ public final class ExplorationPrompts {
                     + "4. Each prerequisite should be one atomic teaching beat.\n"
                     + "5. Avoid synonyms, near-duplicates, parent-child duplication, and hidden bundles.\n"
                     + "6. Return at most 3 to 5 items ordered by necessity.\n"
-                    + "7. Prefer prerequisites that are easy to visualize in animation.\n"
+                    + "7. Prefer prerequisites that are easy to express in a visual teaching presentation.\n"
                     + "\n"
                     + "Output format:\n"
                     + "Return a JSON object with this shape:\n"
@@ -72,7 +72,7 @@ public final class ExplorationPrompts {
                     + "    },\n"
                     + "    {\n"
                     + "      \"step\": \"Identify the quantities or objects involved\",\n"
-                    + "      \"reason\": \"This establishes the concrete entities that later animation actions will refer to\"\n"
+                    + "      \"reason\": \"This establishes the concrete entities that later presentation steps will refer to\"\n"
                     + "    }\n"
                     + "  ]\n"
                     + "}\n"
@@ -82,7 +82,7 @@ public final class ExplorationPrompts {
                     + "Return JSON only.";
 
     private static final String INPUT_MODE_CLASSIFIER_SYSTEM =
-            "You are a routing classifier for a math teaching-animation workflow.\n"
+            "You are a routing classifier for a math teaching-visualization workflow.\n"
                     + "Choose `problem` for a concrete question, proof, optimization, or exercise to solve.\n"
                     + "Choose `concept` for a topic, theorem, formula, or idea to explain.\n"
                     + "Prefer the most operational interpretation of the user's request.\n"
@@ -105,13 +105,13 @@ public final class ExplorationPrompts {
                     + "Return JSON only.";
 
     private static final String PROBLEM_STEP_GRAPH_SYSTEM =
-            "Plan animation-ready teaching beats for a middle-school math problem.\n"
+            "Plan presentation-ready teaching beats for a middle-school math problem.\n"
                     + "Build a compact dependency graph whose nodes are major, visually teachable solving beats.\n"
                     + "Each node should feel close to one scene or one major reveal.\n"
                     + "Use node types from: problem, observation, construction, derivation, conclusion.\n"
                     + "The root must be the final conclusion node at depth 0.\n"
                     + "Prefer 4 to 7 strong beats unless the problem truly needs more.\n"
-                    + "The graph should be compact, acyclic, and easy to animate in topological order.\n"
+                    + "The graph should be compact, acyclic, and easy to present in topological order.\n"
                     + "\n"
                     + "Output format:\n"
                     + "Return a JSON object with this shape:\n"
@@ -120,7 +120,7 @@ public final class ExplorationPrompts {
                     + "  \"nodes\": [\n"
                     + "    {\n"
                     + "      \"id\": \"string, unique node id\",\n"
-                    + "      \"step\": \"string, one animation-ready solving beat\",\n"
+                    + "      \"step\": \"string, one presentation-ready solving beat\",\n"
                     + "      \"reason\": \"string, why this beat matters in the solution flow\",\n"
                     + "      \"node_type\": \"string, one of problem|observation|construction|derivation|conclusion\",\n"
                     + "      \"min_depth\": \"integer, minimum distance from the final conclusion\",\n"

@@ -6,7 +6,7 @@ package com.automanim.prompt;
 public final class EnrichmentPrompts {
 
     private static final String SYSTEM =
-            "You are a mathematics educator preparing content for a teaching animation.\n"
+            "You are a mathematics educator preparing content for a visual teaching presentation.\n"
                     + "Keep the current step consistent with the final target and the overall solution path when present.\n"
                     + "Junior-high-school math remains the default foundation layer.\n"
                     + "Do not invent a different route, extra givens, or unsupported claims.\n"

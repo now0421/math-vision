@@ -33,7 +33,7 @@
       "model": "kimi-k2.5",
       "provider": "moonshot",
       "reasoning_content_fallback": true,
-      "temperature": 0.6,
+      "temperature": 1,
       "max_output_tokens": 32768,
       "max_input_tokens": 131072
     },

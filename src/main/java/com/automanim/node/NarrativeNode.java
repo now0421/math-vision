@@ -480,11 +480,12 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
             sb.append("  {}\n");
         } else {
             List<String> preferredKeys = Arrays.asList(
-                    "visual_description",
-                    "color_scheme",
                     "layout",
-                    "animation_description",
-                    "transitions",
+                    "motion_plan",
+                    "color_scheme",
+                    "screen_overlay_plan",
+                    "scene_mode",
+                    "camera_plan",
                     "duration",
                     "color_palette"
             );

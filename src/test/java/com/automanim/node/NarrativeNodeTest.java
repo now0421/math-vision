@@ -77,7 +77,8 @@ class NarrativeNodeTest {
         assertTrue(userPrompt.contains("visual_spec:"));
         assertTrue(userPrompt.contains("AP = A'P"));
         assertTrue(userPrompt.contains("A': reflection of A across l"));
-        assertTrue(userPrompt.contains("visual_description: Show A mirrored across l."));
+        assertTrue(userPrompt.contains("layout: Keep the river centered and place A' below it."));
+        assertTrue(userPrompt.contains("motion_plan: Reveal A mirrored across l."));
 
         assertFalse(userPrompt.contains("min_depth:"));
         assertFalse(userPrompt.contains("is_foundation:"));
@@ -130,8 +131,8 @@ class NarrativeNodeTest {
         node.setExamples(List.of("If P lies on l, then AP and A'P are equal."));
 
         Map<String, Object> visualSpec = new LinkedHashMap<>();
-        visualSpec.put("visual_description", "Show A mirrored across l.");
         visualSpec.put("layout", "Keep the river centered and place A' below it.");
+        visualSpec.put("motion_plan", "Reveal A mirrored across l.");
         node.setVisualSpec(visualSpec);
         return node;
     }

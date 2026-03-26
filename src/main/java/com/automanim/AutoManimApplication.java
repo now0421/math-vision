@@ -167,6 +167,7 @@ public class AutoManimApplication {
             log.info("  Stage 0-2: [skipped - loaded from {}]", fromCodePath);
         }
         log.info("  Mode:     {}", config.getInputMode());
+        log.info("  Target:   {}", config.getOutputTarget());
         log.info("  Model:    {}", config.getModel());
         log.info("  Provider: {}", config.getModelConfig().resolveProvider());
         log.info("  Quality:  {}", config.getRenderQuality());
@@ -257,6 +258,7 @@ public class AutoManimApplication {
         WorkflowConfig workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
         summary.put("concept", ctx.get(WorkflowKeys.CONCEPT));
         summary.put("input_mode", workflowConfig.getInputMode());
+        summary.put("output_target", workflowConfig.getOutputTarget());
         summary.put("model", workflowConfig.getModel());
         summary.put("provider", workflowConfig.getModelConfig().resolveProvider());
         summary.put("elapsed_seconds", elapsed.getSeconds());

@@ -35,6 +35,7 @@ public final class WorkflowKeys {
     public static final String CODE_FIX_TRACE = "codeFixTrace";
     public static final String CODE_GENERATION_FIX_STATE = "codeGenerationFixState";
     public static final String CODE_EVALUATION_FIX_STATE = "codeEvaluationFixState";
+    public static final String CODE_EVALUATION_HISTORY = "codeEvaluationHistory";
     public static final String RENDER_RETRY_STATE = "renderRetryState";
     public static final String SCENE_EVALUATION_RETRY_STATE = "sceneEvaluationRetryState";
 

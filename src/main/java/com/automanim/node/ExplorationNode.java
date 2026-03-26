@@ -56,6 +56,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private int minDepth = 0;
     private int maxConcurrent = 4;
     private String inputMode = WorkflowConfig.INPUT_MODE_AUTO;
+    private String outputTarget = WorkflowConfig.OUTPUT_TARGET_MANIM;
 
     private final AtomicInteger apiCalls = new AtomicInteger(0);
     private final AtomicInteger cacheHits = new AtomicInteger(0);
@@ -82,6 +83,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             this.minDepth = workflowConfig.getMinDepth();
             this.maxConcurrent = workflowConfig.getMaxConcurrent();
             this.inputMode = workflowConfig.getInputMode();
+            this.outputTarget = workflowConfig.getOutputTarget();
         }
         return (String) ctx.get(WorkflowKeys.CONCEPT);
     }
@@ -104,8 +106,8 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         initializeExplorationContexts(maxInputTokens, concept, resolvedMode);
         log.info("=== Stage 0: {} Exploration ===",
                 WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode) ? "Problem" : "Concept");
-        log.info("Target input: {}, mode: {}, max depth: {}, min depth: {}, concurrency: {}",
-                concept, resolvedMode, maxDepth, minDepth, maxConcurrent);
+        log.info("Target input: {}, mode: {}, output_target: {}, max depth: {}, min depth: {}, concurrency: {}",
+                concept, resolvedMode, outputTarget, maxDepth, minDepth, maxConcurrent);
 
         try {
             KnowledgeGraph graph = WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)
@@ -158,7 +160,8 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         String normalizedProblem = problemStatement == null ? "" : problemStatement.trim();
         String prompt = "Math problem:\n" + normalizedProblem + "\n\n"
                 + "Plan the animation-ready teaching beats for solving this problem.\n"
-                + "Return the small set of major beats that a strong teaching animation should"
+                + "The downstream presentation target is " + outputTarget + ".\n"
+                + "Return the small set of major beats that a strong teaching presentation should"
                 + " present, in a dependency graph format.\n"
                 + "Use `step` for what each beat does or shows, and `reason` for why that beat"
                 + " is needed before the next one.\n"
@@ -680,11 +683,12 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private CompletableFuture<List<String>> getPrerequisitesAsync(String concept) {
         String prompt = String.format(
                 "Final teaching goal: %s\n"
+                + "Presentation target: %s\n"
                 + "Current step: %s\n"
                 + "List the direct prerequisite teaching beats needed before the current"
-                + " step in a teaching animation workflow. Keep the result precise,"
+                + " step in a visual teaching workflow. Keep the result precise,"
                 + " ordered, and free of duplicates or overly broad beats.",
-                targetConcept, concept);
+                targetConcept, outputTarget, concept);
 
         return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonObjectAsync(
                         aiClient,

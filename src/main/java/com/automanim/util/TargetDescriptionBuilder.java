@@ -183,8 +183,8 @@ public final class TargetDescriptionBuilder {
 
             if (prereq.hasVisualSpec()) {
                 Map<String, Object> spec = prereq.getVisualSpec();
-                if (spec.containsKey("visual_description")) {
-                    String desc = String.valueOf(spec.get("visual_description")).trim();
+                if (spec.containsKey("layout")) {
+                    String desc = String.valueOf(spec.get("layout")).trim();
                     if (desc.length() > 150) {
                         desc = desc.substring(0, 150) + "...";
                     }

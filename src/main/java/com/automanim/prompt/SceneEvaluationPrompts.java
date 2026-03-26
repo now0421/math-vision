@@ -38,12 +38,16 @@ public final class SceneEvaluationPrompts {
         ) + SYSTEM);
     }
 
-    public static String layoutFixUserPrompt(String manimCode,
+    public static String layoutFixUserPrompt(String storyboardJson,
+                                             String manimCode,
                                              String issueSummary,
                                              String sceneEvaluationJson,
                                              List<String> fixHistory) {
         StringBuilder sb = new StringBuilder();
         sb.append("The following Manim code rendered, but post-render scene evaluation found layout issues in sampled frames.\n\n")
+                .append("Compact storyboard JSON (source of truth):\n```json\n")
+                .append(storyboardJson != null && !storyboardJson.isBlank() ? storyboardJson : "{\"scenes\":[]}")
+                .append("\n```\n\n")
                 .append("```python\n").append(manimCode).append("\n```\n\n")
                 .append("Issue summary:\n```\n").append(issueSummary).append("\n```\n\n")
                 .append("Scene evaluation report excerpt:\n```json\n").append(sceneEvaluationJson).append("\n```\n\n")

@@ -4,6 +4,7 @@ import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeFixRequest;
 import com.automanim.model.CodeFixSource;
 import com.automanim.model.CodeResult;
+import com.automanim.model.Narrative;
 import com.automanim.model.RenderResult;
 import com.automanim.model.SceneEvaluationResult;
 import com.automanim.model.SceneEvaluationResult.Bounds;
@@ -14,6 +15,7 @@ import com.automanim.model.SceneEvaluationResult.SampleEvaluation;
 import com.automanim.model.WorkflowActions;
 import com.automanim.model.WorkflowKeys;
 import com.automanim.node.support.FixRetryState;
+import com.automanim.prompt.StoryboardJsonBuilder;
 import com.automanim.util.ErrorSummarizer;
 import com.automanim.service.FileOutputService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -63,17 +65,20 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
 
     public static class SceneEvaluationInput {
         private final CodeResult codeResult;
+        private final Narrative narrative;
         private final RenderResult renderResult;
         private final WorkflowConfig config;
         private final Path outputDir;
         private final SceneEvaluationRetryState retryState;
 
         public SceneEvaluationInput(CodeResult codeResult,
+                                    Narrative narrative,
                                     RenderResult renderResult,
                                     WorkflowConfig config,
                                     Path outputDir,
                                     SceneEvaluationRetryState retryState) {
             this.codeResult = codeResult;
+            this.narrative = narrative;
             this.renderResult = renderResult;
             this.config = config;
             this.outputDir = outputDir;
@@ -81,6 +86,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         }
 
         public CodeResult codeResult() { return codeResult; }
+        public Narrative narrative() { return narrative; }
         public RenderResult renderResult() { return renderResult; }
         public WorkflowConfig config() { return config; }
         public Path outputDir() { return outputDir; }
@@ -97,10 +103,11 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         }
 
         CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
+        Narrative narrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
         RenderResult renderResult = (RenderResult) ctx.get(WorkflowKeys.RENDER_RESULT);
         WorkflowConfig config = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
         Path outputDir = (Path) ctx.get(WorkflowKeys.OUTPUT_DIR);
-        return new SceneEvaluationInput(codeResult, renderResult, config, outputDir, retryState);
+        return new SceneEvaluationInput(codeResult, narrative, renderResult, config, outputDir, retryState);
     }
 
     @Override
@@ -267,6 +274,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     private CodeFixRequest buildSceneEvaluationFixRequest(SceneEvaluationInput input,
                                                           SceneEvaluationResult result) {
         CodeResult codeResult = input.codeResult();
+        Narrative narrative = input.narrative();
         SceneEvaluationRetryState retryState = input.retryState();
 
         CodeFixRequest request = new CodeFixRequest();
@@ -283,6 +291,9 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         request.setTargetDescription(codeResult.getTargetDescription());
         request.setSceneName(codeResult.getSceneName());
         request.setExpectedSceneName("MainScene");
+        request.setStoryboardJson(narrative != null && narrative.hasStoryboard()
+                ? StoryboardJsonBuilder.buildForCodegen(narrative.getStoryboard())
+                : "{\"scenes\":[]}");
         request.setFixHistory(new ArrayList<>(retryState.fixHistory));
         return request;
     }
@@ -535,6 +546,9 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         if (left.className.equals(right.className)
                 && isZeroArea(left)
                 && isZeroArea(right)) {
+            return false;
+        }
+        if (!left.isTextual() && !right.isTextual()) {
             return false;
         }
         return true;

@@ -10,6 +10,7 @@ import java.util.List;
  */
 public class CodeEvaluationResult {
 
+    private int totalEvaluations;
     private boolean approvedForRender;
     private boolean revisionTriggered;
     private boolean revisedCodeApplied;
@@ -22,6 +23,10 @@ public class CodeEvaluationResult {
     private ReviewSnapshot initialReview;
     private ReviewSnapshot finalReview;
     private double executionTimeSeconds;
+    private List<EvaluationAttempt> attempts = new ArrayList<>();
+
+    public int getTotalEvaluations() { return totalEvaluations; }
+    public void setTotalEvaluations(int totalEvaluations) { this.totalEvaluations = totalEvaluations; }
 
     public boolean isApprovedForRender() { return approvedForRender; }
     public void setApprovedForRender(boolean approvedForRender) {
@@ -69,6 +74,96 @@ public class CodeEvaluationResult {
     public double getExecutionTimeSeconds() { return executionTimeSeconds; }
     public void setExecutionTimeSeconds(double executionTimeSeconds) {
         this.executionTimeSeconds = executionTimeSeconds;
+    }
+
+    public List<EvaluationAttempt> getAttempts() { return attempts; }
+    public void setAttempts(List<EvaluationAttempt> attempts) {
+        this.attempts = attempts != null ? attempts : new ArrayList<>();
+    }
+
+    public static EvaluationAttempt fromResult(CodeEvaluationResult result, int sequence) {
+        EvaluationAttempt attempt = new EvaluationAttempt();
+        attempt.setSequence(sequence);
+        attempt.setApprovedForRender(result.isApprovedForRender());
+        attempt.setRevisionTriggered(result.isRevisionTriggered());
+        attempt.setRevisedCodeApplied(result.isRevisedCodeApplied());
+        attempt.setRevisionAttempts(result.getRevisionAttempts());
+        attempt.setToolCalls(result.getToolCalls());
+        attempt.setGateReason(result.getGateReason());
+        attempt.setSceneName(result.getSceneName());
+        attempt.setInitialStaticAnalysis(result.getInitialStaticAnalysis());
+        attempt.setFinalStaticAnalysis(result.getFinalStaticAnalysis());
+        attempt.setInitialReview(result.getInitialReview());
+        attempt.setFinalReview(result.getFinalReview());
+        attempt.setExecutionTimeSeconds(result.getExecutionTimeSeconds());
+        return attempt;
+    }
+
+    public static class EvaluationAttempt {
+        private int sequence;
+        private boolean approvedForRender;
+        private boolean revisionTriggered;
+        private boolean revisedCodeApplied;
+        private int revisionAttempts;
+        private int toolCalls;
+        private String gateReason;
+        private String sceneName;
+        private StaticAnalysis initialStaticAnalysis;
+        private StaticAnalysis finalStaticAnalysis;
+        private ReviewSnapshot initialReview;
+        private ReviewSnapshot finalReview;
+        private double executionTimeSeconds;
+
+        public int getSequence() { return sequence; }
+        public void setSequence(int sequence) { this.sequence = sequence; }
+
+        public boolean isApprovedForRender() { return approvedForRender; }
+        public void setApprovedForRender(boolean approvedForRender) {
+            this.approvedForRender = approvedForRender;
+        }
+
+        public boolean isRevisionTriggered() { return revisionTriggered; }
+        public void setRevisionTriggered(boolean revisionTriggered) {
+            this.revisionTriggered = revisionTriggered;
+        }
+
+        public boolean isRevisedCodeApplied() { return revisedCodeApplied; }
+        public void setRevisedCodeApplied(boolean revisedCodeApplied) {
+            this.revisedCodeApplied = revisedCodeApplied;
+        }
+
+        public int getRevisionAttempts() { return revisionAttempts; }
+        public void setRevisionAttempts(int revisionAttempts) { this.revisionAttempts = revisionAttempts; }
+
+        public int getToolCalls() { return toolCalls; }
+        public void setToolCalls(int toolCalls) { this.toolCalls = toolCalls; }
+
+        public String getGateReason() { return gateReason; }
+        public void setGateReason(String gateReason) { this.gateReason = gateReason; }
+
+        public String getSceneName() { return sceneName; }
+        public void setSceneName(String sceneName) { this.sceneName = sceneName; }
+
+        public StaticAnalysis getInitialStaticAnalysis() { return initialStaticAnalysis; }
+        public void setInitialStaticAnalysis(StaticAnalysis initialStaticAnalysis) {
+            this.initialStaticAnalysis = initialStaticAnalysis;
+        }
+
+        public StaticAnalysis getFinalStaticAnalysis() { return finalStaticAnalysis; }
+        public void setFinalStaticAnalysis(StaticAnalysis finalStaticAnalysis) {
+            this.finalStaticAnalysis = finalStaticAnalysis;
+        }
+
+        public ReviewSnapshot getInitialReview() { return initialReview; }
+        public void setInitialReview(ReviewSnapshot initialReview) { this.initialReview = initialReview; }
+
+        public ReviewSnapshot getFinalReview() { return finalReview; }
+        public void setFinalReview(ReviewSnapshot finalReview) { this.finalReview = finalReview; }
+
+        public double getExecutionTimeSeconds() { return executionTimeSeconds; }
+        public void setExecutionTimeSeconds(double executionTimeSeconds) {
+            this.executionTimeSeconds = executionTimeSeconds;
+        }
     }
 
     public static class StaticAnalysis {

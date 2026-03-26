@@ -143,7 +143,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
 
     private CompletableFuture<Void> designNodeAsync(KnowledgeNode node) {
         Map<String, Object> existingSpec = node.getVisualSpec();
-        if (existingSpec != null && existingSpec.containsKey("visual_description")) {
+        if (existingSpec != null && existingSpec.containsKey("layout")) {
             log.debug("  Skipping already-designed node: {}", node.getStep());
             return CompletableFuture.completedFuture(null);
         }
@@ -207,10 +207,10 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                 sb.append("  Color scheme: ").append(prerequisiteSpec.get("color_scheme")).append("\n");
             }
             if (prerequisiteSpec.containsKey("layout")) {
-                sb.append("  Relative layout: ").append(prerequisiteSpec.get("layout")).append("\n");
+                sb.append("  Layout: ").append(prerequisiteSpec.get("layout")).append("\n");
             }
-            if (prerequisiteSpec.containsKey("visual_description")) {
-                sb.append("  Visual style: ").append(prerequisiteSpec.get("visual_description")).append("\n");
+            if (prerequisiteSpec.containsKey("motion_plan")) {
+                sb.append("  Motion: ").append(prerequisiteSpec.get("motion_plan")).append("\n");
             }
         }
         sb.append("Reuse motifs from these prerequisites so the full animation feels like one system.");

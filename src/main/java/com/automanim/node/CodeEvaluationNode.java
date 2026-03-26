@@ -230,6 +230,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     public String post(Map<String, Object> ctx,
                        CodeEvaluationInput input,
                        CodeEvaluationResult result) {
+        appendEvaluationAttempt(ctx, result);
         ctx.put(WorkflowKeys.CODE_RESULT, input.codeResult());
         ctx.put(WorkflowKeys.CODE_EVALUATION_RESULT, result);
 
@@ -246,6 +247,24 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
 
         input.fixState().reset();
         return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void appendEvaluationAttempt(Map<String, Object> ctx, CodeEvaluationResult result) {
+        if (result == null) {
+            return;
+        }
+
+        List<CodeEvaluationResult.EvaluationAttempt> history =
+                (List<CodeEvaluationResult.EvaluationAttempt>) ctx.get(WorkflowKeys.CODE_EVALUATION_HISTORY);
+        if (history == null) {
+            history = new ArrayList<>();
+            ctx.put(WorkflowKeys.CODE_EVALUATION_HISTORY, history);
+        }
+
+        history.add(CodeEvaluationResult.fromResult(result, history.size() + 1));
+        result.setAttempts(new ArrayList<>(history));
+        result.setTotalEvaluations(history.size());
     }
 
     private StaticAnalysis analyzeStaticQuality(Narrative narrative,

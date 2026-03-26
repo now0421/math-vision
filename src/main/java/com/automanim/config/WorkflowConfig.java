@@ -17,6 +17,8 @@ public class WorkflowConfig {
     public static final String INPUT_MODE_AUTO = "auto";
     public static final String INPUT_MODE_CONCEPT = "concept";
     public static final String INPUT_MODE_PROBLEM = "problem";
+    public static final String OUTPUT_TARGET_MANIM = "manim";
+    public static final String OUTPUT_TARGET_GEOGEBRA = "geogebra";
 
     private int maxDepth;
     private int minDepth;
@@ -29,6 +31,7 @@ public class WorkflowConfig {
     private int renderMaxRetries;
     private int sceneEvaluationMaxRetries = 2;
     private String inputMode = INPUT_MODE_AUTO;
+    private String outputTarget = OUTPUT_TARGET_MANIM;
     private String model;
     @JsonIgnore
     private ModelConfig modelConfig;
@@ -42,9 +45,19 @@ public class WorkflowConfig {
         return value == null ? INPUT_MODE_AUTO : value.trim().toLowerCase(Locale.ROOT);
     }
 
+    public static String normalizeOutputTarget(String value) {
+        return value == null ? OUTPUT_TARGET_MANIM : value.trim().toLowerCase(Locale.ROOT);
+    }
+
     public void validate() {
         if (model == null || model.isBlank()) {
             throw new IllegalStateException("Workflow config is missing 'model'");
+        }
+        String normalizedOutputTarget = normalizeOutputTarget(outputTarget);
+        if (!OUTPUT_TARGET_MANIM.equals(normalizedOutputTarget)
+                && !OUTPUT_TARGET_GEOGEBRA.equals(normalizedOutputTarget)) {
+            throw new IllegalStateException(
+                    "Workflow config 'output_target' must be either 'manim' or 'geogebra'");
         }
     }
 
@@ -63,6 +76,7 @@ public class WorkflowConfig {
         resolvedModelConfig.validate(selectedModel);
         this.modelConfig = resolvedModelConfig;
         this.inputMode = normalizeInputMode(inputMode);
+        this.outputTarget = normalizeOutputTarget(outputTarget);
         return this;
     }
 
@@ -94,7 +108,19 @@ public class WorkflowConfig {
     }
     public String getInputMode() { return inputMode; }
     public void setInputMode(String inputMode) { this.inputMode = normalizeInputMode(inputMode); }
+    public String getOutputTarget() { return outputTarget; }
+    public void setOutputTarget(String outputTarget) {
+        this.outputTarget = normalizeOutputTarget(outputTarget);
+    }
     public String getModel() { return model; }
     public void setModel(String model) { this.model = model; }
     public ModelConfig getModelConfig() { return modelConfig; }
+
+    public boolean isManimTarget() {
+        return OUTPUT_TARGET_MANIM.equals(outputTarget);
+    }
+
+    public boolean isGeoGebraTarget() {
+        return OUTPUT_TARGET_GEOGEBRA.equals(outputTarget);
+    }
 }

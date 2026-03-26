@@ -228,6 +228,7 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         }
         if (request.getSource() == CodeFixSource.SCENE_LAYOUT_EVALUATION) {
             return SceneEvaluationPrompts.layoutFixUserPrompt(
+                    defaultJson(request.getStoryboardJson(), "{\"scenes\":[]}"),
                     request.getCode(),
                     firstNonBlank(request.getErrorReason(), "Unknown scene evaluation issue"),
                     defaultJson(request.getSceneEvaluationJson(), "{}"),

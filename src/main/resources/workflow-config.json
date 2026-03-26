@@ -9,5 +9,6 @@
   "render_quality": "low",
   "render_max_retries": 4,
   "input_mode": "auto",
-  "model": "deepseek-reasoner"
+  "output_target": "manim",
+  "model": "kimi-k2.5"
 }

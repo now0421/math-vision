@@ -69,9 +69,9 @@ class VisualDesignNodeTest {
         function.put("name", "write_visual_design");
 
         ObjectNode arguments = JsonUtils.mapper().createObjectNode();
-        arguments.put("visual_description", "Show A and its reflected image A'.");
-        arguments.put("color_scheme", "Blue line, orange points.");
         arguments.put("layout", "Keep l centered and place A' below it.");
+        arguments.put("motion_plan", "Reveal A', then emphasize the mirror relationship.");
+        arguments.put("color_scheme", "Blue line, orange points.");
         function.set("arguments", arguments);
         return response;
     }
@@ -89,7 +89,7 @@ class VisualDesignNodeTest {
         public String chat(String userMessage, String systemPrompt) {
             lastUserMessage = userMessage;
             lastSystemPrompt = systemPrompt;
-            return "{\"visual_description\":\"fallback\",\"color_scheme\":\"fallback\",\"layout\":\"fallback\"}";
+            return "{\"layout\":\"fallback\",\"motion_plan\":\"fallback\",\"color_scheme\":\"fallback\"}";
         }
 
         @Override

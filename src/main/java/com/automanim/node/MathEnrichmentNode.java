@@ -39,6 +39,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
     private final AtomicInteger toolCalls = new AtomicInteger(0);
     private boolean parallelEnabled = true;
     private int maxConcurrent = 4;
+    private String outputTarget = WorkflowConfig.OUTPUT_TARGET_MANIM;
     private final Map<String, CompletableFuture<JsonNode>> cache = new ConcurrentHashMap<>();
     private ConcurrencyUtils.AsyncLimiter aiCallLimiter;
     private NodeConversationContext conversationContext;
@@ -55,6 +56,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         if (workflowConfig != null) {
             this.parallelEnabled = workflowConfig.isParallelMathEnrichment();
             this.maxConcurrent = workflowConfig.getMaxConcurrent();
+            this.outputTarget = workflowConfig.getOutputTarget();
         }
         return (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
     }
@@ -62,8 +64,8 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
     @Override
     public KnowledgeGraph exec(KnowledgeGraph graph) {
         int concurrency = parallelEnabled ? maxConcurrent : 1;
-        log.info("=== Stage 1a: Mathematical Enrichment (parallel={}, concurrency={}) ===",
-                parallelEnabled, concurrency);
+        log.info("=== Stage 1a: Mathematical Enrichment (output_target={}, parallel={}, concurrency={}) ===",
+                outputTarget, parallelEnabled, concurrency);
         toolCalls.set(0);
         cache.clear();
         aiCallLimiter = new ConcurrencyUtils.AsyncLimiter(concurrency);
@@ -196,6 +198,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
     private String buildCurrentStepPrompt(KnowledgeNode node) {
         StringBuilder sb = new StringBuilder();
         sb.append("Current step:\n");
+        sb.append("- Presentation target: ").append(outputTarget).append("\n");
         sb.append("- Step: ").append(node.getStep()).append("\n");
 
         if (graph != null && graph.isProblemMode()) {
@@ -224,7 +227,8 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
             }
         }
 
-        sb.append("Return only the mathematical content needed for this current step.");
+        sb.append("Return only the mathematical content needed for this current step");
+        sb.append(", keeping it concise and useful for a ").append(outputTarget).append(" output.");
         return sb.toString();
     }
 
