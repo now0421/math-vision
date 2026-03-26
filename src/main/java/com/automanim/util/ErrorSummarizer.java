@@ -1,5 +1,8 @@
 package com.automanim.util;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -18,10 +21,14 @@ public final class ErrorSummarizer {
     private static final int MAX_TRACEBACK_LINES = 30;
     private static final int TRACEBACK_CONTEXT_RADIUS = 4;
     private static final int MAX_STDOUT_ERROR_LINES = 12;
+    private static final int LATEX_LOG_CONTEXT_RADIUS = 3;
     private static final String TRACEBACK_MARKER = "Traceback (most recent call last)";
 
     private static final Pattern ERROR_SIGNATURE_PATTERN = Pattern.compile(
             "\\b(?:[A-Za-z_][A-Za-z0-9_]*Error|[A-Za-z_][A-Za-z0-9_]*Exception)\\s*:\\s*.+");
+    private static final Pattern WINDOWS_LOG_PATH_PATTERN = Pattern.compile(
+            "([A-Za-z]:\\\\(?:[^\\\\\\s]+\\\\)*[^\\\\\\s]+\\.log)",
+            Pattern.CASE_INSENSITIVE);
 
     private static final List<Pattern> NON_CODE_ERROR_PATTERNS = Arrays.asList(
             Pattern.compile("(?i)no module named"),
@@ -147,6 +154,7 @@ public final class ErrorSummarizer {
      */
     public static String extractFocusedError(String stdout, String stderr) {
         List<String> sections = new ArrayList<>();
+        String combined = combineErrorStreams(stdout, stderr);
 
         String stdoutSummary = extractStdoutErrors(stdout);
         if (!stdoutSummary.isBlank()) {
@@ -158,11 +166,16 @@ public final class ErrorSummarizer {
             sections.add("=== stderr traceback ===\n" + stderrSummary);
         }
 
+        String latexLogContext = extractLatexLogContext(combined);
+        if (!latexLogContext.isBlank()) {
+            sections.add("=== latex log context ===\n" + latexLogContext);
+        }
+
         if (!sections.isEmpty()) {
             return String.join("\n\n", sections);
         }
 
-        return tailLines(combineErrorStreams(stdout, stderr), MAX_TRACEBACK_LINES);
+        return tailLines(combined, MAX_TRACEBACK_LINES);
     }
 
     /**
@@ -323,5 +336,93 @@ public final class ErrorSummarizer {
         RUNTIME,
         ENVIRONMENT,
         UNKNOWN
+    }
+
+    private static String extractLatexLogContext(String combinedError) {
+        if (combinedError == null || combinedError.isBlank()) {
+            return "";
+        }
+
+        String lower = combinedError.toLowerCase();
+        if (!lower.contains("latex compilation error")
+                && !lower.contains("latex error converting")
+                && !lower.contains("log file:")) {
+            return "";
+        }
+
+        Path logPath = extractLatexLogPath(combinedError);
+        if (logPath == null || !Files.exists(logPath)) {
+            return "";
+        }
+
+        try {
+            String logText = Files.readString(logPath);
+            String snippet = summarizeLatexLog(logText);
+            if (snippet.isBlank()) {
+                return "Log file: " + logPath;
+            }
+            return "Log file: " + logPath + "\n" + snippet;
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
+    private static Path extractLatexLogPath(String combinedError) {
+        int logMarker = combinedError.toLowerCase().lastIndexOf("log file:");
+        String searchRegion = logMarker >= 0 ? combinedError.substring(logMarker) : combinedError;
+        String condensed = searchRegion.replaceAll("\\s+", "");
+        Matcher matcher = WINDOWS_LOG_PATH_PATTERN.matcher(condensed);
+        if (matcher.find()) {
+            return Path.of(matcher.group(1));
+        }
+        return null;
+    }
+
+    private static String summarizeLatexLog(String logText) {
+        if (logText == null || logText.isBlank()) {
+            return "";
+        }
+
+        String[] lines = logText.split("\\R");
+        int anchor = findLatexAnchor(lines);
+        if (anchor < 0) {
+            return tailLines(logText, MAX_STDOUT_ERROR_LINES);
+        }
+
+        int start = Math.max(0, anchor - LATEX_LOG_CONTEXT_RADIUS);
+        int end = Math.min(lines.length - 1, anchor + LATEX_LOG_CONTEXT_RADIUS + 2);
+        List<String> snippet = new ArrayList<>();
+        for (int i = start; i <= end; i++) {
+            String line = lines[i].stripTrailing();
+            if (line.isBlank()) {
+                continue;
+            }
+            snippet.add(line);
+        }
+        return String.join("\n", snippet);
+    }
+
+    private static int findLatexAnchor(String[] lines) {
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            if (line.startsWith("! ")) {
+                return i;
+            }
+        }
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            if (line.matches("l\\.\\d+.*")) {
+                return i;
+            }
+        }
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].toLowerCase();
+            if (line.contains("missing $ inserted")
+                    || line.contains("latex error")
+                    || line.contains("emergency stop")) {
+                return i;
+            }
+        }
+        return -1;
     }
 }

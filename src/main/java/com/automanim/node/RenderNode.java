@@ -90,6 +90,10 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         CodeFixResult previousFixResult = consumeRetryRenderFixResult(ctx);
         if (previousFixResult != null) {
             retryState.addFixToolCalls(previousFixResult.getToolCalls());
+            String attemptSummary = summarizeFixAttempt(previousFixResult);
+            if (attemptSummary != null && !attemptSummary.isBlank()) {
+                retryState.fixHistory.add(attemptSummary);
+            }
         }
 
         CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
@@ -191,7 +195,6 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         String focusedError = ErrorSummarizer.extractFocusedError(renderAttempt.stdout(), renderAttempt.stderr());
         String errorSignature = ErrorSummarizer.summarizeSignature(focusedError);
         retryState.previousErrorSignature = errorSignature;
-        retryState.fixHistory.add(errorSignature);
         retryState.setRequestFix(true);
         retryState.pendingFocusedError = focusedError;
         return failureResult(currentCode, sceneName, attemptNumber, lastError, geometryPath, retryState.getFixToolCalls());
@@ -253,6 +256,28 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         result.setLastError(error);
         result.setToolCalls(toolCalls);
         return result;
+    }
+
+    private String summarizeFixAttempt(CodeFixResult result) {
+        if (result == null) {
+            return "";
+        }
+
+        String errorSignature = ErrorSummarizer.summarizeSignature(result.getErrorReason());
+        String outcome;
+        if (result.isApplied()) {
+            outcome = "applied code change";
+        } else {
+            String failureReason = result.getFailureReason();
+            outcome = (failureReason == null || failureReason.isBlank())
+                    ? "no code change applied"
+                    : failureReason;
+        }
+
+        if (errorSignature == null || errorSignature.isBlank()) {
+            return outcome;
+        }
+        return "Tried fixing " + errorSignature + " -> " + outcome;
     }
 
     private CodeFixResult consumeRetryRenderFixResult(Map<String, Object> ctx) {

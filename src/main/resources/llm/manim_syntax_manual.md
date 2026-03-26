@@ -113,6 +113,13 @@ Used for:
 dashed = DashedLine(LEFT, RIGHT)
 ```
 
+Compatibility rule:
+
+* If you need a dashed segment, prefer `DashedLine` directly.
+* Do not assume generic mobjects support dashed styling through `set_stroke(...)`.
+* In the current environment, do not invent or rely on arguments such as `dash_array`, `dash_length`, or other unlisted dash-related keyword arguments for `Line`, `Polygon`, `VMobject`, or `set_stroke(...)`.
+* If you need a dashed polygonal boundary, build it from multiple `DashedLine` segments instead of styling a `Polygon` with unsupported dash arguments.
+
 ### `Circle`, `Square`, `Rectangle`, `Triangle`, `Polygon`
 
 Used for:
@@ -182,6 +189,9 @@ Used for plain text:
 title = Text("Dot Product", font_size=48)
 ```
 
+Use `Text` only for ordinary language.
+Do not put LaTeX commands such as `\approx`, `\geq`, `\frac`, superscripts, subscripts, or math-mode syntax into `Text`.
+
 ### `MarkupText`
 
 Used for text with rich-text styling, but only when it is truly needed.
@@ -208,6 +218,9 @@ Recommended practice:
 
 * Prefer `MathTex` for mathematical content.
 * If partial coloring is needed, split it into multiple segments.
+* If the content contains LaTeX commands or mathematical notation, use `MathTex` rather than `Tex` or `Text`.
+* Labels like `A'`, `B'`, `A_1`, `x^2`, `AP + PB`, and inequalities should be written with `MathTex`.
+* When writing strings containing backslashes, prefer raw strings such as `r"\geq"` to reduce escaping mistakes.
 
 ```python
 eq = MathTex(r"V", r"-", r"E", r"+", r"F", r"=", r"2")
@@ -215,6 +228,28 @@ eq[0].set_color(BLUE)
 eq[2].set_color(YELLOW)
 eq[4].set_color(GREEN)
 ```
+
+Common safe examples:
+
+```python
+label = MathTex("A'")
+ineq = MathTex(r"AP + PB \geq A'B")
+value = VGroup(Text("Minimum length:"), MathTex(r"A'B")).arrange(RIGHT, buff=0.2)
+```
+
+### `Tex`
+
+Use `Tex` only for plain LaTeX text when mathematical layout is not the focus.
+
+```python
+subtitle = Tex(r"Reflect point A across line l")
+```
+
+Safety rules:
+
+* Do not mix plain-text narration with mathematical symbols in a way that depends on implicit math mode.
+* If there is any doubt whether a string is "text" or "math", prefer `MathTex` for the mathematical part or split the content into `Text(...)` plus `MathTex(...)` inside a `VGroup`.
+* Avoid patterns like `Tex("AP + PB \\approx")`; this is fragile and can produce LaTeX compilation errors. Use `MathTex(r"AP + PB \\approx")` instead.
 
 ---
 
@@ -577,6 +612,13 @@ Set stroke color, width, and opacity:
 ```python
 obj.set_stroke(WHITE, width=2, opacity=1)
 ```
+
+Compatibility rules:
+
+* Treat `color`, `width`, and `opacity` as the default safe arguments.
+* Do not assume undocumented keyword arguments are supported in the current Manim version.
+* In particular, do not use `dash_array=...` with `set_stroke(...)`.
+* To create dashed geometry, prefer dedicated dashed mobjects such as `DashedLine`.
 
 ### `set_opacity`
 
