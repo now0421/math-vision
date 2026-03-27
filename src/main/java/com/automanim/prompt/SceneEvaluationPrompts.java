@@ -11,6 +11,7 @@ public final class SceneEvaluationPrompts {
             "You are fixing Manim code that rendered but has layout issues detected by geometry analysis.\n"
                     + "Preserve the teaching goal, visual intent, scene class name, and continuity.\n"
                     + "Prefer adjusting positioning, scaling, grouping, and spacing over deleting explanatory content.\n"
+                    + "Also correct semantically wrong geometric attachments you notice, especially angle markers that are drawn on the wrong side or detached from their true vertex.\n"
                     + "\n"
                     + "Output format:\n"
                     + "Return exactly one fenced Python code block containing the full corrected file.\n"

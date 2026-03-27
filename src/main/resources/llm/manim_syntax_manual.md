@@ -161,6 +161,35 @@ Used for:
 angle = Angle(line1, line2, radius=0.5)
 ```
 
+Angle safety rules:
+
+* Prefer `Angle(line1, line2, ...)` over manually constructing `Arc(start_angle=..., angle=...)` for geometric angle markers.
+* The two inputs should be the actual rays or segments that define the angle and should share the same vertex.
+* For moving geometry, build those defining lines from the shared vertex and wrap the resulting `Angle(...)` in `always_redraw(...)`.
+* When the intended mark is the smaller interior angle, explicitly request the smaller interior angle and keep that choice stable as points move.
+* Do not fake angle placement by drawing a free-floating arc and shifting or rotating it into place after the fact; this often puts the arc on the wrong side of the vertex.
+
+Recommended pattern for a dynamic angle at point `P`:
+
+```python
+ray1 = always_redraw(lambda: Line(P.get_center(), A.get_center()))
+ray2 = always_redraw(lambda: Line(P.get_center(), B.get_center()))
+angle = always_redraw(lambda: Angle(ray1, ray2, radius=0.4, color=PURE_CYAN))
+```
+
+Recommended pattern when measuring against a normal or helper ray through the same point:
+
+```python
+angle_in = always_redraw(
+    lambda: Angle(
+        Line(P.get_center(), P.get_center() + UP),
+        Line(P.get_center(), A.get_center()),
+        radius=0.35,
+        color=PURE_CYAN,
+    )
+)
+```
+
 ### `RightAngle`
 
 Used for:

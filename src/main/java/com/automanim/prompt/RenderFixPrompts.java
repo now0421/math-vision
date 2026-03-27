@@ -14,6 +14,7 @@ public final class RenderFixPrompts {
                     + "Preserve the original scene class name and intended animation meaning.\n"
                     + "Use ASCII-only identifiers, fix the reported root cause systematically, and also correct nearby Python/Manim runtime mistakes.\n"
                     + "Do not store mobjects across scene methods via `self`, do not hardcode MathTex numeric indexing, and keep layout inside x[-7,7], y[-4,4].\n"
+                    + "If the code contains geometric angle markers, prefer vertex-anchored `Angle(...)` constructions over manually tuned `Arc(...)` start-angle math.\n"
                     + "\n"
                     + "Output format:\n"
                     + "Return exactly one fenced Python code block containing the full corrected file.\n"
