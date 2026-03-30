@@ -59,11 +59,50 @@ class AiRequestUtilsTest {
         assertEquals(1, aiClient.chatCalls.get());
     }
 
+    @Test
+    void fallsBackWhenCustomValidatorRejectsToolPayload() {
+        ObjectNode toolArguments = JsonUtils.mapper().createObjectNode();
+        toolArguments.put("scene_name", "DemoScene");
+
+        FakeAiClient aiClient = new FakeAiClient(
+                wrapToolResponse(toolArguments),
+                "{\"code\":\"print('ok')\"}"
+        );
+
+        JsonNode result = AiRequestUtils.requestJsonObjectAsync(
+                aiClient,
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "code generation",
+                "user",
+                "system",
+                "[]",
+                () -> { },
+                JsonUtils::parseTree,
+                payload -> payload != null
+                        && payload.has("code")
+                        && !payload.get("code").asText("").isBlank()
+        ).join();
+
+        assertEquals("print('ok')", result.get("code").asText());
+        assertEquals(1, aiClient.chatCalls.get());
+    }
+
     private static JsonNode wrapTextResponse(String text) {
         ObjectNode response = JsonUtils.mapper().createObjectNode();
         ArrayNode choices = response.putArray("choices");
         ObjectNode message = choices.addObject().putObject("message");
         message.put("content", text);
+        return response;
+    }
+
+    private static JsonNode wrapToolResponse(JsonNode arguments) {
+        ObjectNode response = JsonUtils.mapper().createObjectNode();
+        ArrayNode choices = response.putArray("choices");
+        ObjectNode message = choices.addObject().putObject("message");
+        ArrayNode toolCalls = message.putArray("tool_calls");
+        ObjectNode function = toolCalls.addObject().putObject("function");
+        function.put("name", "tool");
+        function.set("arguments", arguments);
         return response;
     }
 

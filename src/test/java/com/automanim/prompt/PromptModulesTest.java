@@ -54,4 +54,15 @@ class PromptModulesTest {
         assertTrue(reviewPrompt.contains("3D scenes"));
         assertTrue(reviewPrompt.contains("fixed-in-frame overlays"));
     }
+
+    @Test
+    void geogebraCodegenPromptIncludesSyntaxManualLikeManim() {
+        String manimPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "manim");
+        String geogebraPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "geogebra");
+
+        assertTrue(manimPrompt.contains("Manim syntax reference manual:"));
+        assertTrue(geogebraPrompt.contains("GeoGebra syntax reference manual:"));
+        assertTrue(geogebraPrompt.contains("GeoGebra Classic"));
+        assertTrue(geogebraPrompt.contains("Define the base objects first."));
+    }
 }

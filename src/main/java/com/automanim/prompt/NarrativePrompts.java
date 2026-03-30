@@ -197,10 +197,37 @@ public final class NarrativePrompts {
     }
 
     public static String storyboardCodegenPrompt(String targetConcept, Storyboard storyboard) {
-        return storyboardCodegenPrompt(targetConcept, StoryboardJsonBuilder.buildForCodegen(storyboard));
+        return storyboardCodegenPrompt(targetConcept, storyboard, "manim");
+    }
+
+    public static String storyboardCodegenPrompt(String targetConcept,
+                                                 Storyboard storyboard,
+                                                 String outputTarget) {
+        return storyboardCodegenPrompt(
+                targetConcept,
+                StoryboardJsonBuilder.buildForCodegen(storyboard),
+                outputTarget);
     }
 
     public static String storyboardCodegenPrompt(String targetConcept, String storyboardJson) {
+        return storyboardCodegenPrompt(targetConcept, storyboardJson, "manim");
+    }
+
+    public static String storyboardCodegenPrompt(String targetConcept,
+                                                 String storyboardJson,
+                                                 String outputTarget) {
+        if ("geogebra".equalsIgnoreCase(outputTarget)) {
+            return String.format(
+                    "Target concept: %s\n\n"
+                            + "Use the following compact storyboard JSON as the source of truth for GeoGebra construction order, object identity, continuity, and teaching progression.\n"
+                            + "- Keep the same object identities stable across steps.\n"
+                            + "- Convert `actions` into construction order, visibility changes, highlights, or helper toggles rather than literal animation.\n"
+                            + "- Preserve `geometry_constraints`, `behavior`, `anchor_id`, `dependency_note`, and `constraint_note` through dependency-safe GeoGebra commands.\n"
+                            + "- Choose readable coordinates and label placement that respect `layout_goal`, `placement`, and `safe_area_plan`.\n\n"
+                            + "Compact storyboard JSON:\n```json\n%s\n```\n\n"
+                            + "Remember: Return ONLY the single GeoGebra code block. No explanation.",
+                    targetConcept, storyboardJson);
+        }
         return String.format(
                 "Target concept: %s\n\n"
                         + "Use the following compact storyboard JSON as the source of truth for staging, object identity, continuity, and scene execution.\n"

@@ -9,6 +9,7 @@ import com.automanim.model.Narrative.StoryboardObject;
 import com.automanim.model.Narrative.StoryboardScene;
 import com.automanim.model.WorkflowActions;
 import com.automanim.model.WorkflowKeys;
+import com.automanim.prompt.ToolSchemas;
 import com.automanim.service.AiClient;
 import com.automanim.util.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -100,6 +101,124 @@ class CodeGenerationNodeRoutingTest {
         assertFalse(aiClient.lastUserMessage.contains("\"layout_goal\""));
     }
 
+    @Test
+    void textOnlyToolResponseStillGeneratesCode() {
+        QueueAiClient aiClient = new QueueAiClient();
+        aiClient.toolResponses.add(textResponse(String.join("\n",
+                "```python",
+                "from manim import *",
+                "",
+                "class MainScene(Scene):",
+                "    def construct(self):",
+                "        label = Text(\"ok\")",
+                "        self.play(Write(label))",
+                "```")));
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.CONFIG, new WorkflowConfig());
+        ctx.put(WorkflowKeys.NARRATIVE, buildNarrative());
+
+        new CodeGenerationNode().run(ctx);
+
+        CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
+        assertNotNull(codeResult);
+        assertTrue(codeResult.getManimCode().contains("class MainScene(Scene):"));
+        assertTrue(codeResult.getManimCode().contains("self.play(Write(label))"));
+        assertEquals(1, codeResult.getToolCalls());
+    }
+
+    @Test
+    void fallsBackWhenToolPayloadOmitsCode() {
+        QueueAiClient aiClient = new QueueAiClient();
+        aiClient.toolResponses.add(codegenMetadataOnlyResponse("DemoScene"));
+        aiClient.chatResponses.add(wrapCodeResponse(String.join("\n",
+                "from manim import *",
+                "",
+                "class MainScene(Scene):",
+                "    def construct(self):",
+                "        label = Text(\"fallback\")",
+                "        self.play(Write(label))")));
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.CONFIG, new WorkflowConfig());
+        ctx.put(WorkflowKeys.NARRATIVE, buildNarrative());
+
+        new CodeGenerationNode().run(ctx);
+
+        CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
+        assertNotNull(codeResult);
+        assertTrue(codeResult.getManimCode().contains("fallback"));
+        assertEquals("MainScene", codeResult.getSceneName());
+        assertEquals(2, codeResult.getToolCalls());
+    }
+
+    @Test
+    void geogebraTargetUsesGeoGebraToolingWithoutSceneClassSuffix() {
+        QueueAiClient aiClient = new QueueAiClient();
+        aiClient.toolResponses.add(geogebraCodegenResponse(String.join("\n",
+                "A = (0, 0)",
+                "B = (4, 0)",
+                "lineAB = Line(A, B)")));
+
+        WorkflowConfig config = new WorkflowConfig();
+        config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.CONFIG, config);
+        ctx.put(WorkflowKeys.NARRATIVE, buildStoryboardNarrative());
+
+        new CodeGenerationNode().run(ctx);
+
+        CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
+        assertNotNull(codeResult);
+        assertEquals(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA, codeResult.getOutputTarget());
+        assertEquals("commands", codeResult.getArtifactFormat());
+        assertTrue(codeResult.getManimCode().contains("lineAB = Line(A, B)"));
+        assertEquals(ToolSchemas.GEOGEBRA_CODE, aiClient.lastToolsJson);
+        assertTrue(aiClient.lastSystemPrompt.contains("GeoGebra"));
+        assertTrue(aiClient.lastUserMessage.contains("Figure name: GeoGebraFigure"));
+        assertFalse(aiClient.lastUserMessage.contains("Scene class name:"));
+    }
+
+    @Test
+    void geogebraValidationRoutesFixThroughSharedCodeFixNode() {
+        QueueAiClient aiClient = new QueueAiClient();
+        aiClient.toolResponses.add(geogebraCodegenResponse(String.join("\n",
+                "const A = (0, 0)",
+                "B = (4, 0)",
+                "lineAB = Line(A, B)")));
+        aiClient.chatResponses.add(wrapGeoGebraResponse(String.join("\n",
+                "A = (0, 0)",
+                "B = (4, 0)",
+                "lineAB = Line(A, B)")));
+
+        WorkflowConfig config = new WorkflowConfig();
+        config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.CONFIG, config);
+        ctx.put(WorkflowKeys.NARRATIVE, buildStoryboardNarrative());
+
+        CodeGenerationNode codeGeneration = new CodeGenerationNode();
+        CodeFixNode codeFix = new CodeFixNode();
+        codeGeneration.next(codeFix, WorkflowActions.FIX_CODE);
+        codeFix.next(codeGeneration, WorkflowActions.RETRY_CODE_GENERATION);
+
+        new PocketFlow.Flow<>(codeGeneration).run(ctx);
+
+        CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
+        assertNotNull(codeResult);
+        assertEquals(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA, codeResult.getOutputTarget());
+        assertTrue(codeResult.getManimCode().contains("A = (0, 0)"));
+        assertFalse(codeResult.getManimCode().contains("const A"));
+        assertEquals(2, codeResult.getToolCalls());
+        assertTrue(aiClient.lastSystemPrompt.contains("GeoGebra"));
+    }
+
     private static Narrative buildNarrative() {
         Narrative narrative = new Narrative();
         narrative.setTargetConcept("Demo concept");
@@ -176,8 +295,52 @@ class CodeGenerationNodeRoutingTest {
         return response;
     }
 
+    private static JsonNode codegenMetadataOnlyResponse(String sceneName) {
+        ObjectNode response = JsonUtils.mapper().createObjectNode();
+        ArrayNode choices = response.putArray("choices");
+        ObjectNode message = choices.addObject().putObject("message");
+        ArrayNode toolCalls = message.putArray("tool_calls");
+        ObjectNode function = toolCalls.addObject().putObject("function");
+        function.put("name", "write_manim_code");
+
+        ObjectNode arguments = JsonUtils.mapper().createObjectNode();
+        arguments.put("scene_name", sceneName);
+        arguments.put("description", "metadata only");
+        function.set("arguments", arguments);
+        return response;
+    }
+
+    private static JsonNode geogebraCodegenResponse(String code) {
+        ObjectNode response = JsonUtils.mapper().createObjectNode();
+        ArrayNode choices = response.putArray("choices");
+        ObjectNode message = choices.addObject().putObject("message");
+        ArrayNode toolCalls = message.putArray("tool_calls");
+        ObjectNode function = toolCalls.addObject().putObject("function");
+        function.put("name", "write_geogebra_code");
+
+        ObjectNode arguments = JsonUtils.mapper().createObjectNode();
+        arguments.put("code", code);
+        arguments.put("figure_name", "GeoGebraFigure");
+        arguments.put("description", "demo");
+        arguments.put("artifact_format", "commands");
+        function.set("arguments", arguments);
+        return response;
+    }
+
     private static String wrapCodeResponse(String code) {
         return "```python\n" + code + "\n```";
+    }
+
+    private static String wrapGeoGebraResponse(String code) {
+        return "```geogebra\n" + code + "\n```";
+    }
+
+    private static JsonNode textResponse(String text) {
+        ObjectNode response = JsonUtils.mapper().createObjectNode();
+        ArrayNode choices = response.putArray("choices");
+        ObjectNode message = choices.addObject().putObject("message");
+        message.put("content", text);
+        return response;
     }
 
     private static final class QueueAiClient implements AiClient {

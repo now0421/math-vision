@@ -38,7 +38,7 @@ import java.util.Map;
  * Options:
  *   --workflow-config FILE     Workflow JSON config path
  *   --model-config FILE        Model JSON config path
- *   --output DIR               Output directory (default: ./output/<concept>)
+ *   --output DIR               Output directory (default: ./output/<target>/<concept>)
  */
 public class AutoManimApplication {
 
@@ -118,7 +118,7 @@ public class AutoManimApplication {
         if (fromCodePath != null) {
             Path codeFile = resolveCodePath(fromCodePath);
             if (!Files.exists(codeFile)) {
-                log.error("Manim code file not found: {}", codeFile);
+                log.error("Code file not found: {}", codeFile);
                 System.exit(1);
                 return;
             }
@@ -154,7 +154,10 @@ public class AutoManimApplication {
         } else if (outputDirOverride != null) {
             outputDir = Path.of(outputDirOverride);
         } else {
-            outputDir = FileOutputService.createOutputDir(Path.of("output"), concept);
+            outputDir = FileOutputService.createOutputDir(
+                    Path.of("output"),
+                    concept,
+                    config.getOutputTarget());
         }
 
         log.info("============================================================");
@@ -297,6 +300,8 @@ public class AutoManimApplication {
             summary.put("render_success", renderResult.isSuccess());
             summary.put("render_attempts", renderResult.getAttempts());
             summary.put("video_path", renderResult.getVideoPath());
+            summary.put("artifact_path", renderResult.getArtifactPath());
+            summary.put("artifact_type", renderResult.getArtifactType());
             summary.put("geometry_path", renderResult.getGeometryPath());
         }
 
@@ -364,6 +369,10 @@ public class AutoManimApplication {
                 if (summary.get("video_path") != null) {
                     log.info("  Video:  {}", summary.get("video_path"));
                 }
+                if (summary.get("artifact_path") != null
+                        && !summary.get("artifact_path").equals(summary.get("video_path"))) {
+                    log.info("  Artifact: {}", summary.get("artifact_path"));
+                }
             } else {
                 log.info("  Render: FAILED after {} attempts", summary.get("render_attempts"));
             }
@@ -408,7 +417,23 @@ public class AutoManimApplication {
     private static Path resolveCodePath(String fromCodePath) {
         Path p = Path.of(fromCodePath);
         if (Files.isDirectory(p)) {
-            return p.resolve("4_manim_code.py");
+            Path manim = p.resolve("4_manim_code.py");
+            if (Files.exists(manim)) {
+                return manim;
+            }
+            Path geogebra = p.resolve("4_geogebra_commands.txt");
+            if (Files.exists(geogebra)) {
+                return geogebra;
+            }
+            Path manimFinal = p.resolve("5_manim_code_final.py");
+            if (Files.exists(manimFinal)) {
+                return manimFinal;
+            }
+            Path geogebraFinal = p.resolve("5_geogebra_commands_final.txt");
+            if (Files.exists(geogebraFinal)) {
+                return geogebraFinal;
+            }
+            return manim;
         }
         return p;
     }
@@ -438,13 +463,15 @@ public class AutoManimApplication {
                 + "  --from-graph FILE|DIR      Skip stage 0: load a pre-built knowledge graph\n"
                 + "                             (accepts 1_knowledge_graph.json or its parent directory).\n"
                 + "                             Outputs are written to the same directory as the graph.\n"
-                + "  --from-code FILE|DIR       Skip stages 0-2: load pre-built Manim code\n"
-                + "                             (accepts 4_manim_code.py or its parent directory).\n"
+                + "  --from-code FILE|DIR       Skip stages 0-2: load pre-built generated code\n"
+                + "                             (accepts 4_manim_code.py, 4_geogebra_commands.txt,\n"
+                + "                             or their parent directory).\n"
                 + "                             Outputs are written to the same directory as the code.\n"
                 + "  --workflow-config FILE     Workflow JSON config path\n"
                 + "  --model-config FILE        Model JSON config path\n"
                 + "  --output DIR               Output directory"
                 + " (ignored when --from-graph/--from-code is used)\n"
+                + "                             default: ./output/<target>/<concept_timestamp>\n"
                 + "  -h, --help                 Show this help\n"
                 + "\n"
                 + "Environment variables:\n"

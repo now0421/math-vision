@@ -1,8 +1,10 @@
 package com.automanim.model;
 
+import com.automanim.config.WorkflowConfig;
+
 /**
  * Result from the code generation stage (Stage 2).
- * Carries the generated Manim code and metadata.
+ * Carries the generated backend code/artifact text and metadata.
  */
 public class CodeResult {
 
@@ -11,6 +13,8 @@ public class CodeResult {
     private String description;
     private String targetConcept;
     private String targetDescription;
+    private String outputTarget = WorkflowConfig.OUTPUT_TARGET_MANIM;
+    private String artifactFormat = "python";
     private int toolCalls;
     private double executionTimeSeconds;
 
@@ -55,9 +59,23 @@ public class CodeResult {
     public String getTargetDescription() { return targetDescription; }
     public void setTargetDescription(String targetDescription) { this.targetDescription = targetDescription; }
 
+    public String getOutputTarget() { return outputTarget; }
+    public void setOutputTarget(String outputTarget) { this.outputTarget = outputTarget; }
+
+    public String getArtifactFormat() { return artifactFormat; }
+    public void setArtifactFormat(String artifactFormat) { this.artifactFormat = artifactFormat; }
+
     public int getToolCalls() { return toolCalls; }
     public void setToolCalls(int toolCalls) { this.toolCalls = toolCalls; }
 
     public double getExecutionTimeSeconds() { return executionTimeSeconds; }
     public void setExecutionTimeSeconds(double executionTimeSeconds) { this.executionTimeSeconds = executionTimeSeconds; }
+
+    public boolean isGeoGebraTarget() {
+        return WorkflowConfig.OUTPUT_TARGET_GEOGEBRA.equalsIgnoreCase(outputTarget);
+    }
+
+    public boolean isManimTarget() {
+        return !isGeoGebraTarget();
+    }
 }

@@ -50,6 +50,13 @@
             <version>${logback.version}</version>
         </dependency>
 
+        <!-- Browser automation for GeoGebra applet validation -->
+        <dependency>
+            <groupId>com.microsoft.playwright</groupId>
+            <artifactId>playwright</artifactId>
+            <version>1.53.0</version>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>

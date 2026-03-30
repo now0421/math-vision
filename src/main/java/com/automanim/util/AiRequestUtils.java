@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * Shared async AI request helpers for JSON-oriented tool calls.
@@ -29,7 +30,8 @@ public final class AiRequestUtils {
                 systemPrompt,
                 toolsJson,
                 onApiCall,
-                AiRequestUtils::parsePlainTextJsonObject
+                AiRequestUtils::parsePlainTextJsonObject,
+                AiRequestUtils::isUsablePayload
         );
     }
 
@@ -41,10 +43,35 @@ public final class AiRequestUtils {
                                                                      String toolsJson,
                                                                      Runnable onApiCall,
                                                                      Function<String, JsonNode> plainTextParser) {
+        return requestJsonObjectAsync(
+                aiClient,
+                log,
+                subject,
+                userPrompt,
+                systemPrompt,
+                toolsJson,
+                onApiCall,
+                plainTextParser,
+                AiRequestUtils::isUsablePayload
+        );
+    }
+
+    public static CompletableFuture<JsonNode> requestJsonObjectAsync(AiClient aiClient,
+                                                                     Logger log,
+                                                                     String subject,
+                                                                     String userPrompt,
+                                                                     String systemPrompt,
+                                                                     String toolsJson,
+                                                                     Runnable onApiCall,
+                                                                     Function<String, JsonNode> plainTextParser,
+                                                                     Predicate<JsonNode> payloadValidator) {
+        Predicate<JsonNode> validator = payloadValidator != null
+                ? payloadValidator
+                : AiRequestUtils::isUsablePayload;
         return aiClient.chatWithToolsRawAsync(userPrompt, systemPrompt, toolsJson)
                 .thenApply(rawResponse -> {
                     onApiCall.run();
-                    return extractJsonObject(rawResponse, plainTextParser);
+                    return extractJsonObject(rawResponse, plainTextParser, validator);
                 })
                 .exceptionally(error -> {
                     Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
@@ -60,7 +87,7 @@ public final class AiRequestUtils {
                             .thenApply(response -> {
                                 onApiCall.run();
                                 JsonNode parsed = parsePlainTextResponse(response, plainTextParser);
-                                return isUsablePayload(parsed) ? parsed : null;
+                                return validator.test(parsed) ? parsed : null;
                             });
                 });
     }
@@ -90,7 +117,8 @@ public final class AiRequestUtils {
                 userPrompt,
                 toolsJson,
                 onApiCall,
-                AiRequestUtils::parsePlainTextJsonObject
+                AiRequestUtils::parsePlainTextJsonObject,
+                AiRequestUtils::isUsablePayload
         );
     }
 
@@ -102,6 +130,31 @@ public final class AiRequestUtils {
                                                                      String toolsJson,
                                                                      Runnable onApiCall,
                                                                      Function<String, JsonNode> plainTextParser) {
+        return requestJsonObjectAsync(
+                aiClient,
+                log,
+                subject,
+                context,
+                userPrompt,
+                toolsJson,
+                onApiCall,
+                plainTextParser,
+                AiRequestUtils::isUsablePayload
+        );
+    }
+
+    public static CompletableFuture<JsonNode> requestJsonObjectAsync(AiClient aiClient,
+                                                                     Logger log,
+                                                                     String subject,
+                                                                     NodeConversationContext context,
+                                                                     String userPrompt,
+                                                                     String toolsJson,
+                                                                     Runnable onApiCall,
+                                                                     Function<String, JsonNode> plainTextParser,
+                                                                     Predicate<JsonNode> payloadValidator) {
+        Predicate<JsonNode> validator = payloadValidator != null
+                ? payloadValidator
+                : AiRequestUtils::isUsablePayload;
         // Snapshot: frozen copy of existing messages + the new user message.
         // Does NOT mutate the shared context.
         NodeConversationContext.TurnReservation reservation = context.reserveTurn(userPrompt);
@@ -112,7 +165,7 @@ public final class AiRequestUtils {
         return aiClient.chatWithToolsRawAsync(snapshot, toolsJson)
                 .thenApply(rawResponse -> {
                     onApiCall.run();
-                    JsonNode data = extractJsonObject(rawResponse, plainTextParser);
+                    JsonNode data = extractJsonObject(rawResponse, plainTextParser, validator);
                     if (data != null) {
                         String assistantText = JsonUtils.buildToolCallTranscript(rawResponse);
                         if (assistantText == null || assistantText.isBlank()) {
@@ -146,7 +199,7 @@ public final class AiRequestUtils {
                                 context.appendReservedTurn(
                                         reservation.getSequence(), userPrompt, response);
                                 JsonNode parsed = parsePlainTextResponse(response, plainTextParser);
-                                return isUsablePayload(parsed) ? parsed : null;
+                                return validator.test(parsed) ? parsed : null;
                             });
                 })
                 .whenComplete((ignored, error) -> {
@@ -157,16 +210,20 @@ public final class AiRequestUtils {
     }
 
     private static JsonNode extractJsonObject(JsonNode rawResponse,
-                                              Function<String, JsonNode> plainTextParser) {
+                                              Function<String, JsonNode> plainTextParser,
+                                              Predicate<JsonNode> payloadValidator) {
+        Predicate<JsonNode> validator = payloadValidator != null
+                ? payloadValidator
+                : AiRequestUtils::isUsablePayload;
         JsonNode data = JsonUtils.extractToolCallPayload(rawResponse);
-        if (isUsablePayload(data)) {
+        if (validator.test(data)) {
             return data;
         }
 
         String textContent = JsonUtils.extractBestEffortTextFromResponse(rawResponse);
         if (textContent != null && !textContent.isBlank()) {
             JsonNode parsed = parsePlainTextResponse(textContent, plainTextParser);
-            return isUsablePayload(parsed) ? parsed : null;
+            return validator.test(parsed) ? parsed : null;
         }
 
         return null;

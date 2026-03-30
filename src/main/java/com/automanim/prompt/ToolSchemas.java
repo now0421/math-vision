@@ -400,6 +400,26 @@ public final class ToolSchemas {
             + "}"
             + "]";
 
+    public static final String GEOGEBRA_CODE = "["
+            + "{"
+            + "  \"type\": \"function\","
+            + "  \"function\": {"
+            + "    \"name\": \"write_geogebra_code\","
+            + "    \"description\": \"Return complete GeoGebra Classic command code.\","
+            + "    \"parameters\": {"
+            + "      \"type\": \"object\","
+            + "      \"properties\": {"
+            + "        \"code\": { \"type\": \"string\", \"description\": \"Complete GeoGebra command script\" },"
+            + "        \"figure_name\": { \"type\": \"string\", \"description\": \"Primary figure name in ASCII\" },"
+            + "        \"description\": { \"type\": \"string\", \"description\": \"Short summary of the construction\" },"
+            + "        \"artifact_format\": { \"type\": \"string\", \"description\": \"Output form such as commands\" }"
+            + "      },"
+            + "      \"required\": [\"code\"]"
+            + "    }"
+            + "  }"
+            + "}"
+            + "]";
+
     // ========================================================================
     // Stage 3: Code Evaluation
     // ========================================================================

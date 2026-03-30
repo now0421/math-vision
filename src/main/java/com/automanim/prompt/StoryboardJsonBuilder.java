@@ -17,18 +17,45 @@ import java.util.List;
  */
 public final class StoryboardJsonBuilder {
 
+    private static final class BuildOptions {
+        private final boolean includeNarrativeFields;
+        private final boolean includeSceneFixFields;
+
+        private BuildOptions(boolean includeNarrativeFields, boolean includeSceneFixFields) {
+            this.includeNarrativeFields = includeNarrativeFields;
+            this.includeSceneFixFields = includeSceneFixFields;
+        }
+    }
+
     private StoryboardJsonBuilder() {}
 
     /**
      * Builds a compact storyboard JSON string optimized for code generation.
      */
     public static String buildForCodegen(Storyboard storyboard) {
+        return build(storyboard, new BuildOptions(false, false));
+    }
+
+    /**
+     * Builds storyboard JSON for post-render layout repair.
+     * This keeps compact structure but preserves additional scene intent fields
+     * so the fixer can recover layout without breaking geometric constraints.
+     */
+    public static String buildForSceneEvaluationFix(Storyboard storyboard) {
+        return build(storyboard, new BuildOptions(true, true));
+    }
+
+    private static String build(Storyboard storyboard, BuildOptions options) {
         ObjectNode root = JsonUtils.mapper().createObjectNode();
         if (storyboard == null) {
             root.putArray("scenes");
             return JsonUtils.toPrettyJson(root);
         }
 
+        if (options.includeNarrativeFields) {
+            putNonBlank(root, "hook", storyboard.getHook());
+            putNonBlank(root, "summary", storyboard.getSummary());
+        }
         putNonBlank(root, "continuity_plan", storyboard.getContinuityPlan());
         putTrimmedStringArray(root, "global_visual_rules", storyboard.getGlobalVisualRules());
 
@@ -38,18 +65,24 @@ public final class StoryboardJsonBuilder {
                 if (scene == null) {
                     continue;
                 }
-                addSceneNode(scenesArray, scene);
+                addSceneNode(scenesArray, scene, options);
             }
         }
 
         return JsonUtils.toPrettyJson(root);
     }
 
-    private static void addSceneNode(ArrayNode scenesArray, StoryboardScene scene) {
+    private static void addSceneNode(ArrayNode scenesArray,
+                                     StoryboardScene scene,
+                                     BuildOptions options) {
         ObjectNode sceneNode = scenesArray.addObject();
 
         putNonBlank(sceneNode, "scene_id", scene.getSceneId());
         putNonBlank(sceneNode, "title", scene.getTitle());
+        if (options.includeSceneFixFields) {
+            putNonBlank(sceneNode, "goal", scene.getGoal());
+            putNonBlank(sceneNode, "layout_goal", scene.getLayoutGoal());
+        }
         putNonBlank(sceneNode, "narration", scene.getNarration());
 
         if (scene.getDurationSeconds() > 0) {

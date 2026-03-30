@@ -164,17 +164,26 @@ angle = Angle(line1, line2, radius=0.5)
 Angle safety rules:
 
 * Prefer `Angle(line1, line2, ...)` over manually constructing `Arc(start_angle=..., angle=...)` for geometric angle markers.
-* The two inputs should be the actual rays or segments that define the angle and should share the same vertex.
-* For moving geometry, build those defining lines from the shared vertex and wrap the resulting `Angle(...)` in `always_redraw(...)`.
-* When the intended mark is the smaller interior angle, explicitly request the smaller interior angle and keep that choice stable as points move.
+* The two inputs should be the actual rays that define the angle and should share the same vertex.
+* Build each ray so its first point is the vertex and its second point lies on the intended side of the angle. Do not pass a long line that visually continues through the vertex and creates ambiguity about which sector should be marked.
+* For moving geometry, rebuild those defining rays from the shared vertex inside the same `always_redraw(...)` lambda that creates the `Angle(...)`.
+* When the intended mark is the smaller interior angle, explicitly keep `other_angle=False` instead of relying on implicit defaults.
+* When several sectors are possible, especially around a normal, reflection line, or crossing helper lines, explicitly set `quadrant=...` so the arc stays in the intended region as points move.
 * Do not fake angle placement by drawing a free-floating arc and shifting or rotating it into place after the fact; this often puts the arc on the wrong side of the vertex.
+* If the angle is meant to compare two small equal angles, do not draw a near-full circle or large exterior angle around the vertex.
 
 Recommended pattern for a dynamic angle at point `P`:
 
 ```python
-ray1 = always_redraw(lambda: Line(P.get_center(), A.get_center()))
-ray2 = always_redraw(lambda: Line(P.get_center(), B.get_center()))
-angle = always_redraw(lambda: Angle(ray1, ray2, radius=0.4, color=PURE_CYAN))
+angle = always_redraw(
+    lambda: Angle(
+        Line(P.get_center(), A.get_center()),
+        Line(P.get_center(), B.get_center()),
+        radius=0.4,
+        other_angle=False,
+        color=PURE_CYAN,
+    )
+)
 ```
 
 Recommended pattern when measuring against a normal or helper ray through the same point:
@@ -185,10 +194,27 @@ angle_in = always_redraw(
         Line(P.get_center(), P.get_center() + UP),
         Line(P.get_center(), A.get_center()),
         radius=0.35,
+        quadrant=(-1, 1),
+        other_angle=False,
+        color=PURE_CYAN,
+    )
+)
+
+angle_out = always_redraw(
+    lambda: Angle(
+        Line(P.get_center(), P.get_center() + UP),
+        Line(P.get_center(), B.get_center()),
+        radius=0.35,
+        quadrant=(1, 1),
+        other_angle=False,
         color=PURE_CYAN,
     )
 )
 ```
+
+Interpretation note:
+
+* If `A` is above-left of `P` and `B` is above-right of `P`, then the two desired equal angles with an upward normal usually live in the upper-left and upper-right sectors. In that common case, `quadrant=(-1, 1)` and `quadrant=(1, 1)` are safer than leaving the sector implicit.
 
 ### `RightAngle`
 

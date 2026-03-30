@@ -22,8 +22,9 @@ public final class CodeGenerationPrompts {
                     + "- Keep content inside x[-7,7], y[-4,4] and prefer stable anchors plus `arrange`/`next_to`.\n"
                     + "- Keep labels dynamically attached to moving objects.\n"
                     + "- For angle markers or equal-angle arcs, prefer `Angle(...)` built from two lines/rays sharing the true vertex instead of hand-written `Arc(start_angle=..., angle=...)` formulas.\n"
-                    + "- When an angle is measured against a normal, helper line, or moving segment, construct both rays from the shared point and keep the angle marker attached with `always_redraw(...)`.\n"
-                    + "- If the storyboard intends the interior/smaller angle, keep that side stable as points move; do not place a free-floating arc by shifting/rotating it near the vertex.\n"
+                    + "- When an angle is measured against a normal, helper line, or moving segment, construct both rays from the shared point inside `always_redraw(...)`.\n"
+                    + "- If the intended angle sector could be ambiguous, explicitly set `quadrant=...`; if the storyboard intends the interior/smaller angle, explicitly keep `other_angle=False`.\n"
+                    + "- Do not place a free-floating arc by shifting/rotating it near the vertex, and do not accidentally mark a large exterior angle when the scene intends two small equal angles.\n"
                     + "- Treat storyboard `geometry_constraints` and object `constraint_note` fields as hard mathematical invariants.\n"
                     + "- For reflected points, intersections, midpoints, feet of perpendiculars, equal-radius points, or similar derived geometry, compute them from source objects instead of assigning unrelated replacement coordinates.\n"
                     + "- If content would overflow, prefer translating or uniformly scaling the whole constrained construction, or moving overlays away from it, rather than breaking the defining geometry.\n"
@@ -96,9 +97,79 @@ public final class CodeGenerationPrompts {
                     + "\n"
                     + "Do not add any explanation before or after the code block.";
 
+    private static final String GEOGEBRA_VALIDATION_FIX_SYSTEM =
+            "You are a GeoGebra Classic command correction specialist.\n"
+                    + "You will receive generated GeoGebra command code together with static validation failures.\n"
+                    + "Rewrite the full command script so it becomes valid, dependency-safe, and ready for the next workflow stage.\n"
+                    + "Fix every reported validation problem, preserve the teaching content, keep the requested figure naming intent, and proactively fix nearby GeoGebra mistakes.\n"
+                    + "Use English GeoGebra command names and ASCII-only object identifiers.\n"
+                    + "\n"
+                    + "Output format:\n"
+                    + "Return exactly one fenced `geogebra` code block containing the full corrected command script.\n"
+                    + "\n"
+                    + "Example output:\n"
+                    + "```geogebra\n"
+                    + "A = (0, 0)\n"
+                    + "B = (4, 0)\n"
+                    + "lineAB = Line(A, B)\n"
+                    + "```\n"
+                    + "\n"
+                    + "Do not add any explanation before or after the code block.";
+
+    private static final String GEOGEBRA_CODE_GENERATION_SYSTEM =
+            "You are an expert GeoGebra Classic engineer.\n"
+                    + "Generate complete, dependency-safe GeoGebra command code that implements the storyboard for teaching.\n"
+                    + "Treat the storyboard as the source of truth for object identity, geometry meaning, layout intent, and teaching order.\n"
+                    + "\n"
+                    + "Mandatory rules:\n"
+                    + "- Return GeoGebra commands, not Python and not JavaScript.\n"
+                    + "- Keep object names ASCII only.\n"
+                    + "- Prefer common, stable GeoGebra Classic commands over obscure tricks.\n"
+                    + "- Build from base objects to derived objects in a clear dependency chain.\n"
+                    + "- Preserve geometric meaning: intersections, reflections, midpoints, perpendiculars, parallels, equal-radius points, and similar constructions must stay dependency-driven.\n"
+                    + "- Treat storyboard `geometry_constraints` and object `constraint_note` fields as hard mathematical invariants.\n"
+                    + "- Ignore timing-only details such as scene duration, but preserve the same teaching order and object-state progression.\n"
+                    + "- Use style and visibility commands sparingly and semantically.\n"
+                    + "\n"
+                    + "How to interpret the storyboard fields:\n"
+                    + "- `entering_objects` defines the objects that must exist for the teaching beat.\n"
+                    + "- `persistent_objects` tells you which earlier objects should remain available in later steps.\n"
+                    + "- `exiting_objects` may be translated into hidden helper objects or omitted if persistent visibility would cause clutter.\n"
+                    + "- `actions` describe state changes; convert them into construction order, visibility changes, highlight states, or helper toggles rather than literal animation.\n"
+                    + "- `placement`, `layout_goal`, `safe_area_plan`, and `screen_overlay_plan` should guide readable coordinates, label placement, and visibility choices.\n"
+                    + "- `behavior = follows_anchor` or `derived` means the object should be defined from its source geometry so it updates automatically.\n"
+                    + "\n"
+                    + "Output format:\n"
+                    + "Return exactly one fenced `geogebra` code block containing the full GeoGebra command script.\n"
+                    + "\n"
+                    + "Example output:\n"
+                    + "```geogebra\n"
+                    + "A = (0, 0)\n"
+                    + "B = (4, 0)\n"
+                    + "lineAB = Line(A, B)\n"
+                    + "```\n"
+                    + "\n"
+                    + "Do NOT provide explanations before or after the code block.\n"
+                    + "The output must be ONLY the code block.";
+
     private CodeGenerationPrompts() {}
 
     public static String systemPrompt(String targetConcept, String targetDescription) {
+        return systemPrompt(targetConcept, targetDescription, "manim");
+    }
+
+    public static String systemPrompt(String targetConcept,
+                                      String targetDescription,
+                                      String outputTarget) {
+        if ("geogebra".equalsIgnoreCase(outputTarget)) {
+            return SystemPrompts.ensureGeoGebraSyntaxManual(SystemPrompts.buildWorkflowPrefix(
+                    "Stage 2 / Code Generation",
+                    "Generate executable GeoGebra code",
+                    targetConcept,
+                    targetDescription,
+                    false
+            ) + GEOGEBRA_CODE_GENERATION_SYSTEM);
+        }
         return SystemPrompts.ensureManimSyntaxManual(SystemPrompts.buildWorkflowPrefix(
                 "Stage 2 / Code Generation",
                 "Generate executable Manim code",
@@ -116,6 +187,16 @@ public final class CodeGenerationPrompts {
                 targetDescription,
                 true
         ) + VALIDATION_FIX_SYSTEM);
+    }
+
+    public static String geoGebraValidationFixSystemPrompt(String targetConcept, String targetDescription) {
+        return SystemPrompts.ensureGeoGebraSyntaxManual(SystemPrompts.buildWorkflowPrefix(
+                "Stage 2 / Code Fix",
+                "Repair generated GeoGebra commands after validation findings",
+                targetConcept,
+                targetDescription,
+                false
+        ) + GEOGEBRA_VALIDATION_FIX_SYSTEM);
     }
 
     public static String validationFixUserPrompt(String sceneName,
@@ -147,5 +228,30 @@ public final class CodeGenerationPrompts {
                         + "Keep `%s` as the exact scene class name, use ASCII-only Python identifiers, and also fix nearby Python/Manim mistakes.\n"
                         + "Return ONLY the full Python code block.",
                 storyboardBlock, sceneName, manimCode, problemList, sceneName);
+    }
+
+    public static String geoGebraValidationFixUserPrompt(String figureName,
+                                                         String geoGebraCode,
+                                                         List<String> violations,
+                                                         String storyboardJson) {
+        String problemList = (violations == null || violations.isEmpty())
+                ? "- Validation failed for an unspecified reason."
+                : "- " + String.join("\n- ", violations);
+        String storyboardBlock = (storyboardJson == null || storyboardJson.isBlank())
+                ? ""
+                : "Compact storyboard JSON (source of truth):\n```json\n"
+                + storyboardJson
+                + "\n```\n\n";
+        return String.format(
+                "The generated GeoGebra command script failed static validation checks.\n\n"
+                        + "%s"
+                        + "Intended figure name: %s\n\n"
+                        + "Current code:\n```geogebra\n%s\n```\n\n"
+                        + "Problems found:\n%s\n\n"
+                        + "Rewrite the FULL command script so it satisfies all validation rules while preserving the teaching goal.\n"
+                        + "If storyboard geometry constraints or derived-object definitions are present, preserve them while fixing validation issues.\n"
+                        + "Use English GeoGebra command names, keep ASCII-only object identifiers, and preserve the figure naming intent around `%s`.\n"
+                        + "Return ONLY the full GeoGebra code block.",
+                storyboardBlock, figureName, geoGebraCode, problemList, figureName);
     }
 }

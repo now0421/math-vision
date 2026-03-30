@@ -1,5 +1,6 @@
 package com.automanim.service;
 
+import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeResult;
 import com.automanim.model.RenderResult;
 import com.automanim.model.SceneEvaluationResult;
@@ -18,6 +19,17 @@ class FileOutputServiceTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void createOutputDirPlacesRunsUnderBackendSubdirectory() {
+        Path manimDir = FileOutputService.createOutputDir(tempDir, "Manual Concept", WorkflowConfig.OUTPUT_TARGET_MANIM);
+        Path geogebraDir = FileOutputService.createOutputDir(tempDir, "Manual Concept", WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+
+        assertEquals(tempDir.resolve("manim"), manimDir.getParent());
+        assertEquals(tempDir.resolve("geogebra"), geogebraDir.getParent());
+        assertTrue(Files.exists(manimDir));
+        assertTrue(Files.exists(geogebraDir));
+    }
 
     @Test
     void saveRenderResultPersistsGeometryPath() throws IOException {
@@ -65,6 +77,30 @@ class FileOutputServiceTest {
         assertEquals("FallbackScene", codeResult.getSceneName());
         assertEquals("FallbackScene", codeResult.getTargetConcept());
         assertEquals("", codeResult.getTargetDescription());
+    }
+
+    @Test
+    void saveAndLoadGeoGebraCodeResultUsesGeoGebraArtifactNames() throws IOException {
+        CodeResult codeResult = new CodeResult(
+                String.join("\n",
+                        "A = (0, 0)",
+                        "B = (4, 0)",
+                        "lineAB = Line(A, B)"),
+                "GeoGebraFigure",
+                "geo demo",
+                "Manual Concept",
+                "Recovered from disk");
+        codeResult.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+        codeResult.setArtifactFormat("commands");
+
+        FileOutputService.saveCodeResult(tempDir, codeResult);
+
+        assertTrue(Files.exists(tempDir.resolve("4_geogebra_commands.txt")));
+
+        CodeResult loaded = FileOutputService.loadCodeResult(tempDir.resolve("4_geogebra_commands.txt"));
+        assertEquals(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA, loaded.getOutputTarget());
+        assertEquals("commands", loaded.getArtifactFormat());
+        assertTrue(loaded.getManimCode().contains("lineAB = Line(A, B)"));
     }
 
     @Test

@@ -22,10 +22,10 @@ import com.automanim.prompt.ToolSchemas;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
 import com.automanim.util.AiRequestUtils;
-import com.automanim.util.CodeUtils;
 import com.automanim.util.ConcurrencyUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.automanim.util.JsonUtils;
+import com.automanim.util.ManimCodeUtils;
 import com.automanim.util.NodeConversationContext;
 import com.automanim.util.TargetDescriptionBuilder;
 import io.github.the_pocket.PocketFlow;
@@ -173,6 +173,19 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         fixState.setRequestFix(false);
 
         CodeEvaluationResult result = new CodeEvaluationResult();
+        if (input.config() != null && input.config().isGeoGebraTarget()) {
+            result.setApprovedForRender(true);
+            result.setGateReason("Code evaluation skipped: GeoGebra target does not use Manim code review");
+            result.setRevisionAttempts(0);
+            result.setRevisionTriggered(false);
+            result.setRevisedCodeApplied(false);
+            result.setToolCalls(0);
+            result.setExecutionTimeSeconds(toSeconds(start));
+            if (codeResult != null) {
+                result.setSceneName(codeResult.getSceneName());
+            }
+            return result;
+        }
         if (codeResult == null || !codeResult.hasCode()) {
             result.setApprovedForRender(false);
             result.setGateReason("No code available for code evaluation");
@@ -185,7 +198,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         }
 
         String currentCode = codeResult.getManimCode();
-        String sceneName = CodeUtils.extractSceneName(currentCode, codeResult.getSceneName());
+        String sceneName = ManimCodeUtils.extractSceneName(currentCode, codeResult.getSceneName());
         codeResult.setSceneName(sceneName);
         result.setSceneName(sceneName);
         initializeConversationContexts(codeResult, sceneName);

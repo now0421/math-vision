@@ -4,6 +4,7 @@ import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeFixRequest;
 import com.automanim.model.CodeFixSource;
 import com.automanim.model.CodeResult;
+import com.automanim.model.Narrative;
 import com.automanim.model.RenderResult;
 import com.automanim.model.SceneEvaluationResult;
 import com.automanim.model.WorkflowActions;
@@ -74,7 +75,56 @@ class SceneEvaluationNodeTest {
     }
 
     @Test
-    void detectsOverlapForNonTextElementsToo() throws IOException {
+    void firstSceneEvaluationFixRequestDoesNotIncludeCurrentIssueInFixHistory() throws IOException {
+        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Files.writeString(geometryPath, problematicGeometryJson());
+
+        Map<String, Object> ctx = buildContext(geometryPath);
+        SceneEvaluationNode node = new SceneEvaluationNode();
+
+        SceneEvaluationNode.SceneEvaluationInput firstInput = node.prep(ctx);
+        SceneEvaluationResult firstResult = node.exec(firstInput);
+        String firstAction = node.post(ctx, firstInput, firstResult);
+
+        assertEquals(WorkflowActions.FIX_CODE, firstAction);
+        CodeFixRequest firstRequest = (CodeFixRequest) ctx.get(WorkflowKeys.CODE_FIX_REQUEST);
+        assertNotNull(firstRequest);
+        assertTrue(firstRequest.getFixHistory().isEmpty());
+
+        SceneEvaluationNode.SceneEvaluationInput secondInput = node.prep(ctx);
+        SceneEvaluationResult secondResult = node.exec(secondInput);
+        String secondAction = node.post(ctx, secondInput, secondResult);
+
+        assertEquals(WorkflowActions.FIX_CODE, secondAction);
+        CodeFixRequest secondRequest = (CodeFixRequest) ctx.get(WorkflowKeys.CODE_FIX_REQUEST);
+        assertNotNull(secondRequest);
+        assertEquals(1, secondRequest.getFixHistory().size());
+        assertTrue(secondRequest.getFixHistory().get(0).contains("Scene evaluation found"));
+    }
+
+    @Test
+    void sceneEvaluationFixRequestUsesDetailedStoryboardJson() throws IOException {
+        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Files.writeString(geometryPath, problematicGeometryJson());
+
+        Map<String, Object> ctx = buildContext(geometryPath, buildSceneFixNarrative());
+        SceneEvaluationNode node = new SceneEvaluationNode();
+
+        SceneEvaluationNode.SceneEvaluationInput input = node.prep(ctx);
+        SceneEvaluationResult result = node.exec(input);
+        String action = node.post(ctx, input, result);
+
+        assertEquals(WorkflowActions.FIX_CODE, action);
+        CodeFixRequest request = (CodeFixRequest) ctx.get(WorkflowKeys.CODE_FIX_REQUEST);
+        assertNotNull(request);
+        assertTrue(request.getStoryboardJson().contains("\"goal\""));
+        assertTrue(request.getStoryboardJson().contains("\"layout_goal\""));
+        assertTrue(request.getStoryboardJson().contains("\"constraint_note\""));
+        assertTrue(request.getStoryboardJson().contains("\"summary\""));
+    }
+
+    @Test
+    void ignoresNonTextOnlyOverlapPairs() throws IOException {
         Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
         Files.writeString(geometryPath, nonTextOverlapGeometryJson());
 
@@ -86,9 +136,27 @@ class SceneEvaluationNodeTest {
         String action = node.post(ctx, input, result);
 
         assertTrue(result.isEvaluated());
-        assertFalse(result.isApproved());
-        assertTrue(result.getOverlapIssueCount() > 0);
-        assertEquals(WorkflowActions.FIX_CODE, action);
+        assertTrue(result.isApproved());
+        assertEquals(0, result.getOverlapIssueCount());
+        assertNull(action);
+    }
+
+    @Test
+    void ignoresArcBBoxOverlapWhenSampledPathMissesText() throws IOException {
+        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Files.writeString(geometryPath, arcBBoxFalsePositiveGeometryJson());
+
+        Map<String, Object> ctx = buildContext(geometryPath);
+        SceneEvaluationNode node = new SceneEvaluationNode();
+
+        SceneEvaluationNode.SceneEvaluationInput input = node.prep(ctx);
+        SceneEvaluationResult result = node.exec(input);
+        String action = node.post(ctx, input, result);
+
+        assertTrue(result.isEvaluated());
+        assertTrue(result.isApproved());
+        assertEquals(0, result.getOverlapIssueCount());
+        assertNull(action);
     }
 
     @Test
@@ -128,6 +196,10 @@ class SceneEvaluationNodeTest {
     }
 
     private Map<String, Object> buildContext(Path geometryPath) {
+        return buildContext(geometryPath, null);
+    }
+
+    private Map<String, Object> buildContext(Path geometryPath, Narrative narrative) {
         WorkflowConfig config = new WorkflowConfig();
         config.setRenderEnabled(true);
         config.setSceneEvaluationMaxRetries(2);
@@ -154,8 +226,44 @@ class SceneEvaluationNodeTest {
         ctx.put(WorkflowKeys.CONFIG, config);
         ctx.put(WorkflowKeys.CODE_RESULT, codeResult);
         ctx.put(WorkflowKeys.RENDER_RESULT, renderResult);
+        if (narrative != null) {
+            ctx.put(WorkflowKeys.NARRATIVE, narrative);
+        }
         ctx.put(WorkflowKeys.OUTPUT_DIR, tempDir);
         return ctx;
+    }
+
+    private Narrative buildSceneFixNarrative() {
+        Narrative.StoryboardObject pointBPrime = new Narrative.StoryboardObject();
+        pointBPrime.setId("point_Bprime");
+        pointBPrime.setKind("point");
+        pointBPrime.setContent("Reflection of B across l");
+        pointBPrime.setBehavior("derived");
+        pointBPrime.setConstraintNote("Reflection of B across l");
+
+        Narrative.StoryboardScene scene = new Narrative.StoryboardScene();
+        scene.setSceneId("scene_2");
+        scene.setTitle("Reflect B");
+        scene.setGoal("Keep the reflection construction exact while cleaning the layout.");
+        scene.setNarration("Reflect B across l and preserve the mirror symmetry.");
+        scene.setLayoutGoal("Keep explanatory text off the core geometry while B' stays symmetric to B.");
+        scene.getGeometryConstraints().add("B' is the exact reflection of B across line l");
+        scene.getEnteringObjects().add(pointBPrime);
+        scene.getPersistentObjects().add("point_B");
+        scene.getPersistentObjects().add("point_Bprime");
+        scene.getActions().add(new Narrative.StoryboardAction());
+
+        Narrative.Storyboard storyboard = new Narrative.Storyboard();
+        storyboard.setHook("Demo hook");
+        storyboard.setSummary("Demo summary");
+        storyboard.setContinuityPlan("Preserve the same diagram while repairing layout.");
+        storyboard.getScenes().add(scene);
+
+        Narrative narrative = new Narrative();
+        narrative.setTargetConcept("Demo concept");
+        narrative.setTargetDescription("Demo description");
+        narrative.setStoryboard(storyboard);
+        return narrative;
     }
 
     private String cleanGeometryJson() {
@@ -358,6 +466,56 @@ class SceneEvaluationNodeTest {
                 "          \"bounds\": {",
                 "            \"min\": [-0.8, -0.4, 0.0],",
                 "            \"max\": [0.8, 0.4, 0.0]",
+                "          }",
+                "        }",
+                "      ]",
+                "    }",
+                "  ]",
+                "}");
+    }
+
+    private String arcBBoxFalsePositiveGeometryJson() {
+        return String.join("\n",
+                "{",
+                "  \"scene_name\": \"MainScene\",",
+                "  \"frame_bounds\": {",
+                "    \"min\": [-7.111111, -4.0, 0.0],",
+                "    \"max\": [7.111111, 4.0, 0.0]",
+                "  },",
+                "  \"samples\": [",
+                "    {",
+                "      \"sample_id\": \"sample-0001\",",
+                "      \"sample_role\": \"scene_final\",",
+                "      \"elements\": [",
+                "        {",
+                "          \"stable_id\": \"label\",",
+                "          \"semantic_name\": \"label\",",
+                "          \"class_name\": \"MathTex\",",
+                "          \"semantic_class\": \"formula\",",
+                "          \"visible\": true,",
+                "          \"bounds\": {",
+                "            \"min\": [-0.5, -0.2, 0.0],",
+                "            \"max\": [0.5, 0.2, 0.0]",
+                "          }",
+                "        },",
+                "        {",
+                "          \"stable_id\": \"arc\",",
+                "          \"semantic_name\": \"arc_alpha\",",
+                "          \"class_name\": \"Angle\",",
+                "          \"semantic_class\": \"other\",",
+                "          \"visible\": true,",
+                "          \"bounds\": {",
+                "            \"min\": [-1.0, -1.0, 0.0],",
+                "            \"max\": [1.0, 1.0, 0.0]",
+                "          },",
+                "          \"shape_hints\": {",
+                "            \"path_points\": [",
+                "              [1.0, 0.0, 0.0],",
+                "              [0.7, 0.7, 0.0],",
+                "              [0.0, 1.0, 0.0],",
+                "              [-0.7, 0.7, 0.0],",
+                "              [-1.0, 0.0, 0.0]",
+                "            ]",
                 "          }",
                 "        }",
                 "      ]",

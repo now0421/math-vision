@@ -1287,6 +1287,7 @@ def _build_semantic_mobject_record(
     )
     if screen_bounds is None:
         screen_bounds = world_bounds
+    display_points = _display_points(camera, mobject, points, world_bounds)
 
     visible = _is_visible(int(points.shape[0]), world_bounds, max_opacity)
     if require_visible and not visible:
@@ -1341,12 +1342,13 @@ def _build_semantic_mobject_record(
         "points_count": int(points.shape[0]),
         "opacity": max_opacity,
         "stroke_width": stroke_width,
-        "shape_hints": _shape_hints(mobject),
+        "shape_hints": _shape_hints(mobject, display_points),
     }
 
 
-def _shape_hints(mobject):
+def _shape_hints(mobject, display_points=None):
     hints = {}
+    class_name = mobject.__class__.__name__
 
     start = _safe_point(getattr(mobject, "start", None))
     end = _safe_point(getattr(mobject, "end", None))
@@ -1370,7 +1372,57 @@ def _shape_hints(mobject):
     if arc_center is not None:
         hints["arc_center"] = arc_center
 
+    if (
+        display_points is not None
+        and display_points.size > 0
+        and (
+            "Arc" in class_name
+            or "Angle" in class_name
+            or class_name == "VMobject"
+        )
+    ):
+        sampled_path = _sample_display_path_points(display_points)
+        if sampled_path:
+            hints["path_points"] = sampled_path
+
     return hints
+
+
+def _sample_display_path_points(display_points, max_points=24):
+    if display_points is None or getattr(display_points, "size", 0) <= 0:
+        return None
+
+    deduped = []
+    for raw_point in display_points:
+        point = _safe_point(raw_point)
+        if point is None:
+            continue
+        if deduped:
+            previous = deduped[-1]
+            if (
+                abs(point[0] - previous[0]) <= 1e-4
+                and abs(point[1] - previous[1]) <= 1e-4
+                and abs(point[2] - previous[2]) <= 1e-4
+            ):
+                continue
+        deduped.append(point)
+
+    if len(deduped) < 2:
+        return None
+
+    if len(deduped) <= max_points:
+        return deduped
+
+    indices = np.linspace(0, len(deduped) - 1, max_points, dtype=int)
+    sampled = []
+    last_index = None
+    for index in indices:
+        index = int(index)
+        if last_index == index:
+            continue
+        sampled.append(deduped[index])
+        last_index = index
+    return sampled if len(sampled) >= 2 else None
 
 
 def _semantic_class(mobject):

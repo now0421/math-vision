@@ -14,7 +14,7 @@ public final class RenderFixPrompts {
                     + "Preserve the original scene class name and intended animation meaning.\n"
                     + "Use ASCII-only identifiers, fix the reported root cause systematically, and also correct nearby Python/Manim runtime mistakes.\n"
                     + "Do not store mobjects across scene methods via `self`, do not hardcode MathTex numeric indexing, and keep layout inside x[-7,7], y[-4,4].\n"
-                    + "If the code contains geometric angle markers, prefer vertex-anchored `Angle(...)` constructions over manually tuned `Arc(...)` start-angle math.\n"
+                    + "If the code contains geometric angle markers, prefer vertex-anchored `Angle(...)` constructions over manually tuned `Arc(...)` start-angle math, and explicitly choose the intended sector with `quadrant` and `other_angle=False` when needed.\n"
                     + "Do not break mathematical construction constraints while fixing render issues; derived points should remain derived from their source geometry.\n"
                     + "\n"
                     + "Output format:\n"
@@ -31,6 +31,27 @@ public final class RenderFixPrompts {
                     + "\n"
                     + "Do not return anything except that single full Python code block.";
 
+    private static final String GEOGEBRA_SYSTEM =
+            "You are a GeoGebra Classic debugging expert.\n"
+                    + "Fix the GeoGebra command script so each command succeeds when replayed in order via `evalCommand(...)`.\n"
+                    + "Preserve the intended construction meaning, object dependency chain, and storyboard teaching order.\n"
+                    + "Use English GeoGebra command names and ASCII-only object identifiers.\n"
+                    + "Do not output Python, JavaScript, or explanations.\n"
+                    + "If a command currently returns false, correct the root cause and also proactively repair nearby dependent commands.\n"
+                    + "Do not break geometric constraints while fixing command failures; keep derived objects derived from their source objects.\n"
+                    + "\n"
+                    + "Output format:\n"
+                    + "Return exactly one fenced `geogebra` code block containing the full corrected command script.\n"
+                    + "\n"
+                    + "Example output:\n"
+                    + "```geogebra\n"
+                    + "A = (0, 0)\n"
+                    + "B = (4, 0)\n"
+                    + "lineAB = Line(A, B)\n"
+                    + "```\n"
+                    + "\n"
+                    + "Do not return anything except that single full GeoGebra code block.";
+
     private RenderFixPrompts() {}
 
     public static String systemPrompt(String targetConcept, String targetDescription) {
@@ -41,6 +62,16 @@ public final class RenderFixPrompts {
                 targetDescription,
                 true
         ) + SYSTEM);
+    }
+
+    public static String geoGebraSystemPrompt(String targetConcept, String targetDescription) {
+        return SystemPrompts.ensureGeoGebraSyntaxManual(SystemPrompts.buildWorkflowPrefix(
+                "Stage 4 / Render Fix",
+                "Repair GeoGebra commands after render validation failure",
+                targetConcept,
+                targetDescription,
+                false
+        ) + GEOGEBRA_SYSTEM);
     }
 
     public static String userPrompt(String code, String error) {
@@ -67,6 +98,37 @@ public final class RenderFixPrompts {
                 .append("If the storyboard encodes geometric constraints or derived constructions, preserve them while fixing the render failure.\n")
                 .append("Also proactively check for common Python and Manim runtime mistakes.\n")
                 .append("Remember: Return ONLY the single Python code block containing the full file. No explanation.\n");
+
+        if (fixHistory != null && !fixHistory.isEmpty()) {
+            sb.append("\nPrevious fix attempts to avoid repeating:\n");
+            for (int i = 0; i < fixHistory.size(); i++) {
+                String item = fixHistory.get(i);
+                if (item == null) {
+                    continue;
+                }
+                sb.append("  Attempt ").append(i + 1).append(": ")
+                        .append(item.length() > 100 ? item.substring(0, 100) + "..." : item)
+                        .append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    public static String geoGebraUserPrompt(String code,
+                                            String error,
+                                            String storyboardJson,
+                                            List<String> fixHistory) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("The following GeoGebra command script failed runtime validation when commands were replayed in order through `evalCommand(...)`.\n\n")
+                .append(storyboardJson != null && !storyboardJson.isBlank()
+                        ? "Compact storyboard JSON (source of truth):\n```json\n"
+                        + storyboardJson + "\n```\n\n"
+                        : "")
+                .append("```geogebra\n").append(code).append("\n```\n\n")
+                .append("Validation failure details:\n```\n").append(error).append("\n```\n\n")
+                .append("Please rewrite the FULL command script so the failing commands become valid and downstream dependent commands remain correct.\n")
+                .append("Use English GeoGebra command names, ASCII-only object identifiers, and preserve geometric dependency constraints from the storyboard.\n")
+                .append("Remember: Return ONLY the single fenced `geogebra` code block. No explanation.\n");
 
         if (fixHistory != null && !fixHistory.isEmpty()) {
             sb.append("\nPrevious fix attempts to avoid repeating:\n");

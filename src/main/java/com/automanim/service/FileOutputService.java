@@ -1,5 +1,6 @@
 package com.automanim.service;
 
+import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeResult;
 import com.automanim.model.CodeFixTraceReport;
 import com.automanim.model.KnowledgeGraph;
@@ -42,6 +43,10 @@ public class FileOutputService {
             Pattern.compile("class\\s+(\\w+)\\s*\\(.*?Scene.*?\\)");
 
     public static Path createOutputDir(Path baseDir, String concept) {
+        return createOutputDir(baseDir, concept, WorkflowConfig.OUTPUT_TARGET_MANIM);
+    }
+
+    public static Path createOutputDir(Path baseDir, String concept, String outputTarget) {
         String safeName = concept.toLowerCase()
                 .replaceAll("[^a-z0-9]+", "_")
                 .replaceAll("^_|_$", "");
@@ -50,7 +55,8 @@ public class FileOutputService {
         }
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        Path dir = baseDir.resolve(safeName + "_" + timestamp);
+        String targetDir = resolveOutputTargetDirectoryName(outputTarget);
+        Path dir = baseDir.resolve(targetDir).resolve(safeName + "_" + timestamp);
 
         try {
             Files.createDirectories(dir);
@@ -77,16 +83,20 @@ public class FileOutputService {
 
     public static CodeResult loadCodeResult(Path path) {
         try {
-            log.info("[Load] Manim code <- {}", path);
+            log.info("[Load] code <- {}", path);
             String code = Files.readString(path, StandardCharsets.UTF_8);
 
             Path metadataPath = path.toAbsolutePath().normalize().getParent();
             JsonNode metadata = loadOptionalMetadata(
                     metadataPath != null ? metadataPath.resolve(CODE_METADATA_FILE) : null);
 
+            String outputTarget = inferOutputTarget(path, metadata);
+
             String sceneName = readTextField(metadata, "scene_name");
             if (sceneName.isBlank()) {
-                sceneName = extractSceneName(code, fileStem(path));
+                sceneName = WorkflowConfig.OUTPUT_TARGET_GEOGEBRA.equals(outputTarget)
+                        ? defaultFigureName(path)
+                        : extractSceneName(code, fileStem(path));
             }
 
             String description = readTextField(metadata, "description");
@@ -101,11 +111,13 @@ public class FileOutputService {
                     description,
                     targetConcept,
                     readTextField(metadata, "target_description"));
+            codeResult.setOutputTarget(outputTarget);
+            codeResult.setArtifactFormat(resolveArtifactFormat(outputTarget, metadata));
             codeResult.setToolCalls(0);
             codeResult.setExecutionTimeSeconds(0.0);
             return codeResult;
         } catch (IOException e) {
-            throw new RuntimeException("Failed to load Manim code from: " + path, e);
+            throw new RuntimeException("Failed to load code from: " + path, e);
         }
     }
 
@@ -120,13 +132,17 @@ public class FileOutputService {
 
     public static void saveCodeResult(Path outputDir, CodeResult codeResult) {
         if (codeResult.hasCode()) {
-            writeText(outputDir.resolve("4_manim_code.py"), codeResult.getManimCode(), "Manim code");
+            writeText(outputDir.resolve(resolveCodeFilename(codeResult)),
+                    codeResult.getManimCode(),
+                    describeCodeArtifact(codeResult));
         }
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("scene_name", codeResult.getSceneName());
         meta.put("description", codeResult.getDescription());
         meta.put("target_concept", codeResult.getTargetConcept());
         meta.put("target_description", codeResult.getTargetDescription());
+        meta.put("output_target", codeResult.getOutputTarget());
+        meta.put("artifact_format", codeResult.getArtifactFormat());
         meta.put("code_lines", codeResult.codeLineCount());
         meta.put("tool_calls", codeResult.getToolCalls());
         meta.put("execution_time_seconds", codeResult.getExecutionTimeSeconds());
@@ -143,8 +159,8 @@ public class FileOutputService {
                 && codeEvaluationResult.isRevisedCodeApplied()
                 && codeResult != null
                 && codeResult.hasCode()) {
-            writeText(outputDir.resolve("4_manim_code_reviewed.py"),
-                    codeResult.getManimCode(), "reviewed Manim code");
+            writeText(outputDir.resolve(resolveReviewedCodeFilename(codeResult)),
+                    codeResult.getManimCode(), "reviewed code");
         }
     }
 
@@ -153,6 +169,9 @@ public class FileOutputService {
         meta.put("success", renderResult.isSuccess());
         meta.put("scene_name", renderResult.getSceneName());
         meta.put("video_path", renderResult.getVideoPath());
+        meta.put("artifact_path", renderResult.getArtifactPath());
+        meta.put("output_target", renderResult.getOutputTarget());
+        meta.put("artifact_type", renderResult.getArtifactType());
         meta.put("geometry_path", renderResult.getGeometryPath());
         meta.put("attempts", renderResult.getAttempts());
         meta.put("last_error", renderResult.getLastError());
@@ -161,7 +180,9 @@ public class FileOutputService {
         writeJson(outputDir.resolve("5_render_result.json"), meta, "render result");
 
         if (renderResult.getFinalCode() != null) {
-            writeText(outputDir.resolve("5_manim_code_final.py"), renderResult.getFinalCode(), "final Manim code");
+            writeText(outputDir.resolve(resolveFinalCodeFilename(renderResult)),
+                    renderResult.getFinalCode(),
+                    "final code");
         }
     }
 
@@ -285,5 +306,61 @@ public class FileOutputService {
         String fileName = path.getFileName().toString();
         int dotIndex = fileName.lastIndexOf('.');
         return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+    }
+
+    private static String resolveCodeFilename(CodeResult codeResult) {
+        return codeResult != null && codeResult.isGeoGebraTarget()
+                ? "4_geogebra_commands.txt"
+                : "4_manim_code.py";
+    }
+
+    private static String resolveReviewedCodeFilename(CodeResult codeResult) {
+        return codeResult != null && codeResult.isGeoGebraTarget()
+                ? "4_geogebra_commands_reviewed.txt"
+                : "4_manim_code_reviewed.py";
+    }
+
+    private static String resolveFinalCodeFilename(RenderResult renderResult) {
+        return renderResult != null && renderResult.isGeoGebraTarget()
+                ? "5_geogebra_commands_final.txt"
+                : "5_manim_code_final.py";
+    }
+
+    private static String describeCodeArtifact(CodeResult codeResult) {
+        return codeResult != null && codeResult.isGeoGebraTarget()
+                ? "GeoGebra command script"
+                : "Manim code";
+    }
+
+    private static String inferOutputTarget(Path path, JsonNode metadata) {
+        String explicit = readTextField(metadata, "output_target");
+        if (!explicit.isBlank()) {
+            return WorkflowConfig.normalizeOutputTarget(explicit);
+        }
+
+        String fileName = path != null && path.getFileName() != null ? path.getFileName().toString().toLowerCase() : "";
+        return fileName.contains("geogebra")
+                ? WorkflowConfig.OUTPUT_TARGET_GEOGEBRA
+                : WorkflowConfig.OUTPUT_TARGET_MANIM;
+    }
+
+    private static String resolveArtifactFormat(String outputTarget, JsonNode metadata) {
+        String explicit = readTextField(metadata, "artifact_format");
+        if (!explicit.isBlank()) {
+            return explicit;
+        }
+        return WorkflowConfig.OUTPUT_TARGET_GEOGEBRA.equals(outputTarget) ? "commands" : "python";
+    }
+
+    private static String defaultFigureName(Path path) {
+        String stem = fileStem(path);
+        return stem == null || stem.isBlank() ? "GeoGebraFigure" : stem;
+    }
+
+    private static String resolveOutputTargetDirectoryName(String outputTarget) {
+        String normalized = WorkflowConfig.normalizeOutputTarget(outputTarget);
+        return WorkflowConfig.OUTPUT_TARGET_GEOGEBRA.equals(normalized)
+                ? WorkflowConfig.OUTPUT_TARGET_GEOGEBRA
+                : WorkflowConfig.OUTPUT_TARGET_MANIM;
     }
 }

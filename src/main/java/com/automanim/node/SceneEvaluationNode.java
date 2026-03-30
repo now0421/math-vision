@@ -129,6 +129,14 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
 
         log.info("=== Stage 5: Scene Evaluation ===");
 
+        if (input.config() != null && input.config().isGeoGebraTarget()) {
+            result.setEvaluated(false);
+            result.setApproved(true);
+            result.setGateReason("Scene evaluation skipped: GeoGebra target does not produce Manim geometry samples");
+            finalizeResult(result, retryState, start, true);
+            return result;
+        }
+
         if (renderResult == null) {
             result.setEvaluated(false);
             result.setApproved(true);
@@ -218,7 +226,6 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
 
             int maxFixAttempts = resolveMaxFixAttempts(input.config());
             String issueSummary = buildIssueSummary(result);
-            retryState.fixHistory.add(summarizeFixHistory(issueSummary));
 
             if (attemptsSoFar < maxFixAttempts) {
                 retryState.setAttempts(attemptsSoFar + 1);
@@ -265,6 +272,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
 
         if (input.retryState().isRequestFix()) {
             ctx.put(WorkflowKeys.CODE_FIX_REQUEST, buildSceneEvaluationFixRequest(input, result));
+            appendPendingIssueToFixHistory(input.retryState(), result);
             return WorkflowActions.FIX_CODE;
         }
 
@@ -292,10 +300,24 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         request.setSceneName(codeResult.getSceneName());
         request.setExpectedSceneName("MainScene");
         request.setStoryboardJson(narrative != null && narrative.hasStoryboard()
-                ? StoryboardJsonBuilder.buildForCodegen(narrative.getStoryboard())
+                ? StoryboardJsonBuilder.buildForSceneEvaluationFix(narrative.getStoryboard())
                 : "{\"scenes\":[]}");
         request.setFixHistory(new ArrayList<>(retryState.fixHistory));
         return request;
+    }
+
+    private void appendPendingIssueToFixHistory(SceneEvaluationRetryState retryState,
+                                                SceneEvaluationResult result) {
+        if (retryState == null) {
+            return;
+        }
+        String issueSummary = retryState.pendingIssueSummary != null
+                ? retryState.pendingIssueSummary
+                : buildIssueSummary(result);
+        String historyEntry = summarizeFixHistory(issueSummary);
+        if (historyEntry != null && !historyEntry.isBlank()) {
+            retryState.fixHistory.add(historyEntry);
+        }
     }
 
     private SampleEvaluation evaluateSample(JsonNode sampleNode, double[] frameMin, double[] frameMax) {
@@ -387,6 +409,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             element.end = readPoint(shapeHints.path("end"), null);
             element.arcCenter = readPoint(shapeHints.path("arc_center"), null);
             element.radius = shapeHints.hasNonNull("radius") ? round(shapeHints.get("radius").asDouble()) : null;
+            element.pathPoints = readPointList(shapeHints.path("path_points"));
             element.min = min;
             element.max = max;
             elements.add(element);
@@ -604,8 +627,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                                 text.displayName(), other.displayName()),
                         "ignore_or_adjust_label_buffer");
             }
-            if (other.isLineLike() && !lineIntersectsBounds(other, text.min, text.max,
-                    LINE_TEXT_INTERSECTION_TOLERANCE)) {
+            if (!geometryIntersectsText(other, text.min, text.max, LINE_TEXT_INTERSECTION_TOLERANCE)) {
                 return ignoredDisposition();
             }
             return blockingDisposition(
@@ -838,6 +860,22 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         return distancePointToSegment(point, start, end) <= tolerance;
     }
 
+    private boolean geometryIntersectsText(ElementGeometry geometry,
+                                           double[] boundsMin,
+                                           double[] boundsMax,
+                                           double tolerance) {
+        if (geometry == null) {
+            return false;
+        }
+        if (geometry.hasPathPoints()) {
+            return pathIntersectsBounds(geometry.pathPoints, boundsMin, boundsMax, tolerance);
+        }
+        if (geometry.isLineLike()) {
+            return lineIntersectsBounds(geometry, boundsMin, boundsMax, tolerance);
+        }
+        return true;
+    }
+
     private boolean lineIntersectsBounds(ElementGeometry line,
                                          double[] boundsMin,
                                          double[] boundsMax,
@@ -857,6 +895,52 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 || segmentsIntersect(line.start, line.end, bottomRight, topRight, tolerance)
                 || segmentsIntersect(line.start, line.end, topRight, topLeft, tolerance)
                 || segmentsIntersect(line.start, line.end, topLeft, bottomLeft, tolerance);
+    }
+
+    private boolean pathIntersectsBounds(List<double[]> pathPoints,
+                                         double[] boundsMin,
+                                         double[] boundsMax,
+                                         double tolerance) {
+        if (pathPoints == null || pathPoints.isEmpty() || boundsMin == null || boundsMax == null) {
+            return false;
+        }
+
+        double[] previous = null;
+        for (double[] point : pathPoints) {
+            if (point == null) {
+                continue;
+            }
+            if (pointInsideBounds(point, boundsMin, boundsMax, tolerance)) {
+                return true;
+            }
+            if (previous != null && segmentIntersectsBounds(previous, point, boundsMin, boundsMax, tolerance)) {
+                return true;
+            }
+            previous = point;
+        }
+        return false;
+    }
+
+    private boolean segmentIntersectsBounds(double[] start,
+                                            double[] end,
+                                            double[] boundsMin,
+                                            double[] boundsMax,
+                                            double tolerance) {
+        if (start == null || end == null || boundsMin == null || boundsMax == null) {
+            return false;
+        }
+        if (pointInsideBounds(start, boundsMin, boundsMax, tolerance)
+                || pointInsideBounds(end, boundsMin, boundsMax, tolerance)) {
+            return true;
+        }
+        double[] bottomLeft = new double[] {boundsMin[0], boundsMin[1], 0.0};
+        double[] bottomRight = new double[] {boundsMax[0], boundsMin[1], 0.0};
+        double[] topLeft = new double[] {boundsMin[0], boundsMax[1], 0.0};
+        double[] topRight = new double[] {boundsMax[0], boundsMax[1], 0.0};
+        return segmentsIntersect(start, end, bottomLeft, bottomRight, tolerance)
+                || segmentsIntersect(start, end, bottomRight, topRight, tolerance)
+                || segmentsIntersect(start, end, topRight, topLeft, tolerance)
+                || segmentsIntersect(start, end, topLeft, bottomLeft, tolerance);
     }
 
     private boolean pointInsideBounds(double[] point, double[] boundsMin, double[] boundsMax, double tolerance) {
@@ -1187,6 +1271,20 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         return null;
     }
 
+    private List<double[]> readPointList(JsonNode node) {
+        List<double[]> points = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return points;
+        }
+        for (JsonNode pointNode : node) {
+            double[] point = readPoint(pointNode, null);
+            if (point != null) {
+                points.add(point);
+            }
+        }
+        return points;
+    }
+
     private double[] readPoint(JsonNode node, double[] fallback) {
         if (node == null || !node.isArray() || node.size() < 2) {
             return fallback;
@@ -1235,6 +1333,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         private double[] end;
         private double[] arcCenter;
         private Double radius;
+        private List<double[]> pathPoints;
         private double[] min;
         private double[] max;
 
@@ -1261,6 +1360,10 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                     || "Line".equals(className)
                     || "DashedLine".equals(className)
                     || "Arrow".equals(className);
+        }
+
+        private boolean hasPathPoints() {
+            return pathPoints != null && pathPoints.size() >= 2;
         }
 
         private String firstNonBlank(String... values) {

@@ -11,6 +11,7 @@ public final class SceneEvaluationPrompts {
             "You are fixing Manim code that rendered but has layout issues detected by geometry analysis.\n"
                     + "Preserve the teaching goal, visual intent, scene class name, and continuity.\n"
                     + "Prefer adjusting positioning, scaling, grouping, and spacing over deleting explanatory content.\n"
+                    + "For frame repair, use translation/recentering and uniform scaling as the default first-choice strategy before changing geometric constructions or attachment logic.\n"
                     + "Also correct semantically wrong geometric attachments you notice, especially angle markers that are drawn on the wrong side or detached from their true vertex.\n"
                     + "Treat storyboard geometric constraints as hard requirements: if a point is defined as a reflection, midpoint, foot, or intersection, preserve that definition while fixing layout.\n"
                     + "When a constrained construction goes out of frame, prefer recentering or uniformly scaling the whole related diagram, or moving overlays, instead of moving one constrained point independently.\n"
@@ -48,12 +49,25 @@ public final class SceneEvaluationPrompts {
                                              List<String> fixHistory) {
         StringBuilder sb = new StringBuilder();
         sb.append("The following Manim code rendered, but post-render scene evaluation found layout issues in sampled frames.\n\n")
+                .append("Storyboard field guide for this repair pass:\n")
+                .append("- `goal` and `layout_goal`: preserve what the scene is trying to teach and how the frame should be composed.\n")
+                .append("- `safe_area_plan` and `screen_overlay_plan`: use these first when fixing overlap and offscreen issues.\n")
+                .append("- `geometry_constraints` and each object's `constraint_note`: treat these as hard geometric invariants.\n")
+                .append("- `behavior`, `anchor_id`, and `dependency_note`: preserve attachment logic for derived lines, reflected points, moving labels, and overlays.\n")
+                .append("- `persistent_objects`, `exiting_objects`, and `actions`: preserve continuity and scene flow instead of redrawing the construction arbitrarily.\n")
+                .append("- If a reported object is a reflection, midpoint, foot, or intersection, recompute it from its source construction instead of moving it freely.\n\n")
                 .append("Compact storyboard JSON (source of truth):\n```json\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank() ? storyboardJson : "{\"scenes\":[]}")
                 .append("\n```\n\n")
                 .append("```python\n").append(manimCode).append("\n```\n\n")
                 .append("Issue summary:\n```\n").append(issueSummary).append("\n```\n\n")
                 .append("Scene evaluation report excerpt:\n```json\n").append(sceneEvaluationJson).append("\n```\n\n")
+                .append("Repair process requirements:\n")
+                .append("1. First identify the affected storyboard scene(s) and the ids/constraints tied to the reported elements.\n")
+                .append("2. For overlap and offscreen repair, first try translation/recentering and uniform scaling of the affected overlay or constrained group before changing geometry or redefining attachments.\n")
+                .append("3. Fix overlap only through text/overlay layout changes, spacing, grouping, recentering, or uniform scaling of constrained groups.\n")
+                .append("4. Fix offscreen issues using `safe_area_plan` and `layout_goal`; do not push text farther off frame just to avoid overlap.\n")
+                .append("5. Preserve reflections, symmetry, intersections, equal distances, and anchor-follow relationships exactly.\n\n")
                 .append("Please fix the code so the reported sampled frames no longer have elements overlapping or going outside the frame.\n")
                 .append("Preserve the intended teaching flow and animation meaning.\n")
                 .append("Preserve geometric invariants from the storyboard; do not fix offscreen issues by breaking reflections, symmetry, intersections, equal distances, or other defining constructions.\n")

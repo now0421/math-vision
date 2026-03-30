@@ -14,7 +14,8 @@ import com.automanim.prompt.RenderFixPrompts;
 import com.automanim.prompt.SceneEvaluationPrompts;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
-import com.automanim.util.CodeUtils;
+import com.automanim.util.CodeValidationSupport;
+import com.automanim.util.GeoGebraCodeUtils;
 import com.automanim.util.ConcurrencyUtils;
 import com.automanim.util.JsonUtils;
 import com.automanim.util.NodeConversationContext;
@@ -34,7 +35,8 @@ import java.util.concurrent.CompletionException;
 import java.util.stream.Collectors;
 
 /**
- * Shared routed node that repairs Manim code and returns control to the caller.
+ * Shared routed node that repairs backend-specific code and returns control to
+ * the caller.
  */
 public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, String> {
 
@@ -105,9 +107,10 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
 
             String fixedCode = extractReturnedCode(response);
             if (fixedCode == null || fixedCode.isBlank()) {
-                result.setFailureReason("Code fix returned no parseable Python code");
-            } else if (CodeUtils.normalizeForComparison(fixedCode)
-                    .equals(CodeUtils.normalizeForComparison(request.getCode()))) {
+                result.setFailureReason("Code fix returned no parseable "
+                        + (isGeoGebraTarget() ? "GeoGebra code" : "Python code"));
+            } else if (CodeValidationSupport.normalizeForComparison(fixedCode)
+                    .equals(CodeValidationSupport.normalizeForComparison(request.getCode()))) {
                 result.setFailureReason("Code fix produced no meaningful code change");
             } else {
                 result.setApplied(true);
@@ -199,11 +202,15 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         if (request.getSource() == CodeFixSource.EVALUATION_REVIEW) {
             systemPrompt = CodeEvaluationPrompts.revisionSystemPrompt(targetConcept, targetDescription);
         } else if (request.getSource() == CodeFixSource.GENERATION_VALIDATION) {
-            systemPrompt = CodeGenerationPrompts.validationFixSystemPrompt(targetConcept, targetDescription);
+            systemPrompt = isGeoGebraTarget()
+                    ? CodeGenerationPrompts.geoGebraValidationFixSystemPrompt(targetConcept, targetDescription)
+                    : CodeGenerationPrompts.validationFixSystemPrompt(targetConcept, targetDescription);
         } else if (request.getSource() == CodeFixSource.SCENE_LAYOUT_EVALUATION) {
             systemPrompt = SceneEvaluationPrompts.layoutFixSystemPrompt(targetConcept, targetDescription);
         } else {
-            systemPrompt = RenderFixPrompts.systemPrompt(targetConcept, targetDescription);
+            systemPrompt = isGeoGebraTarget()
+                    ? RenderFixPrompts.geoGebraSystemPrompt(targetConcept, targetDescription)
+                    : RenderFixPrompts.systemPrompt(targetConcept, targetDescription);
         }
         return systemPrompt;
     }
@@ -220,6 +227,14 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             );
         }
         if (request.getSource() == CodeFixSource.GENERATION_VALIDATION) {
+            if (isGeoGebraTarget()) {
+                return CodeGenerationPrompts.geoGebraValidationFixUserPrompt(
+                        firstNonBlank(request.getExpectedSceneName(), request.getSceneName(), "GeoGebraFigure"),
+                        request.getCode(),
+                        splitValidationProblems(request.getErrorReason()),
+                        defaultJson(request.getStoryboardJson(), "{\"scenes\":[]}")
+                );
+            }
             return CodeGenerationPrompts.validationFixUserPrompt(
                     firstNonBlank(request.getExpectedSceneName(), request.getSceneName(), "MainScene"),
                     request.getCode(),
@@ -236,7 +251,14 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
                     request.getFixHistory() != null ? request.getFixHistory() : Collections.emptyList()
             );
         }
-        return RenderFixPrompts.userPrompt(
+        return isGeoGebraTarget()
+                ? RenderFixPrompts.geoGebraUserPrompt(
+                request.getCode(),
+                firstNonBlank(request.getErrorReason(), "Unknown render failure"),
+                defaultJson(request.getStoryboardJson(), "{\"scenes\":[]}"),
+                request.getFixHistory() != null ? request.getFixHistory() : Collections.emptyList()
+        )
+                : RenderFixPrompts.userPrompt(
                 request.getCode(),
                 firstNonBlank(request.getErrorReason(), "Unknown render failure"),
                 defaultJson(request.getStoryboardJson(), "{\"scenes\":[]}"),
@@ -263,11 +285,18 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             return codeBlock;
         }
         String trimmed = response.trim();
+        if (isGeoGebraTarget()) {
+            return GeoGebraCodeUtils.looksLikeCommandBlock(trimmed) ? trimmed : null;
+        }
         if (trimmed.toLowerCase(Locale.ROOT).contains("from manim import")
                 || trimmed.contains("class ")) {
             return trimmed;
         }
         return null;
+    }
+
+    private boolean isGeoGebraTarget() {
+        return workflowConfig != null && workflowConfig.isGeoGebraTarget();
     }
 
     private String defaultJson(String value, String fallback) {

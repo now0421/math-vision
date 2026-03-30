@@ -15,9 +15,11 @@ import com.automanim.prompt.StoryboardJsonBuilder;
 import com.automanim.prompt.ToolSchemas;
 import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
-import com.automanim.util.CodeUtils;
+import com.automanim.util.AiRequestUtils;
 import com.automanim.util.ConcurrencyUtils;
+import com.automanim.util.GeoGebraCodeUtils;
 import com.automanim.util.JsonUtils;
+import com.automanim.util.ManimCodeUtils;
 import com.automanim.util.NodeConversationContext;
 import com.automanim.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -26,14 +28,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 /**
- * Stage 2: Code Generation - generates executable Manim Python code
+ * Stage 2: Code Generation - generates backend-specific code
  * from the narrative storyboard prompt.
  */
 public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeGenerationInput, CodeResult, String> {
@@ -120,34 +121,34 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         String targetDescription = narrative != null ? narrative.getTargetDescription()
                 : input.existingCodeResult().getTargetDescription();
         this.conversationContext.setSystemMessage(
-                CodeGenerationPrompts.systemPrompt(targetConcept, targetDescription));
+                CodeGenerationPrompts.systemPrompt(
+                        targetConcept, targetDescription, resolveOutputTarget()));
 
         String code;
-        String sceneName = CodeUtils.EXPECTED_SCENE_NAME;
+        String artifactName = defaultArtifactName();
         if (input.previousFixResult() != null) {
             log.info("  Re-validating code returned from shared CodeFixNode");
             code = extractRetriedCode(input);
         } else {
-            String userPrompt = buildGenerationPrompt(narrative, CodeUtils.EXPECTED_SCENE_NAME);
+            String userPrompt = buildGenerationPrompt(narrative, artifactName);
             if (userPrompt.isBlank()) {
                 log.warn("Narrative prompt is empty, cannot generate code");
                 return new CodeResult("", "", "Empty narrative", targetConcept, targetDescription);
             }
 
             try {
-                CodeDraft draft = requestCodeAsync(userPrompt, CodeUtils.EXPECTED_SCENE_NAME).join();
-                code = CodeUtils.enforceMainSceneName(draft.code);
-                sceneName = draft.sceneName;
+                CodeDraft draft = requestCodeAsync(userPrompt, artifactName).join();
+                code = normalizeGeneratedCode(draft.code);
+                artifactName = draft.artifactName;
             } catch (CompletionException e) {
                 Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
                 log.error("  Code generation failed: {}", cause.getMessage());
                 code = "";
             }
-            sceneName = CodeUtils.EXPECTED_SCENE_NAME;
         }
 
-        code = CodeUtils.enforceMainSceneName(code);
-        List<String> violations = CodeUtils.validateFull(code);
+        code = normalizeGeneratedCode(code);
+        List<String> violations = validateGeneratedCode(code);
 
         if (input.previousFixResult() != null) {
             if (!violations.isEmpty()) {
@@ -157,14 +158,16 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                                     + " keeping original generated code",
                             fixState.getOriginalIssueCount(), violations.size());
                     code = fixState.getOriginalCodeBeforeFix();
-                    violations = CodeUtils.validateFull(code);
+                    violations = validateGeneratedCode(code);
                 } else {
                     log.info("  Shared code fix reduced violations from {} to {}",
                             fixState.getOriginalIssueCount(), violations.size());
                 }
             }
             fixState.clearPending();
-        } else if (!violations.isEmpty() && fixState.getAttempts() < MAX_VALIDATION_FIX_ATTEMPTS) {
+        } else if (shouldRouteValidationFix()
+                && !violations.isEmpty()
+                && fixState.getAttempts() < MAX_VALIDATION_FIX_ATTEMPTS) {
             log.warn("  Code validation found {} violations, routing to shared CodeFixNode",
                     violations.size());
             fixState.recordFixRequest(code, violations);
@@ -172,65 +175,32 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
 
         CodeResult result = new CodeResult(
                 code,
-                sceneName,
-                "Manim animation for " + targetConcept,
+                artifactName,
+                buildResultDescription(targetConcept),
                 targetConcept,
                 targetDescription
         );
+        result.setOutputTarget(resolveOutputTarget());
+        result.setArtifactFormat(resolveArtifactFormat());
         result.setToolCalls(toolCalls + fixState.totalToolCalls());
 
-        log.info("Code generated: {} lines, scene={}", result.codeLineCount(), sceneName);
+        log.info("Code generated: {} lines, artifact={}", result.codeLineCount(), artifactName);
         return result;
     }
 
-    private CompletableFuture<CodeDraft> requestCodeAsync(String userPrompt, String expectedSceneName) {
-        conversationContext.addUserMessage(userPrompt);
-
-        return aiClient.chatWithToolsRawAsync(conversationContext, ToolSchemas.MANIM_CODE)
-                .thenApply(rawResponse -> {
-                    toolCalls++;
-
-                    JsonNode toolData = JsonUtils.extractToolCallPayload(rawResponse);
-                    String code = null;
-                    String sceneName = expectedSceneName;
-
-                    if (toolData != null && toolData.has("code")) {
-                        code = toolData.get("code").asText();
-                    }
-
-                    if (code == null || code.isBlank()) {
-                        String textContent = JsonUtils.extractBestEffortTextFromResponse(rawResponse);
-                        if (textContent != null) {
-                            code = CodeUtils.extractCode(textContent);
-                        }
-                    }
-
-                    CodeDraft draft = new CodeDraft(code, sceneName);
-                    if (draft.hasCode()) {
-                        String transcript = JsonUtils.buildToolCallTranscript(rawResponse);
-                        conversationContext.addAssistantMessage(
-                                transcript == null || transcript.isBlank()
-                                        ? "```python\n" + draft.code + "\n```"
-                                        : transcript);
-                    }
-                    return draft;
-                })
-                .exceptionally(error -> {
-                    Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
-                    log.debug("  Tool calling failed, falling back to plain chat: {}", cause.getMessage());
-                    return null;
-                })
-                .thenCompose(draft -> {
-                    if (draft != null && draft.hasCode()) {
-                        return CompletableFuture.completedFuture(draft);
-                    }
-                    return aiClient.chatAsync(conversationContext)
-                            .thenApply(response -> {
-                                toolCalls++;
-                                conversationContext.addAssistantMessage(response);
-                                return new CodeDraft(CodeUtils.extractCode(response), expectedSceneName);
-                            });
-                });
+    private CompletableFuture<CodeDraft> requestCodeAsync(String userPrompt, String expectedArtifactName) {
+        return AiRequestUtils.requestJsonObjectAsync(
+                        aiClient,
+                        log,
+                        expectedArtifactName,
+                        conversationContext,
+                        userPrompt,
+                        resolveToolSchema(),
+                        () -> toolCalls++,
+                        this::parseCodeTextResponse,
+                        this::hasCodePayload
+                )
+                .thenApply(payload -> toCodeDraft(payload, expectedArtifactName));
     }
 
     @Override
@@ -257,13 +227,22 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         if (narrative.hasStoryboard()) {
             basePrompt = NarrativePrompts.storyboardCodegenPrompt(
                     narrative.getTargetConcept(),
-                    narrative.getStoryboard());
+                    narrative.getStoryboard(),
+                    resolveOutputTarget());
         } else {
             basePrompt = narrative.getVerbosePrompt();
         }
 
         if (basePrompt == null || basePrompt.isBlank()) {
             return "";
+        }
+
+        if (workflowConfig != null && workflowConfig.isGeoGebraTarget()) {
+            return basePrompt
+                    + "\n\nFigure name: " + expectedSceneName
+                    + "\nUse this as the primary GeoGebra figure name when naming the construction."
+                    + "\nAll object names and identifiers must use ASCII only."
+                    + "\nReturn GeoGebra commands only, not Python or JavaScript.";
         }
 
         return basePrompt
@@ -284,7 +263,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         request.setTargetConcept(codeResult.getTargetConcept());
         request.setTargetDescription(codeResult.getTargetDescription());
         request.setSceneName(codeResult.getSceneName());
-        request.setExpectedSceneName(CodeUtils.EXPECTED_SCENE_NAME);
+        request.setExpectedSceneName(resolveExpectedArtifactName(codeResult));
         request.setStoryboardJson(narrative != null && narrative.hasStoryboard()
                 ? StoryboardJsonBuilder.buildForCodegen(narrative.getStoryboard())
                 : "{\"scenes\":[]}");
@@ -314,15 +293,139 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
 
     private static final class CodeDraft {
         private final String code;
-        private final String sceneName;
+        private final String artifactName;
 
-        private CodeDraft(String code, String sceneName) {
+        private CodeDraft(String code, String artifactName) {
             this.code = code;
-            this.sceneName = sceneName;
+            this.artifactName = artifactName;
+        }
+    }
+
+    private JsonNode parseCodeTextResponse(String response) {
+        String code = extractCodeFromText(response);
+        if (code == null || code.isBlank()) {
+            return null;
         }
 
-        private boolean hasCode() {
-            return code != null && !code.isBlank();
+        return JsonUtils.mapper().createObjectNode()
+                .put("code", code);
+    }
+
+    private boolean hasCodePayload(JsonNode payload) {
+        return payload != null
+                && payload.has("code")
+                && !payload.get("code").asText("").isBlank();
+    }
+
+    private CodeDraft toCodeDraft(JsonNode payload, String expectedArtifactName) {
+        String code = null;
+        String artifactName = expectedArtifactName;
+
+        if (payload != null && payload.has("code")) {
+            code = payload.get("code").asText();
         }
+        if (payload != null && payload.has("scene_name")) {
+            artifactName = payload.get("scene_name").asText(expectedArtifactName);
+        } else if (payload != null && payload.has("figure_name")) {
+            artifactName = payload.get("figure_name").asText(expectedArtifactName);
+        }
+
+        return new CodeDraft(code, artifactName);
+    }
+
+    private String normalizeGeneratedCode(String code) {
+        return isGeoGebraTarget()
+                ? normalizeGeneratedGeoGebraCode(code)
+                : normalizeGeneratedManimCode(code);
+    }
+
+    private List<String> validateGeneratedCode(String code) {
+        return isGeoGebraTarget()
+                ? validateGeneratedGeoGebraCode(code)
+                : validateGeneratedManimCode(code);
+    }
+
+    private boolean shouldRouteValidationFix() {
+        return isGeoGebraTarget()
+                ? shouldRouteGeoGebraValidationFix()
+                : shouldRouteManimValidationFix();
+    }
+
+    private String resolveToolSchema() {
+        return workflowConfig != null && workflowConfig.isGeoGebraTarget()
+                ? ToolSchemas.GEOGEBRA_CODE
+                : ToolSchemas.MANIM_CODE;
+    }
+
+    private String extractCodeFromText(String text) {
+        return isGeoGebraTarget()
+                ? extractGeoGebraCodeFromText(text)
+                : extractManimCodeFromText(text);
+    }
+
+    private String defaultArtifactName() {
+        return workflowConfig != null && workflowConfig.isGeoGebraTarget()
+                ? "GeoGebraFigure"
+                : ManimCodeUtils.EXPECTED_SCENE_NAME;
+    }
+
+    private String resolveArtifactFormat() {
+        return workflowConfig != null && workflowConfig.isGeoGebraTarget() ? "commands" : "python";
+    }
+
+    private String buildResultDescription(String targetConcept) {
+        return workflowConfig != null && workflowConfig.isGeoGebraTarget()
+                ? "GeoGebra construction for " + targetConcept
+                : "Manim animation for " + targetConcept;
+    }
+
+    private String resolveOutputTarget() {
+        return workflowConfig != null ? workflowConfig.getOutputTarget() : WorkflowConfig.OUTPUT_TARGET_MANIM;
+    }
+
+    private String normalizeGeneratedManimCode(String code) {
+        return ManimCodeUtils.enforceMainSceneName(code);
+    }
+
+    private String normalizeGeneratedGeoGebraCode(String code) {
+        return GeoGebraCodeUtils.extractCode(code);
+    }
+
+    private List<String> validateGeneratedManimCode(String code) {
+        return ManimCodeUtils.validateFull(code);
+    }
+
+    private List<String> validateGeneratedGeoGebraCode(String code) {
+        return GeoGebraCodeUtils.validateFull(code);
+    }
+
+    private boolean shouldRouteManimValidationFix() {
+        return workflowConfig == null || workflowConfig.isManimTarget();
+    }
+
+    private boolean shouldRouteGeoGebraValidationFix() {
+        return workflowConfig != null && workflowConfig.isGeoGebraTarget();
+    }
+
+    private String extractManimCodeFromText(String text) {
+        return ManimCodeUtils.extractCode(text);
+    }
+
+    private String extractGeoGebraCodeFromText(String text) {
+        return GeoGebraCodeUtils.extractCode(text);
+    }
+
+    private String resolveExpectedArtifactName(CodeResult codeResult) {
+        if (codeResult != null && codeResult.isGeoGebraTarget()) {
+            if (codeResult.getSceneName() != null && !codeResult.getSceneName().isBlank()) {
+                return codeResult.getSceneName();
+            }
+            return "GeoGebraFigure";
+        }
+        return ManimCodeUtils.EXPECTED_SCENE_NAME;
+    }
+
+    private boolean isGeoGebraTarget() {
+        return workflowConfig != null && workflowConfig.isGeoGebraTarget();
     }
 }

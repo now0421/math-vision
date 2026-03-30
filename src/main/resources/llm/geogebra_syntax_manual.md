@@ -1,579 +1,444 @@
-# GeoGebra Usage Guide
+# GeoGebra LLM Reference Manual (Revised Against the Official Manual)
 
-Please strictly use common, stable, and highly readable **GeoGebra Classic** patterns when generating construction commands, object definitions, or step-by-step geometry instructions. The output should prioritize correctness, dependency stability, and visual clarity first, and only then pursue fancy effects.
+This manual is intended as a **reference specification for LLMs** that generate GeoGebra Classic constructions, object definitions, or step-by-step geometry instructions.
 
-## I. Recommended Working Style
+It prioritizes:
 
-When building GeoGebra content, always think in this order:
-
-1. Define the base objects first.
-2. Build dependent objects from those base objects.
-3. Apply labels, colors, and visibility settings.
-4. Only then add interactive controls or animation-related settings.
-
-Do not define a derived object from hardcoded coordinates if it should really depend on earlier geometry.
+1. **official command correctness**
+2. **stable dependency structure**
+3. **clear distinction between construction commands and styling / scripting commands**
+4. **readable, maintainable, classroom-friendly output**
 
 ---
 
-## II. Core Object Types
+## 1. Scope and Output Discipline
 
-## 1. Point Objects
+When generating GeoGebra content, separate the output into these layers:
 
-### Free Point
+### A. Construction layer
+Use official object-creating commands such as:
 
-Used for:
+- `Point(...)`
+- `Line(...)`
+- `Segment(...)`
+- `Ray(...)`
+- `Circle(...)`
+- `Polygon(...)`
+- `Midpoint(...)`
+- `Center(...)`
+- `Intersect(...)`
+- `PerpendicularLine(...)`
+- `ParallelLine(...)`
+- `PerpendicularBisector(...)`
+- `AngularBisector(...)`
+- `Reflect(...)`
+- `Rotate(...)`
+- `Translate(...)`
+- `Dilate(...)`
+- `Text(...)`
 
-* anchor points
-* manually placed geometric vertices
-* draggable references
+### B. Measurement / analytic layer
+Use commands that compute values or derived analytic objects:
 
+- `Distance(...)`
+- `Length(...)`
+- `Area(...)`
+- `Perimeter(...)`
+- `Slope(...)`
+- `Derivative(...)`
+- `Integral(...)`
+- `Tangent(...)`
+- `Angle(...)`
+
+### C. Styling / visibility / scripting layer
+Use scripting commands **only if needed** for appearance or interaction:
+
+- `SetColor(...)`
+- `SetLineThickness(...)`
+- `SetLineStyle(...)`
+- `SetPointStyle(...)`
+- `SetPointSize(...)`
+- `SetFilling(...)`
+- `ShowLabel(...)`
+- `SetConditionToShowObject(...)`
+- `SetCaption(...)`
+- `SetFixed(...)`
+- `StartAnimation(...)`
+
+Important:
+
+- Scripting commands **do not return objects and cannot be nested inside object-creating commands**.
+- Do not mix natural-language styling instructions into a command list unless the downstream system explicitly expects prose.
+- If you need a pure executable command sequence, output only valid GeoGebra commands.
+
+---
+
+## 2. Recommended Generation Order
+
+Generate in this order:
+
+1. create base objects
+2. create dependent geometric objects
+3. create measurements / dynamic text
+4. apply style / visibility adjustments
+5. add sliders or animation controls only if necessary
+
+This preserves a clean dependency graph and reduces fragile constructions.
+
+---
+
+## 3. Core Object Patterns
+
+## 3.1 Points
+
+### Free point
 ```geogebra
 A = (0, 0)
 B = (4, 0)
 ```
+Use for anchors, vertices, and draggable references.
 
-### Point on Object
-
-Used for:
-
-* points constrained to a line
-* points constrained to a circle
-* moving points in dynamic constructions
-
+### Point on object
 ```geogebra
 P = Point(c)
 Q = Point(lineAB)
+R = Point(f)
 ```
+Official behavior: `Point(<Object>)` creates a point on a path/object; the point stays constrained to that object.
 
-Principles:
-
-* Prefer constrained points when the point must stay on an existing object.
-* Do not fake "point on circle" behavior by manually updating coordinates.
-
-### Midpoint / Center Point
-
-Used for:
-
-* segment midpoints
-* centers of circles or conics
-
+### Midpoint and center
 ```geogebra
 M = Midpoint(A, B)
+N = Midpoint(s)
 O = Center(c)
 ```
+Notes:
+
+- `Midpoint(A, B)` is correct for two points.
+- `Midpoint(s)` is correct for a segment.
+- For a conic center, prefer `Center(c)` when you mean the geometric center explicitly.
+- `Midpoint(c)` may also return the center for a conic, but for LLM clarity `Center(c)` is usually less ambiguous.
+
+Do not manually compute midpoint coordinates unless coordinate derivation is the teaching objective.
 
 ---
 
-## 2. Basic Linear Objects
-
-### Segment
-
-Used for:
-
-* finite edges
-* polygon sides
-* measured distances
+## 3.2 Linear objects
 
 ```geogebra
 s = Segment(A, B)
-```
-
-### Line
-
-Used for:
-
-* infinite lines
-* supporting lines
-* analytic geometry references
-
-```geogebra
 lineAB = Line(A, B)
-```
-
-### Ray
-
-Used for:
-
-* angle arms
-* directed geometric constructions
-
-```geogebra
 r = Ray(A, B)
-```
-
-### Vector
-
-Used for:
-
-* displacement
-* direction display
-* vector operations
-
-```geogebra
 u = Vector(A, B)
 ```
 
-Principles:
+Use:
 
-* Use `Segment` when the object is finite.
-* Use `Line` when the whole infinite extension matters.
-* Use `Ray` when a shared vertex and direction matter.
+- `Segment` for finite edges
+- `Line` for infinite supporting lines
+- `Ray` for one-sided directed geometry
+- `Vector` for displacement or translation input
 
 ---
 
-## 3. Circles, Arcs, and Conics
+## 3.3 Circles and arcs
 
 ### Circle
-
-Used for:
-
-* radius-based constructions
-* circumcircles
-* loci and rotation references
-
 ```geogebra
-c = Circle(A, B)
-d = Circle(O, 3)
+c1 = Circle(O, A)
+c2 = Circle(O, 3)
+c3 = Circle(A, B, C)
 ```
+Official forms include:
 
-### Arc / Sector
+- `Circle(<Point>, <Point>)`
+- `Circle(<Point>, <Radius Number>)`
+- `Circle(<Point>, <Segment>)`
+- `Circle(<Point>, <Point>, <Point>)`
 
-Used for:
-
-* angle visualization
-* highlighted circular regions
+### Arc commands
+Use the correct arc command depending on the construction intent.
 
 ```geogebra
 arc1 = CircularArc(O, A, B)
-sec1 = CircularSector(O, A, B)
+arc2 = Arc(c1, A, B)
+arc3 = CircumcircularArc(A, B, C)
 ```
 
-Safety rules:
+Guidance:
 
-* Prefer official arc or sector commands over approximating arcs manually.
-* If the construction depends on angle orientation, make sure the start point, end point, and center are semantically correct.
-* Do not use a decorative arc when the real geometric angle should stay attached to moving points.
+- `CircularArc(O, A, B)` uses the center / midpoint object as first input.
+- `Arc(c1, A, B)` returns the directed arc on an existing circle from `A` to `B`.
+- `CircumcircularArc(A, B, C)` creates an arc through three points.
+- Do not assume all “arc-like” constructions are interchangeable.
 
-### Other Conics
-
-Use as needed:
-
-* `Ellipse(F1, F2, a)`
-* `Hyperbola(F1, F2, a)`
-* `Parabola(P, l)`
-
-Use them only when the topic truly needs conics, and keep the construction readable.
+### Sector commands
+```geogebra
+sec1 = CircularSector(O, A, B)
+```
+Use a sector command only when you truly need a filled angular region.
 
 ---
 
-## 4. Polygonal and Region Objects
-
-### Polygon
-
-Used for:
-
-* triangles
-* quadrilaterals
-* filled regions
-* area demonstrations
+## 3.4 Polygons and regions
 
 ```geogebra
-poly = Polygon(A, B, C, D)
 tri = Polygon(A, B, C)
+poly = Polygon(A, B, C, D)
+sq = Polygon(A, B, 4)
 ```
 
-### RegularPolygon
+Important correction:
 
-Used for:
+- For a **regular polygon command form**, the official documented command is `Polygon(A, B, n)`.
+- “Regular Polygon” is primarily the **tool name**, not the preferred command name to teach an LLM as canonical syntax.
 
-* regular triangles
-* squares
-* pentagons
-* standard construction demonstrations
+Also valid:
 
 ```geogebra
-sq = RegularPolygon(A, B, 4)
+poly2 = Polygon({A, B, C, D})
 ```
 
 ### Semicircle
-
-Used for:
-
-* Thales-type geometry
-* clean half-circle constructions
-
 ```geogebra
 sc = Semicircle(A, B)
 ```
-
-Principles:
-
-* Prefer dedicated high-level commands such as `RegularPolygon` or `Semicircle` when available.
-* Do not rebuild a standard object from many fragile helper steps unless the lesson specifically teaches those steps.
+Use the dedicated command when the object is specifically a semicircle.
 
 ---
 
-## 5. Angle Objects
-
-### Angle
-
-Used for:
-
-* angle measurement
-* angle markers
-* geometric constraints
+## 3.5 Angles
 
 ```geogebra
 alpha = Angle(B, A, C)
 beta = Angle(line1, line2)
 ```
 
-Angle safety rules:
+Guidance:
 
-* Prefer `Angle(...)` over manually computing slopes or hand-building angle labels.
-* When the angle is at a vertex, use the correct middle argument as the vertex.
-* If the construction moves, keep the angle defined from the actual source objects so it updates automatically.
-* Do not place a text label that says "30 deg" unless that value is intentionally fixed and mathematically justified.
+- In `Angle(B, A, C)`, the **middle argument is the vertex**.
+- Prefer `Angle(...)` over hardcoded text labels like `"30 deg"` unless the angle is intentionally fixed.
+- For dynamic geometry, define the angle from the actual objects so it updates automatically.
 
 ---
 
-## 6. Text, Labels, and Explanatory Objects
+## 3.6 Text and dynamic text
 
-### Text
-
-Used for:
-
-* titles
-* subtitles
-* step labels
-* explanatory notes
-
+### Basic text
 ```geogebra
 t1 = Text("Construct the perpendicular bisector")
 ```
 
-### Dynamic Text
-
-Used for:
-
-* showing a computed length
-* displaying a changing angle
-* interactive parameter readouts
-
+### Dynamic text
 ```geogebra
-t2 = Text("Length AB = " + Distance(A, B))
-t3 = Text("alpha = " + Round(alpha, 1) + " deg")
+d1 = Distance(A, B)
+t2 = Text("Length AB = " + d1)
+t3 = Text("alpha = " + Round(alpha, 1) + "°")
 ```
 
-Principles:
+### Positioned text
+```geogebra
+t4 = Text("A note", (2, 1))
+t5 = Text(alpha, (2, 1), true, true)
+```
 
-* Prefer dynamic text when the value should update with the construction.
-* Keep displayed text short and instructional.
-* Do not overload one scene with long paragraphs.
+Guidance:
+
+- `Text(...)` supports static, dynamic, mixed, and LaTeX text.
+- Prefer dynamic text when a displayed value should update with the construction.
+- Keep text concise and instructional.
 
 ---
 
-## III. Common Construction Commands
+## 4. Standard Construction Commands
 
-## 1. Intersection and Incidence
-
-### Intersect
-
-Used for:
-
-* line-line intersections
-* line-circle intersections
-* conic intersections
+## 4.1 Intersection and incidence
 
 ```geogebra
 X = Intersect(lineAB, c)
 Y = Intersect(c, d)
-```
-
-### Point Membership / Attachment
-
-Use dependency-aware constructions whenever possible:
-
-```geogebra
 P = Point(lineAB)
-Q = Point(poly)
+Q = Point(c)
 ```
 
-Principles:
+Guidance:
 
-* Prefer `Intersect(...)` and `Point(...)` over reverse-engineering coordinates.
-* Let GeoGebra maintain the dependency graph for you.
+- Prefer `Intersect(...)` over solving coordinates manually.
+- Prefer `Point(...)` over fake coordinate-based attachment.
 
 ---
 
-## 2. Perpendicular and Parallel Constructions
-
-### PerpendicularLine
+## 4.2 Parallel / perpendicular / bisector constructions
 
 ```geogebra
 perp = PerpendicularLine(A, lineAB)
-```
-
-### ParallelLine
-
-```geogebra
 para = ParallelLine(C, lineAB)
-```
-
-### PerpendicularBisector
-
-```geogebra
 pb = PerpendicularBisector(A, B)
-```
-
-### AngularBisector
-
-```geogebra
 bis = AngularBisector(B, A, C)
 ```
 
-Principles:
-
-* Prefer these dedicated commands over manually estimating slopes or directions.
-* If the lesson is about a standard geometric construction, these commands are the safest default.
+Use these high-level commands instead of slope-based hand constructions unless the lesson is explicitly about coordinate methods.
 
 ---
 
-## 3. Distance, Length, and Measurement
-
-### Distance / Length
+## 4.3 Measurements
 
 ```geogebra
 d1 = Distance(A, B)
 len1 = Length(s)
-```
-
-### Area / Perimeter
-
-```geogebra
 area1 = Area(poly)
 per1 = Perimeter(poly)
-```
-
-### Slope
-
-```geogebra
 m = Slope(lineAB)
 ```
 
-Measurement rules:
+Guidance:
 
-* Use measurement commands for displayed values, validation, or dynamic text.
-* Do not replace exact geometric dependencies with numeric approximations unless the lesson is explicitly numerical.
+- Use measurement commands for display, validation, or dynamic text.
+- Do not replace exact geometry with numerical approximations unless the task is explicitly numerical.
 
 ---
 
-## 4. Transformations
-
-### Translate
+## 4.4 Transformations
 
 ```geogebra
 obj2 = Translate(obj1, u)
+obj3 = Rotate(obj1, 60°, A)
+obj4 = Reflect(obj1, lineAB)
+obj5 = Reflect(obj1, A)
+obj6 = Reflect(obj1, c)
+obj7 = Dilate(obj1, 1.5, A)
 ```
 
-### Rotate
+Officially supported reflection targets include:
 
-```geogebra
-obj2 = Rotate(obj1, 60deg, A)
-```
+- point
+- line
+- circle
 
-### Reflect
+Guidance:
 
-```geogebra
-obj2 = Reflect(obj1, lineAB)
-```
-
-### Dilate
-
-```geogebra
-obj2 = Dilate(obj1, 1.5, A)
-```
-
-Transformation principles:
-
-* Prefer geometric transformation commands over manually re-entering transformed coordinates.
-* If a reflected or rotated object should stay linked to the source, define it through the transformation command directly.
+- Prefer transformation commands over manually entering transformed coordinates.
+- If the transformed object should remain dynamically linked to the source, always build it with the transformation command.
 
 ---
 
-## 5. Analytic and Function Objects
-
-### Function
-
-Used for:
-
-* graphing a formula
-* slope or derivative demonstrations
-* coordinate-system lessons
+## 4.5 Functions and calculus objects
 
 ```geogebra
 f(x) = x^2 - 2x + 1
 g(x) = sin(x)
-```
-
-### Point on Graph
-
-```geogebra
 P = Point(f)
-```
-
-### Tangent
-
-```geogebra
 t = Tangent(P, f)
-```
-
-### Derivative / Integral
-
-```geogebra
 fp(x) = Derivative(f)
 areaF = Integral(f, 0, 2)
 ```
 
-Principles:
+Guidance:
 
-* Use named functions for clarity.
-* Keep algebraic definitions simple and readable.
-* Prefer direct commands such as `Derivative(...)` and `Tangent(...)` instead of manual symbolic rewrites.
+- Use named functions for readability.
+- Prefer direct commands like `Derivative(...)` and `Tangent(...)`.
+- Keep algebraic expressions simple when teaching.
 
 ---
 
-## IV. Variables, Sliders, and Dynamic Control
+## 5. Sliders, Variables, and Dynamic Control
 
-## 1. Numeric Variables
-
-Used for:
-
-* parameters
-* radii
-* animation drivers
-* angle controls
-
+### Numeric variables
 ```geogebra
 a = 3
 r = 2.5
 ```
 
-## 2. Slider-Driven Constructions
-
-Used for:
-
-* interactive parameter changes
-* dynamic demonstrations
-* animation controls
-
-Common pattern:
-
+### Slider-driven point
 ```geogebra
 t = 0
 P = (t, t^2)
 ```
 
-Principles:
+Guidance:
 
-* If a point or object should move continuously, define it from a variable or slider.
-* Keep the number of active sliders small.
-* One clear parameter is usually better than many unrelated controls.
-
----
-
-## V. Style and Visibility Commands
-
-GeoGebra style instructions should remain simple, semantic, and stable.
-
-## 1. Safe Style Properties
-
-Common settings:
-
-* color
-* line thickness
-* line style
-* point size
-* point style
-* filling
-* opacity
-* label visibility
-* object visibility
-
-Use concise instructions such as:
-
-* blue segment with medium thickness
-* red highlight point
-* dashed gray helper line
-* lightly filled polygon
-* hide auxiliary construction lines
-
-## 2. Style Principles
-
-* Main objects should be visually stronger than helper objects.
-* Helper lines should often be lighter, dashed, or lower-emphasis.
-* Keep the same object category in the same color whenever possible.
-* Do not assign many unrelated bright colors in one figure.
-* Labels should support the geometry, not overwhelm it.
-
-## 3. Visibility Principles
-
-* Hide temporary helper objects unless they are instructionally important.
-* Keep labels on important points, lines, and measured values.
-* If a construction becomes cluttered, reduce auxiliary visibility before changing the core geometry.
+- A variable can later be turned into or replaced by a slider in GeoGebra.
+- Keep slider count low.
+- Prefer one meaningful parameter over many unrelated controls.
+- If the point is supposed to move on a specific object, prefer `Point(path)` or a parameterized definition that truly respects that path.
 
 ---
 
-## VI. Dynamic Dependency Rules
+## 6. Styling and Visibility: What Is Actually Official Syntax
 
-GeoGebra is strongest when objects stay mathematically attached to each other.
+If the downstream consumer expects executable commands, use official scripting commands such as:
 
-## 1. Prefer Dependency Over Hardcoding
+```geogebra
+SetColor(s, "blue")
+SetLineThickness(s, 6)
+SetPointStyle(A, 0)
+SetFilling(poly, 0.25)
+ShowLabel(A, true)
+SetConditionToShowObject(helperLine, showHelpers)
+```
+
+Important corrections:
+
+- Natural-language phrases like “blue segment with medium thickness” are **guidance**, not executable GeoGebra syntax.
+- If you want a command-level manual for an LLM, distinguish clearly between:
+  - executable GeoGebra commands
+  - non-executable visual recommendations
+- Scripting commands cannot be nested inside object constructors.
+
+Recommended visual policy:
+
+- main objects: stronger emphasis
+- helper objects: lighter / dashed / thinner
+- temporary scaffolding: hidden when not instructionally important
+- labels: only on important objects
+
+---
+
+## 7. Dependency Rules for LLM Output
+
+## 7.1 Prefer dependency over hardcoding
 
 Good:
-
 ```geogebra
 M = Midpoint(A, B)
 pb = PerpendicularBisector(A, B)
+X = Intersect(line1, line2)
+A1 = Reflect(A, lineAB)
 ```
 
-Bad idea:
-
+Avoid unless coordinate derivation is the lesson goal:
 ```geogebra
 M = ((x(A) + x(B)) / 2, (y(A) + y(B)) / 2)
 ```
 
-unless the lesson explicitly studies coordinate formulas.
+## 7.2 Preserve semantic attachment
 
-## 2. Preserve Semantic Attachment
-
-If a label, intersection, midpoint, tangent point, or reflected point depends on another object, define it from that source object directly.
+If an object depends on another object, define it from that source object directly.
 
 Examples:
 
-* use `Intersect(line1, line2)` for an intersection point
-* use `Point(c)` for a point on a circle
-* use `Reflect(A, lineAB)` for a reflected point
-* use `Midpoint(A, B)` for a midpoint
+- intersection → `Intersect(...)`
+- point on circle / line / function → `Point(...)`
+- reflected object → `Reflect(...)`
+- midpoint → `Midpoint(...)`
+- center → `Center(...)`
 
-## 3. Keep Moving Objects Truly Dynamic
+## 7.3 Keep dynamic objects truly dynamic
 
-If the user drags a base point or changes a slider:
+If a base point is dragged or a slider changes:
 
-* dependent points should update automatically
-* helper lines should stay attached
-* measurements should recompute automatically
-* text readouts should use dynamic expressions when needed
+- dependent objects should recompute automatically
+- measurements should update
+- dynamic text should update
+- transformed objects should stay attached
 
-Do not freeze a derived object into static coordinates if it should continue to track the source geometry.
+Do not freeze dependent geometry into static coordinates.
 
 ---
 
-## VII. Coordinate and Layout Guidance
+## 8. Layout Guidance
 
-## 1. Prefer Moderate Coordinates
-
-Use simple coordinates such as:
+Use moderate coordinates when possible:
 
 ```geogebra
 A = (0, 0)
@@ -581,28 +446,18 @@ B = (4, 0)
 C = (1.5, 3)
 ```
 
-Avoid extreme scales unless the lesson truly needs them.
+Guidance:
 
-## 2. Keep the Figure Readable
-
-* Leave enough space between labels and objects.
-* Avoid stacking too many measurements in one corner.
-* Spread major anchor points so circles, bisectors, and labels remain readable.
-
-## 3. Distinguish Main Geometry from Helpers
-
-If many helper lines are required:
-
-* make the final target object visually dominant
-* reduce the visual weight of temporary scaffolding
-* hide helpers once their purpose is complete, if the workflow supports it
+- avoid extreme coordinates unless mathematically necessary
+- leave room for labels and helper lines
+- separate major anchors enough so circles, bisectors, and text remain readable
+- visually distinguish final objects from scaffolding
 
 ---
 
-## VIII. Recommended Command Patterns
+## 9. Recommended Canonical Patterns
 
-## 1. Triangle Geometry
-
+## 9.1 Triangle geometry
 ```geogebra
 A = (0, 0)
 B = (4, 0)
@@ -612,8 +467,7 @@ M = Midpoint(B, C)
 med = Line(A, M)
 ```
 
-## 2. Circle and Chord Geometry
-
+## 9.2 Circle and chord geometry
 ```geogebra
 O = (0, 0)
 A = (3, 0)
@@ -623,8 +477,7 @@ chord = Segment(A, B)
 pb = PerpendicularBisector(A, B)
 ```
 
-## 3. Reflection Construction
-
+## 9.3 Reflection construction
 ```geogebra
 A = (1, 2)
 l = Line((0, 0), (4, 1))
@@ -633,29 +486,109 @@ seg = Segment(A, A1)
 midAA1 = Midpoint(A, A1)
 ```
 
-## 4. Function and Tangent
-
+## 9.4 Function and tangent
 ```geogebra
 f(x) = x^2
 P = Point(f)
 t = Tangent(P, f)
 ```
 
-These patterns are preferred because they are short, standard, and dependency-safe.
+These are short, official, dependency-safe patterns.
 
 ---
 
-## IX. Recommended Principles When Generating GeoGebra Content
+## 10. Common Corrections to the Original Draft
 
-1. Prefer common and stable GeoGebra commands over obscure or version-sensitive tricks.
-2. Build from base objects to derived objects in a clear dependency chain.
-3. Prefer dedicated geometric commands such as `Midpoint`, `Intersect`, `PerpendicularBisector`, `Reflect`, and `Tangent`.
-4. Use dynamic definitions when the construction should respond to dragging or slider changes.
-5. Keep coordinates moderate and layout readable.
-6. Make important objects visually stronger than helper constructions.
-7. Use dynamic text for changing values, but keep the wording short.
-8. Avoid replacing exact geometric relationships with manually computed approximate coordinates unless the lesson explicitly requires coordinate derivation.
-9. Hide unnecessary auxiliary objects when they no longer support understanding.
-10. Let color, label visibility, and object dependency communicate the teaching structure.
+These are the main places where the original draft should be corrected or tightened.
+
+### Correction 1: “RegularPolygon” should not be taught as the canonical command
+Use:
+```geogebra
+sq = Polygon(A, B, 4)
+```
+not a non-canonical `RegularPolygon(...)` command form.
+
+### Correction 2: distinguish tool names from command names
+Examples:
+
+- **Regular Polygon** is a tool name.
+- the command form is documented under `Polygon(...)`.
+- **Midpoint or Center** is a tool name.
+- the command names are `Midpoint(...)` and `Center(...)`.
+
+### Correction 3: style prose is not executable syntax
+Phrases like:
+
+- “blue segment with medium thickness”
+- “dashed gray helper line”
+- “lightly filled polygon”
+
+are good visual guidance, but not command syntax.
+If executable syntax is required, use commands such as:
+
+```geogebra
+SetColor(s, "blue")
+SetLineThickness(s, 6)
+SetFilling(poly, 0.2)
+```
+
+### Correction 4: for conic centers, `Center(...)` is clearer than `Midpoint(...)`
+While `Midpoint(<Conic>)` can return the center for a conic, an LLM reference should prefer:
+```geogebra
+O = Center(c)
+```
+for semantic clarity.
+
+### Correction 5: arc commands are not interchangeable
+Do not collapse `CircularArc`, `Arc`, and `CircumcircularArc` into a single generic “arc” pattern.
+
+### Correction 6: scripting commands are non-nesting side-effect commands
+These commands change properties but do not create returnable objects, so they should be generated in a separate styling / control phase.
 
 ---
+
+## 11. Recommended Rules for LLMs
+
+1. Prefer official documented commands over guessed aliases.
+2. Distinguish clearly between **tool names** and **command names**.
+3. Build geometry from base objects to dependent objects.
+4. Prefer semantic dependency commands (`Midpoint`, `Intersect`, `Reflect`, `Center`) over manually computed coordinates.
+5. Use `Polygon(A, B, n)` as the canonical regular polygon command form.
+6. Use `Center(c)` when you explicitly want the center of a conic.
+7. Use the correct arc command for the intended geometric meaning.
+8. Treat style commands as optional scripting commands, not as part of object creation.
+9. Keep coordinates moderate and layout readable.
+10. Keep dynamic objects truly dynamic.
+11. When in doubt, prefer the shortest official command that preserves dependency correctly.
+
+---
+
+## 12. Minimal Output Template for LLM Generation
+
+When generating GeoGebra content, prefer this structure:
+
+### Construction
+```geogebra
+A = (0, 0)
+B = (4, 0)
+lineAB = Line(A, B)
+P = Point(lineAB)
+M = Midpoint(A, B)
+pb = PerpendicularBisector(A, B)
+```
+
+### Measurements / text
+```geogebra
+dAB = Distance(A, B)
+t1 = Text("AB = " + dAB)
+```
+
+### Optional styling
+```geogebra
+SetColor(lineAB, "blue")
+SetLineThickness(lineAB, 6)
+SetFilling(poly, 0.2)
+ShowLabel(M, true)
+```
+
+This separation is robust, readable, and easy for downstream systems to validate.

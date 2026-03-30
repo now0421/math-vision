@@ -12,12 +12,12 @@ import com.automanim.model.WorkflowActions;
 import com.automanim.model.WorkflowKeys;
 import com.automanim.node.support.FixRetryState;
 import com.automanim.prompt.StoryboardJsonBuilder;
-import com.automanim.service.AiClient;
 import com.automanim.service.FileOutputService;
+import com.automanim.service.GeoGebraRenderService;
 import com.automanim.service.ManimRendererService;
 import com.automanim.service.ManimRendererService.RenderAttemptResult;
-import com.automanim.util.CodeUtils;
 import com.automanim.util.ErrorSummarizer;
+import com.automanim.util.ManimCodeUtils;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,15 +37,20 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
     private static final Logger log = LoggerFactory.getLogger(RenderNode.class);
 
     private final ManimRendererService renderer;
-    private AiClient aiClient;
+    private final GeoGebraRenderService geoGebraRenderer;
 
     public RenderNode() {
-        this(new ManimRendererService());
+        this(new ManimRendererService(), new GeoGebraRenderService());
     }
 
     RenderNode(ManimRendererService renderer) {
+        this(renderer, new GeoGebraRenderService());
+    }
+
+    RenderNode(ManimRendererService renderer, GeoGebraRenderService geoGebraRenderer) {
         super(1, 0);
         this.renderer = renderer;
+        this.geoGebraRenderer = geoGebraRenderer;
     }
 
     public static class RenderInput {
@@ -84,7 +89,6 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
 
     @Override
     public RenderInput prep(Map<String, Object> ctx) {
-        this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
         ctx.remove(WorkflowKeys.SCENE_EVALUATION_RESULT);
 
         RenderRetryState retryState = (RenderRetryState) ctx.get(WorkflowKeys.RENDER_RETRY_STATE);
@@ -114,40 +118,51 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
 
     @Override
     public RenderResult exec(RenderInput input) {
-        CodeResult codeResult = input.codeResult();
-        CodeEvaluationResult codeEvaluationResult = input.codeEvaluationResult();
-        WorkflowConfig config = input.config();
-        Path outputDir = input.outputDir();
         RenderRetryState retryState = input.retryState();
         retryState.setRequestFix(false);
         retryState.pendingFocusedError = null;
 
         log.info("=== Stage 4: Code Rendering ===");
 
+        CodeResult codeResult = input.codeResult();
+        WorkflowConfig config = input.config();
         if (config != null && !config.isRenderEnabled()) {
             log.info("Rendering disabled by config");
             retryState.reset();
-            return RenderResult.skipped(codeResult != null ? codeResult.getSceneName() : CodeUtils.EXPECTED_SCENE_NAME, "Render disabled");
+            return skippedResult(codeResult, config, "Render disabled");
         }
         if (codeResult == null || !codeResult.hasCode()) {
             log.warn("No code to render");
             retryState.reset();
-            return RenderResult.skipped(codeResult != null ? codeResult.getSceneName() : CodeUtils.EXPECTED_SCENE_NAME, "No code");
+            return skippedResult(codeResult, config, "No code");
         }
+
+        return isGeoGebraTarget(input)
+                ? renderGeoGebra(input)
+                : renderManim(input);
+    }
+
+    private RenderResult renderManim(RenderInput input) {
+        CodeResult codeResult = input.codeResult();
+        CodeEvaluationResult codeEvaluationResult = input.codeEvaluationResult();
+        WorkflowConfig config = input.config();
+        Path outputDir = input.outputDir();
+        RenderRetryState retryState = input.retryState();
+
         if (codeEvaluationResult != null && !codeEvaluationResult.isApprovedForRender()) {
             String reason = codeEvaluationResult.getGateReason();
             log.warn("Code evaluation reported advisory issues; continuing to render anyway: {}",
                     reason != null && !reason.isBlank() ? reason : "No additional detail");
         }
 
-        String currentCode = CodeUtils.extractCode(codeResult.getManimCode());
+        String currentCode = ManimCodeUtils.extractCode(codeResult.getManimCode());
         if (currentCode == null || currentCode.isBlank()) {
             currentCode = codeResult.getManimCode();
         }
-        currentCode = CodeUtils.enforceMainSceneName(currentCode);
+        currentCode = ManimCodeUtils.enforceMainSceneName(currentCode);
         codeResult.setManimCode(currentCode);
 
-        String sceneName = CodeUtils.EXPECTED_SCENE_NAME;
+        String sceneName = ManimCodeUtils.EXPECTED_SCENE_NAME;
         codeResult.setSceneName(sceneName);
 
         if (input.previousFixResult() != null && !input.previousFixResult().isApplied()) {
@@ -178,6 +193,9 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
             result.setFinalCode(currentCode);
             result.setSceneName(sceneName);
             result.setVideoPath(renderAttempt.videoPath());
+            result.setArtifactPath(renderAttempt.videoPath());
+            result.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_MANIM);
+            result.setArtifactType("video");
             result.setGeometryPath(geometryPath);
             result.setAttempts(attemptNumber);
             result.setToolCalls(retryState.getFixToolCalls());
@@ -186,8 +204,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
 
         retryState.setAttempts(attemptNumber);
         String lastError = ErrorSummarizer.combineErrorStreams(renderAttempt.stdout(), renderAttempt.stderr());
-        log.warn("  Render failed (attempt {}): {}", attemptNumber,
-                lastError.length() > 200 ? lastError.substring(0, 200) + "..." : lastError);
+        log.warn("  Render failed (attempt {}): {}", attemptNumber, abbreviateError(lastError));
 
         if (attemptNumber >= maxRetries + 1) {
             log.warn("Render failed after {} attempts", attemptNumber);
@@ -205,6 +222,88 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         retryState.setRequestFix(true);
         retryState.pendingFocusedError = focusedError;
         return failureResult(currentCode, sceneName, attemptNumber, lastError, geometryPath, retryState.getFixToolCalls());
+    }
+
+    private RenderResult renderGeoGebra(RenderInput input) {
+        CodeResult codeResult = input.codeResult();
+        WorkflowConfig config = input.config();
+        RenderRetryState retryState = input.retryState();
+        String sceneName = codeResult.getSceneName() != null ? codeResult.getSceneName() : "GeoGebraFigure";
+        codeResult.setSceneName(sceneName);
+
+        if (input.previousFixResult() != null && !input.previousFixResult().isApplied()) {
+            log.warn("Previous shared code-fix pass produced no meaningful GeoGebra change, stopping render retries");
+            return geoGebraFailureResult(
+                    codeResult.getManimCode(),
+                    sceneName,
+                    retryState.getAttempts(),
+                    input.previousFixResult().getFailureReason(),
+                    null,
+                    retryState.getFixToolCalls()
+            );
+        }
+
+        int maxRetries = config != null ? config.getRenderMaxRetries() : 4;
+        int attemptNumber = retryState.getAttempts() + 1;
+        log.info("  GeoGebra validation attempt {}/{}", attemptNumber, maxRetries + 1);
+
+        GeoGebraRenderService.RenderAttemptResult renderAttempt = geoGebraRenderer.render(
+                codeResult.getManimCode(),
+                sceneName,
+                input.outputDir());
+
+        if (renderAttempt.success()) {
+            retryState.reset();
+            RenderResult result = new RenderResult();
+            result.setSuccess(true);
+            result.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+            result.setArtifactType("geogebra_preview_html");
+            result.setFinalCode(codeResult.getManimCode());
+            result.setSceneName(sceneName);
+            result.setArtifactPath(renderAttempt.previewPath());
+            result.setAttempts(attemptNumber);
+            result.setToolCalls(retryState.getFixToolCalls());
+            return result;
+        }
+
+        retryState.setAttempts(attemptNumber);
+        String error = renderAttempt.error();
+        log.warn("  GeoGebra validation failed (attempt {}): {}", attemptNumber, abbreviateError(error));
+
+        if (attemptNumber >= maxRetries + 1) {
+            log.warn("GeoGebra validation failed after {} attempts", attemptNumber);
+            return geoGebraFailureResult(
+                    codeResult.getManimCode(),
+                    sceneName,
+                    attemptNumber,
+                    error,
+                    renderAttempt.previewPath(),
+                    retryState.getFixToolCalls()
+            );
+        }
+
+        if (!isGeoGebraFixableError(error)) {
+            log.warn("  GeoGebra validation failure looks environmental, stopping retries");
+            return geoGebraFailureResult(
+                    codeResult.getManimCode(),
+                    sceneName,
+                    attemptNumber,
+                    error,
+                    renderAttempt.previewPath(),
+                    retryState.getFixToolCalls()
+            );
+        }
+
+        retryState.setRequestFix(true);
+        retryState.pendingFocusedError = error;
+        return geoGebraFailureResult(
+                codeResult.getManimCode(),
+                sceneName,
+                attemptNumber,
+                error,
+                renderAttempt.previewPath(),
+                retryState.getFixToolCalls()
+        );
     }
 
     @Override
@@ -243,12 +342,31 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         request.setTargetConcept(codeResult.getTargetConcept());
         request.setTargetDescription(codeResult.getTargetDescription());
         request.setSceneName(codeResult.getSceneName());
-        request.setExpectedSceneName(CodeUtils.EXPECTED_SCENE_NAME);
+        request.setExpectedSceneName(codeResult.isGeoGebraTarget()
+                ? (codeResult.getSceneName() != null ? codeResult.getSceneName() : "GeoGebraFigure")
+                : ManimCodeUtils.EXPECTED_SCENE_NAME);
         request.setStoryboardJson(input.narrative() != null && input.narrative().hasStoryboard()
                 ? StoryboardJsonBuilder.buildForCodegen(input.narrative().getStoryboard())
                 : "{\"scenes\":[]}");
         request.setFixHistory(new ArrayList<>(retryState.fixHistory));
         return request;
+    }
+
+    private RenderResult skippedResult(CodeResult codeResult,
+                                       WorkflowConfig config,
+                                       String reason) {
+        RenderResult skipped = RenderResult.skipped(
+                codeResult != null ? codeResult.getSceneName() : ManimCodeUtils.EXPECTED_SCENE_NAME,
+                reason);
+
+        String outputTarget = config != null
+                ? config.getOutputTarget()
+                : codeResult != null ? codeResult.getOutputTarget() : WorkflowConfig.OUTPUT_TARGET_MANIM;
+        skipped.setOutputTarget(outputTarget);
+        skipped.setArtifactType(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA.equals(outputTarget)
+                ? "geogebra_preview_html"
+                : "video");
+        return skipped;
     }
 
     private RenderResult failureResult(String code,
@@ -261,11 +379,60 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         result.setSuccess(false);
         result.setFinalCode(code);
         result.setSceneName(sceneName);
+        result.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        result.setArtifactType("video");
         result.setGeometryPath(geometryPath);
         result.setAttempts(attempts);
         result.setLastError(error);
         result.setToolCalls(toolCalls);
         return result;
+    }
+
+    private RenderResult geoGebraFailureResult(String code,
+                                               String sceneName,
+                                               int attempts,
+                                               String error,
+                                               String previewPath,
+                                               int toolCalls) {
+        RenderResult result = new RenderResult();
+        result.setSuccess(false);
+        result.setFinalCode(code);
+        result.setSceneName(sceneName);
+        result.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+        result.setArtifactType("geogebra_preview_html");
+        result.setArtifactPath(previewPath);
+        result.setAttempts(attempts);
+        result.setLastError(error);
+        result.setToolCalls(toolCalls);
+        return result;
+    }
+
+    private boolean isGeoGebraFixableError(String error) {
+        if (error == null || error.isBlank()) {
+            return false;
+        }
+
+        String normalized = error.toLowerCase(java.util.Locale.ROOT);
+        return normalized.contains("returned false:")
+                || normalized.contains(" threw:")
+                || normalized.startsWith("command ");
+    }
+
+    private boolean isGeoGebraTarget(RenderInput input) {
+        if (input == null) {
+            return false;
+        }
+        if (input.config() != null) {
+            return input.config().isGeoGebraTarget();
+        }
+        return input.codeResult() != null && input.codeResult().isGeoGebraTarget();
+    }
+
+    private String abbreviateError(String error) {
+        if (error == null || error.length() <= 200) {
+            return error;
+        }
+        return error.substring(0, 200) + "...";
     }
 
     private String summarizeFixAttempt(CodeFixResult result) {

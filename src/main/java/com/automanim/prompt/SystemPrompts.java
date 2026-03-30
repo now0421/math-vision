@@ -5,12 +5,14 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Shared workflow prompt helpers and Manim syntax-manual loading.
+ * Shared workflow prompt helpers and prompt-resource loading.
  */
 public final class SystemPrompts {
 
     private static final String MANIM_SYNTAX_MANUAL_RESOURCE = "llm/manim_syntax_manual.md";
     private static final String MANIM_STYLE_REFERENCE_RESOURCE = "llm/manim_style_reference.md";
+    private static final String GEOGEBRA_SYNTAX_MANUAL_RESOURCE = "llm/geogebra_syntax_manual.md";
+    private static final String GEOGEBRA_STYLE_REFERENCE_RESOURCE = "llm/geogebra_style_reference.md";
     private static final String WORKFLOW_OVERVIEW =
             "Stage 0 Exploration -> Stage 1a Mathematical Enrichment -> Stage 1b Visual Design"
                     + " -> Stage 1c Narrative Composition -> Stage 2 Code Generation"
@@ -24,6 +26,14 @@ public final class SystemPrompts {
 
     private static final class ManimStyleReferenceHolder {
         private static final String VALUE = loadPromptResource(MANIM_STYLE_REFERENCE_RESOURCE);
+    }
+
+    private static final class GeoGebraSyntaxManualHolder {
+        private static final String VALUE = loadPromptResource(GEOGEBRA_SYNTAX_MANUAL_RESOURCE);
+    }
+
+    private static final class GeoGebraStyleReferenceHolder {
+        private static final String VALUE = loadPromptResource(GEOGEBRA_STYLE_REFERENCE_RESOURCE);
     }
 
     public static String sanitize(String text, String defaultValue) {
@@ -73,6 +83,28 @@ public final class SystemPrompts {
                 + "\n\nManim style reference:\n"
                 + "Follow the guidance below whenever you assign storyboard-level colors or style instructions.\n\n"
                 + ManimStyleReferenceHolder.VALUE;
+    }
+
+    public static String ensureGeoGebraSyntaxManual(String prompt) {
+        String base = prompt == null ? "" : prompt;
+        if (base.contains(GeoGebraSyntaxManualHolder.VALUE)) {
+            return base;
+        }
+        return base
+                + "\n\nGeoGebra syntax reference manual:\n"
+                + "Follow the guidance below whenever you generate or revise GeoGebra code.\n\n"
+                + GeoGebraSyntaxManualHolder.VALUE;
+    }
+
+    public static String ensureGeoGebraStyleReference(String prompt) {
+        String base = prompt == null ? "" : prompt;
+        if (base.contains(GeoGebraStyleReferenceHolder.VALUE)) {
+            return base;
+        }
+        return base
+                + "\n\nGeoGebra style reference:\n"
+                + "Follow the guidance below whenever you assign storyboard-level colors or style instructions.\n\n"
+                + GeoGebraStyleReferenceHolder.VALUE;
     }
 
     private static String loadPromptResource(String resourceName) {

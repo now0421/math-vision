@@ -1,5 +1,7 @@
 package com.automanim.model;
 
+import com.automanim.config.WorkflowConfig;
+
 /**
  * Result from the render stage (Stage 3).
  * Captures render success/failure, video output path, retry attempts,
@@ -11,6 +13,9 @@ public class RenderResult {
     private String finalCode;
     private String sceneName;
     private String videoPath;
+    private String artifactPath;
+    private String outputTarget = WorkflowConfig.OUTPUT_TARGET_MANIM;
+    private String artifactType;
     private String geometryPath;
     private int attempts;
     private String lastError;
@@ -50,6 +55,15 @@ public class RenderResult {
     public String getVideoPath() { return videoPath; }
     public void setVideoPath(String videoPath) { this.videoPath = videoPath; }
 
+    public String getArtifactPath() { return artifactPath; }
+    public void setArtifactPath(String artifactPath) { this.artifactPath = artifactPath; }
+
+    public String getOutputTarget() { return outputTarget; }
+    public void setOutputTarget(String outputTarget) { this.outputTarget = outputTarget; }
+
+    public String getArtifactType() { return artifactType; }
+    public void setArtifactType(String artifactType) { this.artifactType = artifactType; }
+
     public String getGeometryPath() { return geometryPath; }
     public void setGeometryPath(String geometryPath) { this.geometryPath = geometryPath; }
 
@@ -64,4 +78,8 @@ public class RenderResult {
 
     public double getExecutionTimeSeconds() { return executionTimeSeconds; }
     public void setExecutionTimeSeconds(double executionTimeSeconds) { this.executionTimeSeconds = executionTimeSeconds; }
+
+    public boolean isGeoGebraTarget() {
+        return WorkflowConfig.OUTPUT_TARGET_GEOGEBRA.equalsIgnoreCase(outputTarget);
+    }
 }
