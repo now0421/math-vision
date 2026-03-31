@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GeoGebraRenderServiceTest {
@@ -112,5 +113,55 @@ class GeoGebraRenderServiceTest {
 
         assertFalse(result.success());
         assertTrue(result.error().contains("Command 1 returned false"));
+    }
+
+    @Test
+    void renderEmbedsCommandAndScenePayloadsSafelyInPreviewHtml() throws IOException {
+        GeoGebraRenderService service = new GeoGebraRenderService() {
+            @Override
+            protected ValidationReport validateWithHeadlessBrowser(Path previewPath,
+                                                                   String figureName,
+                                                                   List<String> commands) {
+                return successfulReport(figureName, commands);
+            }
+        };
+
+        String script = String.join("\n",
+                "A = (0, 0)",
+                "label = Text(\"quoted \\\"value\\\"\")",
+                "# AUTOGEN_SCENE_BUTTONS_BEGIN",
+                "# @scene {\"id\":\"scene_1\",\"title\":\"Scene 1: Setup\",\"show\":[\"A\",\"label\"],\"hide\":[]}",
+                "# AUTOGEN_SCENE_BUTTONS_END");
+
+        GeoGebraRenderService.RenderAttemptResult result =
+                service.render(script, "GeoGebraFigure", tempDir);
+
+        assertTrue(result.success());
+        assertNotNull(result.previewPath());
+
+        String previewHtml = Files.readString(tempDir.resolve("5_geogebra_preview.html"));
+        assertTrue(previewHtml.contains("commands-data"));
+        assertTrue(previewHtml.contains("scene-controls"));
+        assertTrue(previewHtml.contains("scene-data"));
+        assertFalse(previewHtml.contains("label = Text(\"quoted"));
+    }
+
+    private static GeoGebraRenderService.ValidationReport successfulReport(String figureName,
+                                                                           List<String> commands) {
+        GeoGebraRenderService.ValidationReport report = new GeoGebraRenderService.ValidationReport();
+        report.figureName = figureName;
+        report.validationEngine = "playwright";
+        report.browserExecutable = "playwright:chromium";
+        report.completed = true;
+        report.appletLoaded = true;
+        report.errorDialogsDisabled = true;
+        report.repaintingDisabled = true;
+        report.totalCommands = commands.size();
+        report.successfulCommands = commands.size();
+        report.failedCommands = 0;
+        report.totalObjects = commands.size();
+        report.xmlLength = 32;
+        report.commands = List.of();
+        return report;
     }
 }

@@ -1,4 +1,4 @@
-package com.automanim.node;
+﻿package com.automanim.node;
 
 import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeFixRequest;
@@ -269,7 +269,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         CodeFixRequest request = new CodeFixRequest();
         request.setSource(CodeFixSource.SCENE_LAYOUT_EVALUATION);
         request.setReturnAction(WorkflowActions.RETRY_RENDER);
-        request.setCode(codeResult.getManimCode());
+        request.setCode(codeResult.getCode());
         request.setErrorReason(retryState.pendingIssueSummary != null
                 ? retryState.pendingIssueSummary
                 : buildIssueSummary(result));
@@ -1406,3 +1406,4 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         }
     }
 }
+

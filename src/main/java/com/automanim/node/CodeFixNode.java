@@ -1,4 +1,4 @@
-package com.automanim.node;
+﻿package com.automanim.node;
 
 import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeFixRequest;
@@ -138,7 +138,7 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         if (result != null && result.isApplied()) {
             CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
             if (codeResult != null) {
-                codeResult.setManimCode(result.getFixedCode());
+                codeResult.setCode(result.getFixedCode());
                 String updatedSceneName = TextUtils.firstNonBlank(
                         request != null ? request.getExpectedSceneName() : null,
                         request != null ? request.getSceneName() : null,
@@ -306,3 +306,4 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         return Duration.between(start, Instant.now()).toMillis() / 1000.0;
     }
 }
+

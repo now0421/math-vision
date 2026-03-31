@@ -1,4 +1,4 @@
-package com.automanim.node;
+﻿package com.automanim.node;
 
 import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeFixRequest;
@@ -197,7 +197,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
             return result;
         }
 
-        String currentCode = codeResult.getManimCode();
+        String currentCode = codeResult.getCode();
         String sceneName = ManimCodeUtils.extractSceneName(currentCode, codeResult.getSceneName());
         codeResult.setSceneName(sceneName);
         result.setSceneName(sceneName);
@@ -379,9 +379,9 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         CodeFixRequest request = new CodeFixRequest();
         request.setSource(CodeFixSource.EVALUATION_REVIEW);
         request.setReturnAction(WorkflowActions.RETRY_CODE_EVALUATION);
-        request.setCode(codeResult.getManimCode());
+        request.setCode(codeResult.getCode());
         request.setErrorReason(buildDetailedEvaluationFixReason(
-                codeResult.getManimCode(),
+                codeResult.getCode(),
                 result.getFinalStaticAnalysis(),
                 result.getFinalReview(),
                 result.getGateReason()));
@@ -1254,3 +1254,4 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         }
     }
 }
+

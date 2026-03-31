@@ -43,7 +43,7 @@ public final class SceneEvaluationPrompts {
     }
 
     public static String layoutFixUserPrompt(String storyboardJson,
-                                             String manimCode,
+                                             String code,
                                              String issueSummary,
                                              String sceneEvaluationJson,
                                              List<String> fixHistory) {
@@ -59,7 +59,7 @@ public final class SceneEvaluationPrompts {
                 .append("Compact storyboard JSON (source of truth):\n```json\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank() ? storyboardJson : "{\"scenes\":[]}")
                 .append("\n```\n\n")
-                .append("```python\n").append(manimCode).append("\n```\n\n")
+                .append("```python\n").append(code).append("\n```\n\n")
                 .append("Issue summary:\n```\n").append(issueSummary).append("\n```\n\n")
                 .append("Scene evaluation report excerpt:\n```json\n").append(sceneEvaluationJson).append("\n```\n\n")
                 .append("Repair process requirements:\n")

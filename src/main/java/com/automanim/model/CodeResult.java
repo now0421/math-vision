@@ -1,6 +1,9 @@
 package com.automanim.model;
 
 import com.automanim.config.WorkflowConfig;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * Result from the code generation stage (Stage 2).
@@ -8,7 +11,9 @@ import com.automanim.config.WorkflowConfig;
  */
 public class CodeResult {
 
-    private String manimCode;
+    @JsonProperty("code")
+    @JsonAlias("manimCode")
+    private String code;
     private String sceneName;
     private String description;
     private String targetConcept;
@@ -20,13 +25,13 @@ public class CodeResult {
 
     public CodeResult() {}
 
-    public CodeResult(String manimCode, String sceneName, String description, String targetConcept) {
-        this(manimCode, sceneName, description, targetConcept, "");
+    public CodeResult(String code, String sceneName, String description, String targetConcept) {
+        this(code, sceneName, description, targetConcept, "");
     }
 
-    public CodeResult(String manimCode, String sceneName, String description,
+    public CodeResult(String code, String sceneName, String description,
                       String targetConcept, String targetDescription) {
-        this.manimCode = manimCode;
+        this.code = code;
         this.sceneName = sceneName;
         this.description = description;
         this.targetConcept = targetConcept;
@@ -34,18 +39,26 @@ public class CodeResult {
     }
 
     public int codeLineCount() {
-        if (manimCode == null || manimCode.isBlank()) return 0;
-        return manimCode.split("\n").length;
+        if (code == null || code.isBlank()) return 0;
+        return code.split("\n").length;
     }
 
     public boolean hasCode() {
-        return manimCode != null && !manimCode.isBlank();
+        return code != null && !code.isBlank();
     }
 
     // ---- Getters / Setters ----
 
-    public String getManimCode() { return manimCode; }
-    public void setManimCode(String manimCode) { this.manimCode = manimCode; }
+    public String getCode() { return code; }
+    public void setCode(String code) { this.code = code; }
+
+    @Deprecated
+    @JsonIgnore
+    public String getManimCode() { return code; }
+
+    @Deprecated
+    @JsonIgnore
+    public void setManimCode(String manimCode) { this.code = manimCode; }
 
     public String getSceneName() { return sceneName; }
     public void setSceneName(String sceneName) { this.sceneName = sceneName; }

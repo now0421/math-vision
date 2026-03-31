@@ -1,5 +1,6 @@
 package com.automanim.service;
 
+import com.automanim.util.GeoGebraCodeUtils;
 import com.automanim.util.JsonUtils;
 import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.BrowserContext;
@@ -16,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +40,7 @@ public class GeoGebraRenderService {
                     + "-Dexec.args=\"install chromium\"";
     private static final int VALIDATION_TIMEOUT_SECONDS = 45;
     private static final int VALIDATION_TIMEOUT_MS = VALIDATION_TIMEOUT_SECONDS * 1000;
-    private static final int APPLET_BOOTSTRAP_TIMEOUT_MS = 30000;
+    private static final int APPLET_BOOTSTRAP_TIMEOUT_MS = VALIDATION_TIMEOUT_MS;
     private static final int APPLET_WIDTH = 960;
     private static final int APPLET_HEIGHT = 540;
 
@@ -52,11 +54,13 @@ public class GeoGebraRenderService {
         try {
             Files.createDirectories(outputDir);
             String safeFigureName = normalizeFigureName(figureName);
-            List<String> commands = extractCommands(commandScript);
+            List<String> commands = GeoGebraCodeUtils.extractCommands(commandScript);
+            List<GeoGebraCodeUtils.SceneDirective> sceneDirectives =
+                    GeoGebraCodeUtils.extractSceneDirectives(commandScript);
             Path previewPath = outputDir.resolve(PREVIEW_FILE);
             Path validationPath = outputDir.resolve(VALIDATION_FILE);
             Files.writeString(previewPath,
-                    buildPreviewHtml(commands, safeFigureName),
+                    buildPreviewHtml(commands, sceneDirectives, safeFigureName),
                     StandardCharsets.UTF_8);
 
             ValidationReport report;
@@ -187,7 +191,22 @@ public class GeoGebraRenderService {
 
     private void initializeValidationApplet(Page page, String figureName) throws IOException {
         page.setContent(buildValidatorHtml(figureName));
-        page.waitForFunction("() => typeof window.GGBApplet === 'function'");
+        page.waitForFunction(
+                "() => window.__ggbDeployLoaded === true || !!window.__ggbDeployError",
+                null,
+                new Page.WaitForFunctionOptions().setTimeout((double) VALIDATION_TIMEOUT_MS)
+        );
+
+        String deployError = asString(page.evaluate("() => window.__ggbDeployError || ''"));
+        if (deployError != null && !deployError.isBlank()) {
+            throw new IOException("GeoGebra deploy script failed to load: " + deployError);
+        }
+
+        page.waitForFunction(
+                "() => typeof window.GGBApplet === 'function'",
+                null,
+                new Page.WaitForFunctionOptions().setTimeout((double) VALIDATION_TIMEOUT_MS)
+        );
 
         Map<String, Object> appletParams = new LinkedHashMap<>();
         appletParams.put("appName", "classic");
@@ -202,21 +221,55 @@ public class GeoGebraRenderService {
         appletParams.put("useBrowserForJS", true);
 
         page.evaluate(
-                "(params) => {"
+                "(payload) => {"
+                        + " const params = payload.params;"
+                        + " const timeoutMs = payload.timeoutMs;"
                         + " window.__ggbReady = false;"
                         + " window.__ggbInitError = null;"
+                        + " window.ggbApplet = null;"
+                        + " const resolveAppletApi = (candidate) => {"
+                        + "   let api = candidate;"
+                        + "   if (!api && window.__ggbInjectedApplet"
+                        + "       && typeof window.__ggbInjectedApplet.getAppletObject === 'function') {"
+                        + "     try { api = window.__ggbInjectedApplet.getAppletObject(); } catch (error) { api = null; }"
+                        + "   }"
+                        + "   if (!api && window.ggbApplet0) { api = window.ggbApplet0; }"
+                        + "   if (!api && window[payload.figureName]) { api = window[payload.figureName]; }"
+                        + "   if (api && typeof api.evalCommand === 'function') {"
+                        + "     window.ggbApplet = api;"
+                        + "     window.__ggbReady = true;"
+                        + "     return true;"
+                        + "   }"
+                        + "   return false;"
+                        + " };"
                         + " params.appletOnLoad = function(api) {"
-                        + "   window.ggbApplet = api;"
-                        + "   window.__ggbReady = true;"
+                        + "   resolveAppletApi(api);"
                         + " };"
                         + " try {"
-                        + "   const applet = new GGBApplet(params, true);"
-                        + "   applet.inject('ggb-validator');"
+                        + "   window.__ggbInjectedApplet = new GGBApplet(params, true);"
+                        + "   window.__ggbInjectedApplet.inject('ggb-validator');"
                         + " } catch (error) {"
                         + "   window.__ggbInitError = error && error.message ? error.message : String(error);"
+                        + "   return;"
                         + " }"
+                        + " const startedAt = Date.now();"
+                        + " const poll = () => {"
+                        + "   if (window.__ggbInitError || window.__ggbReady || resolveAppletApi(null)) {"
+                        + "     return;"
+                        + "   }"
+                        + "   if (Date.now() - startedAt >= timeoutMs) {"
+                        + "     window.__ggbInitError = 'GeoGebra applet did not become ready within ' + timeoutMs + 'ms';"
+                        + "     return;"
+                        + "   }"
+                        + "   window.setTimeout(poll, 250);"
+                        + " };"
+                        + " poll();"
                         + "}",
-                appletParams
+                Map.of(
+                        "params", appletParams,
+                        "timeoutMs", APPLET_BOOTSTRAP_TIMEOUT_MS,
+                        "figureName", figureName
+                )
         );
 
         page.waitForFunction(
@@ -475,31 +528,17 @@ public class GeoGebraRenderService {
         return "GeoGebra validation completed with failures";
     }
 
-    private List<String> extractCommands(String commandScript) {
-        String raw = JsonUtils.extractCodeBlock(commandScript);
-        if (raw == null || raw.isBlank()) {
-            raw = commandScript != null ? commandScript : "";
-        }
-
-        List<String> commands = new ArrayList<>();
-        for (String line : raw.split("\\R")) {
-            String normalized = line.trim();
-            if (normalized.isEmpty() || normalized.startsWith("#") || normalized.startsWith("//")) {
-                continue;
-            }
-            commands.add(normalized);
-        }
-        return commands;
-    }
-
     private String normalizeFigureName(String figureName) {
         return (figureName == null || figureName.isBlank()) ? "GeoGebraFigure" : figureName.trim();
     }
 
-    private String buildPreviewHtml(List<String> commands, String figureName) {
+    private String buildPreviewHtml(List<String> commands,
+                                    List<GeoGebraCodeUtils.SceneDirective> sceneDirectives,
+                                    String figureName) {
         String safeFigureName = normalizeFigureName(figureName);
-        String commandsJson = JsonUtils.toPrettyJson(commands);
         String figureNameJson = JsonUtils.toJson(safeFigureName);
+        String commandsPayload = encodeJsonPayload(commands);
+        String scenePayload = encodeJsonPayload(sceneDirectives != null ? sceneDirectives : List.of());
 
         return "<!doctype html>\n"
                 + "<html lang=\"en\">\n"
@@ -507,13 +546,15 @@ public class GeoGebraRenderService {
                 + "  <meta charset=\"utf-8\" />\n"
                 + "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n"
                 + "  <title>" + escapeHtml(safeFigureName) + "</title>\n"
-                + "  <script src=\"" + DEPLOY_GGB_URL + "\"></script>\n"
                 + "  <style>\n"
                 + "    body { font-family: Arial, sans-serif; margin: 0; padding: 24px; background: #f7f7f5; color: #1f2933; }\n"
                 + "    h1 { font-size: 20px; margin: 0 0 16px; }\n"
                 + "    .layout { display: grid; grid-template-columns: minmax(320px, 960px); gap: 16px; }\n"
                 + "    .panel { background: #fff; border: 1px solid #d9e2ec; padding: 16px; }\n"
                 + "    #ggb-element { width: 100%; max-width: 960px; height: 540px; border: 1px solid #d9e2ec; background: #fff; }\n"
+                + "    #scene-controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }\n"
+                + "    #scene-controls button { border: 1px solid #bcccdc; background: #f8fafc; color: #102a43; padding: 8px 12px; cursor: pointer; }\n"
+                + "    #scene-controls button.active { background: #d9e2ec; border-color: #829ab1; }\n"
                 + "    pre { margin: 0; padding: 16px; background: #fff; border: 1px solid #d9e2ec; overflow: auto; white-space: pre-wrap; }\n"
                 + "    .note { font-size: 13px; color: #52606d; }\n"
                 + "    .status { font-weight: 700; }\n"
@@ -527,6 +568,7 @@ public class GeoGebraRenderService {
                 + "    <div class=\"panel\">\n"
                 + "      <h1>" + escapeHtml(safeFigureName) + "</h1>\n"
                 + "      <div id=\"ggb-element\"></div>\n"
+                + "      <div id=\"scene-controls\"></div>\n"
                 + "      <p id=\"preview-status\" class=\"status pending\">Waiting for GeoGebra preview...</p>\n"
                 + "      <p class=\"note\">Runtime validation is executed separately by Playwright. See <code>"
                 + escapeHtml(VALIDATION_FILE)
@@ -536,14 +578,85 @@ public class GeoGebraRenderService {
                 + "      <pre id=\"commands\"></pre>\n"
                 + "    </div>\n"
                 + "  </div>\n"
+                + "  <script id=\"commands-data\" type=\"text/plain\">" + commandsPayload + "</script>\n"
+                + "  <script id=\"scene-data\" type=\"text/plain\">" + scenePayload + "</script>\n"
                 + "  <script>\n"
-                + "    const commands = " + commandsJson + ";\n"
                 + "    const figureName = " + figureNameJson + ";\n"
                 + "    const previewStatus = document.getElementById('preview-status');\n"
+                + "    const sceneControls = document.getElementById('scene-controls');\n"
+                + "    function decodeEmbeddedJson(elementId, fallbackValue) {\n"
+                + "      const element = document.getElementById(elementId);\n"
+                + "      if (!element) {\n"
+                + "        return fallbackValue;\n"
+                + "      }\n"
+                + "      try {\n"
+                + "        const binary = window.atob((element.textContent || '').trim());\n"
+                + "        const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0));\n"
+                + "        return JSON.parse(new TextDecoder('utf-8').decode(bytes));\n"
+                + "      } catch (error) {\n"
+                + "        console.warn('Could not decode embedded GeoGebra payload', elementId, error);\n"
+                + "        return fallbackValue;\n"
+                + "      }\n"
+                + "    }\n"
+                + "    const commands = decodeEmbeddedJson('commands-data', []);\n"
+                + "    const sceneDirectives = decodeEmbeddedJson('scene-data', []);\n"
                 + "    document.getElementById('commands').textContent = commands.join('\\n');\n"
                 + "    function setStatus(text, cssClass) {\n"
                 + "      previewStatus.textContent = text;\n"
                 + "      previewStatus.className = 'status ' + cssClass;\n"
+                + "    }\n"
+                + "    function safeCall(fn, fallbackValue) {\n"
+                + "      try {\n"
+                + "        const value = fn();\n"
+                + "        return value === undefined ? fallbackValue : value;\n"
+                + "      } catch (error) {\n"
+                + "        return fallbackValue;\n"
+                + "      }\n"
+                + "    }\n"
+                + "    function fitView(api) {\n"
+                + "      safeCall(() => api.showAllObjects(), null);\n"
+                + "    }\n"
+                + "    function toggleObjectVisibility(api, objectName, visible) {\n"
+                + "      if (!objectName) {\n"
+                + "        return;\n"
+                + "      }\n"
+                + "      if (safeCall(() => api.exists(objectName), false)) {\n"
+                + "        safeCall(() => api.setVisible(objectName, visible), null);\n"
+                + "      }\n"
+                + "    }\n"
+                + "    function markActiveScene(index) {\n"
+                + "      const buttons = Array.from(sceneControls.querySelectorAll('button'));\n"
+                + "      buttons.forEach((button, buttonIndex) => {\n"
+                + "        button.classList.toggle('active', buttonIndex === index);\n"
+                + "      });\n"
+                + "    }\n"
+                + "    function applySceneDirective(api, directive, index) {\n"
+                + "      if (!directive) {\n"
+                + "        fitView(api);\n"
+                + "        return;\n"
+                + "      }\n"
+                + "      for (const objectName of directive.hide || []) {\n"
+                + "        toggleObjectVisibility(api, objectName, false);\n"
+                + "      }\n"
+                + "      for (const objectName of directive.show || []) {\n"
+                + "        toggleObjectVisibility(api, objectName, true);\n"
+                + "      }\n"
+                + "      fitView(api);\n"
+                + "      markActiveScene(index);\n"
+                + "      setStatus('Preview loaded. Showing ' + (directive.title || ('scene ' + (index + 1))) + '.', 'ok');\n"
+                + "    }\n"
+                + "    function renderSceneButtons(api) {\n"
+                + "      sceneControls.innerHTML = '';\n"
+                + "      if (!Array.isArray(sceneDirectives) || sceneDirectives.length === 0) {\n"
+                + "        return;\n"
+                + "      }\n"
+                + "      sceneDirectives.forEach((directive, index) => {\n"
+                + "        const button = document.createElement('button');\n"
+                + "        button.type = 'button';\n"
+                + "        button.textContent = directive && directive.title ? directive.title : ('Scene ' + (index + 1));\n"
+                + "        button.addEventListener('click', () => applySceneDirective(api, directive, index));\n"
+                + "        sceneControls.appendChild(button);\n"
+                + "      });\n"
                 + "    }\n"
                 + "    function replayCommands(api) {\n"
                 + "      let failures = 0;\n"
@@ -562,16 +675,40 @@ public class GeoGebraRenderService {
                 + "          console.warn('Preview applet threw for command:', command, error);\n"
                 + "        }\n"
                 + "      }\n"
-                + "      try {\n"
-                + "        api.showAllObjects();\n"
-                + "      } catch (error) {\n"
-                + "        console.warn('Could not fit preview objects into view', error);\n"
+                + "      renderSceneButtons(api);\n"
+                + "      if (sceneDirectives.length > 0) {\n"
+                + "        applySceneDirective(api, sceneDirectives[0], 0);\n"
+                + "      } else {\n"
+                + "        fitView(api);\n"
                 + "      }\n"
                 + "      if (failures === 0) {\n"
-                + "        setStatus('Preview loaded. All commands replayed in the visible applet.', 'ok');\n"
+                + "        if (sceneDirectives.length === 0) {\n"
+                + "          setStatus('Preview loaded. All commands replayed in the visible applet.', 'ok');\n"
+                + "        }\n"
                 + "      } else {\n"
                 + "        setStatus('Preview loaded with ' + failures + ' command issue(s). Check validation JSON for the authoritative report.', 'fail');\n"
                 + "      }\n"
+                + "    }\n"
+                + "    function loadGeoGebraScript() {\n"
+                + "      return new Promise((resolve, reject) => {\n"
+                + "        if (typeof window.GGBApplet === 'function') {\n"
+                + "          resolve();\n"
+                + "          return;\n"
+                + "        }\n"
+                + "        const existing = document.getElementById('ggb-deploy-script');\n"
+                + "        if (existing) {\n"
+                + "          existing.addEventListener('load', () => resolve(), { once: true });\n"
+                + "          existing.addEventListener('error', () => reject(new Error('GeoGebra deploy script failed to load.')), { once: true });\n"
+                + "          return;\n"
+                + "        }\n"
+                + "        const script = document.createElement('script');\n"
+                + "        script.id = 'ggb-deploy-script';\n"
+                + "        script.src = '" + DEPLOY_GGB_URL + "';\n"
+                + "        script.async = true;\n"
+                + "        script.onload = () => resolve();\n"
+                + "        script.onerror = () => reject(new Error('GeoGebra deploy script failed to load.'));\n"
+                + "        document.head.appendChild(script);\n"
+                + "      });\n"
                 + "    }\n"
                 + "    function injectPreviewApplet() {\n"
                 + "      const params = {\n"
@@ -596,19 +733,11 @@ public class GeoGebraRenderService {
                 + "      }\n"
                 + "    }\n"
                 + "    function bootstrapGeoGebra() {\n"
-                + "      const startedAt = Date.now();\n"
-                + "      function poll() {\n"
-                + "        if (typeof window.GGBApplet === 'function') {\n"
-                + "          injectPreviewApplet();\n"
-                + "          return;\n"
-                + "        }\n"
-                + "        if (Date.now() - startedAt >= 15000) {\n"
-                + "          setStatus('GeoGebra preview script did not load within the timeout window.', 'fail');\n"
-                + "          return;\n"
-                + "        }\n"
-                + "        window.setTimeout(poll, 200);\n"
-                + "      }\n"
-                + "      poll();\n"
+                + "      loadGeoGebraScript()\n"
+                + "        .then(() => injectPreviewApplet())\n"
+                + "        .catch((error) => {\n"
+                + "          setStatus((error && error.message) ? error.message : 'GeoGebra preview script failed to load.', 'fail');\n"
+                + "        });\n"
                 + "    }\n"
                 + "    if (commands.length === 0) {\n"
                 + "      setStatus('No executable GeoGebra commands found.', 'fail');\n"
@@ -627,7 +756,6 @@ public class GeoGebraRenderService {
                 + "  <meta charset=\"utf-8\" />\n"
                 + "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n"
                 + "  <title>" + escapeHtml(normalizeFigureName(figureName)) + "</title>\n"
-                + "  <script src=\"" + DEPLOY_GGB_URL + "\"></script>\n"
                 + "  <style>\n"
                 + "    html, body { margin: 0; padding: 0; background: #fff; }\n"
                 + "    #ggb-validator {\n"
@@ -641,11 +769,29 @@ public class GeoGebraRenderService {
                 + "      top: -9999px;\n"
                 + "    }\n"
                 + "  </style>\n"
+                + "  <script>\n"
+                + "    window.__ggbDeployLoaded = false;\n"
+                + "    window.__ggbDeployError = null;\n"
+                + "    (function loadGeoGebraDeployScript() {\n"
+                + "      const script = document.createElement('script');\n"
+                + "      script.id = 'ggb-deploy-script';\n"
+                + "      script.src = '" + DEPLOY_GGB_URL + "';\n"
+                + "      script.async = true;\n"
+                + "      script.onload = function() { window.__ggbDeployLoaded = true; };\n"
+                + "      script.onerror = function() { window.__ggbDeployError = 'GeoGebra deploy script failed to load.'; };\n"
+                + "      document.head.appendChild(script);\n"
+                + "    })();\n"
+                + "  </script>\n"
                 + "</head>\n"
                 + "<body>\n"
                 + "  <div id=\"ggb-validator\"></div>\n"
                 + "</body>\n"
                 + "</html>\n";
+    }
+
+    private String encodeJsonPayload(Object value) {
+        String json = JsonUtils.toJson(value);
+        return Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
     }
 
     private String escapeHtml(String text) {

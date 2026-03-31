@@ -1,4 +1,4 @@
-package com.automanim.node;
+﻿package com.automanim.node;
 
 import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeResult;
@@ -172,7 +172,60 @@ class RenderNodeCodeGateTest {
         assertTrue(renderResult.isSuccess());
         assertEquals(2, renderResult.getAttempts());
         assertNull(renderResult.getLastError());
-        assertTrue(finalCodeResult.getManimCode().contains("mid = Midpoint(A, B)"));
+        assertTrue(finalCodeResult.getCode().contains("mid = Midpoint(A, B)"));
+    }
+
+    @Test
+    void geogebraTimeoutValidationFailureStillRoutesThroughRetryLoop() {
+        WorkflowConfig config = new WorkflowConfig();
+        config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+        config.setRenderEnabled(true);
+        config.setRenderMaxRetries(1);
+
+        CodeResult codeResult = new CodeResult(
+                String.join("\n",
+                        "A = (0, 0)",
+                        "B = (4, 0)",
+                        "mid = Midpoint(lineAB)"),
+                "GeoGebraFigure",
+                "demo",
+                "Demo concept",
+                "Demo description");
+        codeResult.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+        codeResult.setArtifactFormat("commands");
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.CONFIG, config);
+        ctx.put(WorkflowKeys.CODE_RESULT, codeResult);
+        ctx.put(WorkflowKeys.OUTPUT_DIR, tempDir);
+        ctx.put(WorkflowKeys.AI_CLIENT, new GeoGebraFixAiClient());
+
+        GeoGebraRenderService geoGebraRenderer = new GeoGebraRenderService() {
+            @Override
+            public RenderAttemptResult render(String commandScript, String figureName, Path outputDir) {
+                if (commandScript.contains("mid = Midpoint(A, B)")) {
+                    return new RenderAttemptResult(true, outputDir.resolve("5_geogebra_preview.html").toString(), null);
+                }
+                return new RenderAttemptResult(
+                        false,
+                        outputDir.resolve("5_geogebra_preview.html").toString(),
+                        "GeoGebra Playwright validation failed: Timeout 30000ms exceeded."
+                );
+            }
+        };
+
+        RenderNode renderNode = new RenderNode(new ManimRendererService(), geoGebraRenderer);
+        CodeFixNode codeFixNode = new CodeFixNode();
+        renderNode.next(codeFixNode, WorkflowActions.FIX_CODE);
+        codeFixNode.next(renderNode, WorkflowActions.RETRY_RENDER);
+
+        new PocketFlow.Flow<>(renderNode).run(ctx);
+
+        RenderResult renderResult = (RenderResult) ctx.get(WorkflowKeys.RENDER_RESULT);
+
+        assertNotNull(renderResult);
+        assertTrue(renderResult.isSuccess());
+        assertEquals(2, renderResult.getAttempts());
     }
 
     private static GeoGebraRenderService.ValidationReport successfulValidationReport(String figureName,
@@ -223,3 +276,4 @@ class RenderNodeCodeGateTest {
         }
     }
 }
+

@@ -104,7 +104,7 @@ public final class CodeEvaluationPrompts {
                                           String sceneName,
                                           String storyboardJson,
                                           String staticAnalysisJson,
-                                          String manimCode) {
+                                          String code) {
         return String.format(
                 "Target concept: %s\n"
                         + "Scene class name: %s\n\n"
@@ -114,7 +114,7 @@ public final class CodeEvaluationPrompts {
                         + "Review for likely presentation quality problems before render.\n"
                         + "Focus on continuity, pacing versus narration, 3D readability, fixed-in-frame overlays, and correct spatial relationships.\n"
                         + "Return only the structured review output.",
-                targetConcept, sceneName, storyboardJson, staticAnalysisJson, manimCode);
+                targetConcept, sceneName, storyboardJson, staticAnalysisJson, code);
     }
 
     public static String revisionSystemPrompt(String targetConcept, String targetDescription) {
@@ -132,7 +132,7 @@ public final class CodeEvaluationPrompts {
                                             String storyboardJson,
                                             String staticAnalysisJson,
                                             String reviewJson,
-                                            String manimCode) {
+                                            String code) {
         return String.format(
                 "Target concept: %s\n"
                         + "Scene class name: %s\n\n"
@@ -144,6 +144,6 @@ public final class CodeEvaluationPrompts {
                         + "Preserve any storyboard geometric invariants such as symmetry, reflection, collinearity, and intersection definitions while making layout safer.\n"
                         + "Also fix nearby Python/Manim runtime mistakes. Preserve the scene class name and teaching goal.\n"
                         + "Return ONLY the full Python code block.",
-                targetConcept, sceneName, storyboardJson, staticAnalysisJson, reviewJson, manimCode);
+                targetConcept, sceneName, storyboardJson, staticAnalysisJson, reviewJson, code);
     }
 }

@@ -1,4 +1,4 @@
-package com.automanim.service;
+﻿package com.automanim.service;
 
 import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeResult;
@@ -133,7 +133,7 @@ public class FileOutputService {
     public static void saveCodeResult(Path outputDir, CodeResult codeResult) {
         if (codeResult.hasCode()) {
             writeText(outputDir.resolve(resolveCodeFilename(codeResult)),
-                    codeResult.getManimCode(),
+                    codeResult.getCode(),
                     describeCodeArtifact(codeResult));
         }
         Map<String, Object> meta = new LinkedHashMap<>();
@@ -160,7 +160,7 @@ public class FileOutputService {
                 && codeResult != null
                 && codeResult.hasCode()) {
             writeText(outputDir.resolve(resolveReviewedCodeFilename(codeResult)),
-                    codeResult.getManimCode(), "reviewed code");
+                    codeResult.getCode(), "reviewed code");
         }
     }
 
@@ -364,3 +364,4 @@ public class FileOutputService {
                 : WorkflowConfig.OUTPUT_TARGET_MANIM;
     }
 }
+

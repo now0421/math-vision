@@ -1,5 +1,6 @@
 package com.automanim.util;
 
+import com.automanim.model.Narrative;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -73,6 +74,13 @@ class GeoGebraCodeUtilsTest {
     }
 
     @Test
+    void validateGeoGebraRules_detectsNonAsciiExecutableText() {
+        List<String> violations = GeoGebraCodeUtils.validateGeoGebraRules(
+                "label = Text(\"鈮?\")");
+        assertTrue(violations.stream().anyMatch(v -> v.contains("ASCII-safe")));
+    }
+
+    @Test
     void looksLikeCommandBlock_requiresMostlyCommandLikeLines() {
         assertTrue(GeoGebraCodeUtils.looksLikeCommandBlock(String.join("\n",
                 "A = (0, 0)",
@@ -98,5 +106,47 @@ class GeoGebraCodeUtilsTest {
         List<String> violations = GeoGebraCodeUtils.validateFull(code);
 
         assertTrue(violations.isEmpty());
+    }
+
+    @Test
+    void enrichWithSceneButtons_appendsRoundTrippableSceneDirectives() {
+        Narrative.Storyboard storyboard = new Narrative.Storyboard();
+
+        Narrative.StoryboardScene scene1 = new Narrative.StoryboardScene();
+        scene1.setSceneId("scene_1");
+        scene1.setTitle("Set Up");
+        Narrative.StoryboardObject pointA = new Narrative.StoryboardObject();
+        pointA.setId("point_A");
+        Narrative.StoryboardObject pointB = new Narrative.StoryboardObject();
+        pointB.setId("point_B");
+        scene1.setEnteringObjects(List.of(pointA, pointB));
+
+        Narrative.StoryboardScene scene2 = new Narrative.StoryboardScene();
+        scene2.setSceneId("scene_2");
+        scene2.setTitle("Reveal");
+        scene2.setPersistentObjects(List.of("point_A", "point_B"));
+        Narrative.StoryboardObject helper = new Narrative.StoryboardObject();
+        helper.setId("helper_line");
+        scene2.setEnteringObjects(List.of(helper));
+        scene2.setExitingObjects(List.of("point_B"));
+
+        storyboard.setScenes(List.of(scene1, scene2));
+
+        String enriched = GeoGebraCodeUtils.enrichWithSceneButtons(String.join("\n",
+                "point_A = (0, 0)",
+                "point_B = (4, 0)",
+                "helper_line = Line(point_A, point_B)"), storyboard);
+
+        List<GeoGebraCodeUtils.SceneDirective> directives = GeoGebraCodeUtils.extractSceneDirectives(enriched);
+
+        assertEquals(2, directives.size());
+        assertEquals("scene_1", directives.get(0).id);
+        assertEquals("Set Up", directives.get(0).title);
+        assertEquals(List.of("point_A", "point_B"), directives.get(0).show);
+        assertEquals(List.of("helper_line"), directives.get(0).hide);
+        assertEquals("scene_2", directives.get(1).id);
+        assertEquals("Reveal", directives.get(1).title);
+        assertEquals(List.of("point_A", "helper_line"), directives.get(1).show);
+        assertEquals(List.of("point_B"), directives.get(1).hide);
     }
 }

@@ -1,4 +1,4 @@
-package com.automanim.node;
+﻿package com.automanim.node;
 
 import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeResult;
@@ -55,7 +55,7 @@ class CodeEvaluationNodeTest {
         assertTrue(result.isApprovedForRender());
         assertEquals(1, result.getRevisionAttempts());
         assertEquals(3, result.getToolCalls());
-        assertTrue(codeResult.getManimCode().contains("ReplacementTransform"));
+        assertTrue(codeResult.getCode().contains("ReplacementTransform"));
         assertEquals("DemoScene", codeResult.getSceneName());
     }
 
@@ -447,3 +447,4 @@ class CodeEvaluationNodeTest {
         }
     }
 }
+

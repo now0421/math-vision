@@ -1,4 +1,4 @@
-package com.automanim.service;
+﻿package com.automanim.service;
 
 import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeResult;
@@ -65,7 +65,7 @@ class FileOutputServiceTest {
         assertEquals("manual resume", codeResult.getDescription());
         assertEquals("Manual Concept", codeResult.getTargetConcept());
         assertEquals("Recovered from disk", codeResult.getTargetDescription());
-        assertTrue(codeResult.getManimCode().contains("class RecoveredScene(Scene):"));
+        assertTrue(codeResult.getCode().contains("class RecoveredScene(Scene):"));
     }
 
     @Test
@@ -100,7 +100,7 @@ class FileOutputServiceTest {
         CodeResult loaded = FileOutputService.loadCodeResult(tempDir.resolve("4_geogebra_commands.txt"));
         assertEquals(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA, loaded.getOutputTarget());
         assertEquals("commands", loaded.getArtifactFormat());
-        assertTrue(loaded.getManimCode().contains("lineAB = Line(A, B)"));
+        assertTrue(loaded.getCode().contains("lineAB = Line(A, B)"));
     }
 
     @Test
@@ -132,3 +132,4 @@ class FileOutputServiceTest {
                 "        self.wait(1)");
     }
 }
+

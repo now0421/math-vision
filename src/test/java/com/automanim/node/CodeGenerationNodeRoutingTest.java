@@ -1,4 +1,4 @@
-package com.automanim.node;
+﻿package com.automanim.node;
 
 import com.automanim.config.WorkflowConfig;
 import com.automanim.model.CodeResult;
@@ -65,8 +65,8 @@ class CodeGenerationNodeRoutingTest {
         CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
         assertNotNull(codeResult);
         assertEquals("MainScene", codeResult.getSceneName());
-        assertTrue(codeResult.getManimCode().contains("label = Text"));
-        assertFalse(codeResult.getManimCode().contains("self.bad"));
+        assertTrue(codeResult.getCode().contains("label = Text"));
+        assertFalse(codeResult.getCode().contains("self.bad"));
         assertEquals(2, codeResult.getToolCalls());
     }
 
@@ -123,8 +123,8 @@ class CodeGenerationNodeRoutingTest {
 
         CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
         assertNotNull(codeResult);
-        assertTrue(codeResult.getManimCode().contains("class MainScene(Scene):"));
-        assertTrue(codeResult.getManimCode().contains("self.play(Write(label))"));
+        assertTrue(codeResult.getCode().contains("class MainScene(Scene):"));
+        assertTrue(codeResult.getCode().contains("self.play(Write(label))"));
         assertEquals(1, codeResult.getToolCalls());
     }
 
@@ -149,7 +149,7 @@ class CodeGenerationNodeRoutingTest {
 
         CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
         assertNotNull(codeResult);
-        assertTrue(codeResult.getManimCode().contains("fallback"));
+        assertTrue(codeResult.getCode().contains("fallback"));
         assertEquals("MainScene", codeResult.getSceneName());
         assertEquals(2, codeResult.getToolCalls());
     }
@@ -176,7 +176,7 @@ class CodeGenerationNodeRoutingTest {
         assertNotNull(codeResult);
         assertEquals(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA, codeResult.getOutputTarget());
         assertEquals("commands", codeResult.getArtifactFormat());
-        assertTrue(codeResult.getManimCode().contains("lineAB = Line(A, B)"));
+        assertTrue(codeResult.getCode().contains("lineAB = Line(A, B)"));
         assertEquals(ToolSchemas.GEOGEBRA_CODE, aiClient.lastToolsJson);
         assertTrue(aiClient.lastSystemPrompt.contains("GeoGebra"));
         assertTrue(aiClient.lastUserMessage.contains("Figure name: GeoGebraFigure"));
@@ -213,8 +213,8 @@ class CodeGenerationNodeRoutingTest {
         CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
         assertNotNull(codeResult);
         assertEquals(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA, codeResult.getOutputTarget());
-        assertTrue(codeResult.getManimCode().contains("A = (0, 0)"));
-        assertFalse(codeResult.getManimCode().contains("const A"));
+        assertTrue(codeResult.getCode().contains("A = (0, 0)"));
+        assertFalse(codeResult.getCode().contains("const A"));
         assertEquals(2, codeResult.getToolCalls());
         assertTrue(aiClient.lastSystemPrompt.contains("GeoGebra"));
     }
@@ -373,3 +373,4 @@ class CodeGenerationNodeRoutingTest {
         }
     }
 }
+

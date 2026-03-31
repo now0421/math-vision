@@ -1,4 +1,4 @@
-# GeoGebra LLM Reference Manual (Revised Against the Official Manual)
+﻿# GeoGebra LLM Reference Manual (Revised Against the Official Manual)
 
 This manual is intended as a **reference specification for LLMs** that generate GeoGebra Classic constructions, object definitions, or step-by-step geometry instructions.
 
@@ -77,7 +77,7 @@ Important:
 
 Generate in this order:
 
-1. create base objects
+1. Define the base objects first.
 2. create dependent geometric objects
 3. create measurements / dynamic text
 4. apply style / visibility adjustments
@@ -170,7 +170,7 @@ Guidance:
 - `CircularArc(O, A, B)` uses the center / midpoint object as first input.
 - `Arc(c1, A, B)` returns the directed arc on an existing circle from `A` to `B`.
 - `CircumcircularArc(A, B, C)` creates an arc through three points.
-- Do not assume all “arc-like” constructions are interchangeable.
+- Do not assume all 鈥渁rc-like鈥?constructions are interchangeable.
 
 ### Sector commands
 ```geogebra
@@ -191,7 +191,7 @@ sq = Polygon(A, B, 4)
 Important correction:
 
 - For a **regular polygon command form**, the official documented command is `Polygon(A, B, n)`.
-- “Regular Polygon” is primarily the **tool name**, not the preferred command name to teach an LLM as canonical syntax.
+- 鈥淩egular Polygon鈥?is primarily the **tool name**, not the preferred command name to teach an LLM as canonical syntax.
 
 Also valid:
 
@@ -233,7 +233,7 @@ t1 = Text("Construct the perpendicular bisector")
 ```geogebra
 d1 = Distance(A, B)
 t2 = Text("Length AB = " + d1)
-t3 = Text("alpha = " + Round(alpha, 1) + "°")
+t3 = Text("alpha = " + Round(alpha, 1) + " deg")
 ```
 
 ### Positioned text
@@ -302,7 +302,7 @@ Guidance:
 
 ```geogebra
 obj2 = Translate(obj1, u)
-obj3 = Rotate(obj1, 60°, A)
+obj3 = Rotate(obj1, 60 deg, A)
 obj4 = Reflect(obj1, lineAB)
 obj5 = Reflect(obj1, A)
 obj6 = Reflect(obj1, c)
@@ -368,7 +368,7 @@ Guidance:
 
 If the downstream consumer expects executable commands, use official scripting commands such as:
 
-```geogebra
+```text
 SetColor(s, "blue")
 SetLineThickness(s, 6)
 SetPointStyle(A, 0)
@@ -379,7 +379,7 @@ SetConditionToShowObject(helperLine, showHelpers)
 
 Important corrections:
 
-- Natural-language phrases like “blue segment with medium thickness” are **guidance**, not executable GeoGebra syntax.
+- Natural-language phrases like 鈥渂lue segment with medium thickness鈥?are **guidance**, not executable GeoGebra syntax.
 - If you want a command-level manual for an LLM, distinguish clearly between:
   - executable GeoGebra commands
   - non-executable visual recommendations
@@ -417,11 +417,11 @@ If an object depends on another object, define it from that source object direct
 
 Examples:
 
-- intersection → `Intersect(...)`
-- point on circle / line / function → `Point(...)`
-- reflected object → `Reflect(...)`
-- midpoint → `Midpoint(...)`
-- center → `Center(...)`
+- intersection 鈫?`Intersect(...)`
+- point on circle / line / function 鈫?`Point(...)`
+- reflected object 鈫?`Reflect(...)`
+- midpoint 鈫?`Midpoint(...)`
+- center 鈫?`Center(...)`
 
 ## 7.3 Keep dynamic objects truly dynamic
 
@@ -501,7 +501,7 @@ These are short, official, dependency-safe patterns.
 
 These are the main places where the original draft should be corrected or tightened.
 
-### Correction 1: “RegularPolygon” should not be taught as the canonical command
+### Correction 1: 鈥淩egularPolygon鈥?should not be taught as the canonical command
 Use:
 ```geogebra
 sq = Polygon(A, B, 4)
@@ -519,14 +519,11 @@ Examples:
 ### Correction 3: style prose is not executable syntax
 Phrases like:
 
-- “blue segment with medium thickness”
-- “dashed gray helper line”
-- “lightly filled polygon”
-
+- 鈥渂lue segment with medium thickness鈥?- 鈥渄ashed gray helper line鈥?- 鈥渓ightly filled polygon鈥?
 are good visual guidance, but not command syntax.
 If executable syntax is required, use commands such as:
 
-```geogebra
+```text
 SetColor(s, "blue")
 SetLineThickness(s, 6)
 SetFilling(poly, 0.2)
@@ -540,7 +537,7 @@ O = Center(c)
 for semantic clarity.
 
 ### Correction 5: arc commands are not interchangeable
-Do not collapse `CircularArc`, `Arc`, and `CircumcircularArc` into a single generic “arc” pattern.
+Do not collapse `CircularArc`, `Arc`, and `CircumcircularArc` into a single generic 鈥渁rc鈥?pattern.
 
 ### Correction 6: scripting commands are non-nesting side-effect commands
 These commands change properties but do not create returnable objects, so they should be generated in a separate styling / control phase.
@@ -584,7 +581,7 @@ t1 = Text("AB = " + dAB)
 ```
 
 ### Optional styling
-```geogebra
+```text
 SetColor(lineAB, "blue")
 SetLineThickness(lineAB, 6)
 SetFilling(poly, 0.2)
