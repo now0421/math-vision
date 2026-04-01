@@ -20,6 +20,8 @@ import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -35,6 +37,7 @@ import java.util.Map;
  *
  * Usage:
  *   java -jar auto-manim.jar <concept> [options]
+ *   java -jar auto-manim.jar --problem-file <file> [options]
  *
  * Options:
  *   --workflow-config FILE     Workflow JSON config path
@@ -65,29 +68,44 @@ public class AutoManimApplication {
         String outputDirOverride = null;
         String fromGraphPath = null;
         String fromCodePath = null;
+        String problemFilePath = null;
 
         // Parse CLI flags
         for (int i = startIndex; i < args.length; i++) {
             switch (args[i]) {
                 case "--workflow-config":
-                    workflowConfigPath = args[++i];
+                    workflowConfigPath = requireOptionValue(args, ++i, "--workflow-config");
                     break;
                 case "--model-config":
-                    modelConfigPath = args[++i];
+                    modelConfigPath = requireOptionValue(args, ++i, "--model-config");
                     break;
                 case "--output":
-                    outputDirOverride = args[++i];
+                    outputDirOverride = requireOptionValue(args, ++i, "--output");
                     break;
                 case "--from-graph":
-                    fromGraphPath = args[++i];
+                    fromGraphPath = requireOptionValue(args, ++i, "--from-graph");
                     break;
                 case "--from-code":
-                    fromCodePath = args[++i];
+                    fromCodePath = requireOptionValue(args, ++i, "--from-code");
+                    break;
+                case "--problem-file":
+                    problemFilePath = requireOptionValue(args, ++i, "--problem-file");
                     break;
                 default:
                     log.warn("Unknown option: {}", args[i]);
                     break;
             }
+        }
+
+        if (concept != null && problemFilePath != null) {
+            log.error("Provide either a concept argument or --problem-file, not both.");
+            printUsage();
+            System.exit(1);
+            return;
+        }
+
+        if (problemFilePath != null) {
+            concept = loadProblemFromFile(problemFilePath);
         }
 
         if (fromGraphPath != null && fromCodePath != null) {
@@ -133,7 +151,7 @@ public class AutoManimApplication {
         }
 
         if (concept == null) {
-            log.error("No concept provided. Specify a concept as the first argument or use --from-graph/--from-code.");
+            log.error("No concept provided. Specify a concept, use --problem-file, or use --from-graph/--from-code.");
             printUsage();
             System.exit(1);
             return;
@@ -163,7 +181,10 @@ public class AutoManimApplication {
 
         log.info("============================================================");
         log.info("  Auto-Manim Workflow");
-        log.info("  Concept:  {}", concept);
+        log.info("  Concept:  {}", summarizeConceptForLog(concept));
+        if (problemFilePath != null) {
+            log.info("  Source:   {}", Path.of(problemFilePath).toAbsolutePath().normalize());
+        }
         if (preloadedGraph != null) {
             log.info("  Stage 0:  [skipped – loaded from {}]", fromGraphPath);
         }
@@ -491,15 +512,62 @@ public class AutoManimApplication {
         return p;
     }
 
+    private static String requireOptionValue(String[] args, int index, String optionName) {
+        if (index >= args.length) {
+            log.error("Missing value for option {}", optionName);
+            printUsage();
+            System.exit(1);
+        }
+        return args[index];
+    }
+
+    private static String loadProblemFromFile(String problemFilePath) {
+        Path path = Path.of(problemFilePath).toAbsolutePath().normalize();
+        if (!Files.exists(path)) {
+            log.error("Problem file not found: {}", path);
+            System.exit(1);
+        }
+        if (!Files.isRegularFile(path)) {
+            log.error("Problem file is not a regular file: {}", path);
+            System.exit(1);
+        }
+
+        try {
+            String content = Files.readString(path, StandardCharsets.UTF_8).trim();
+            if (content.isEmpty()) {
+                log.error("Problem file is empty: {}", path);
+                System.exit(1);
+            }
+            return content;
+        } catch (IOException e) {
+            log.error("Failed to read problem file {}: {}", path, e.getMessage(), e);
+            System.exit(1);
+            return null;
+        }
+    }
+
+    private static String summarizeConceptForLog(String concept) {
+        if (concept == null) {
+            return "";
+        }
+        String normalized = concept.replaceAll("\\s+", " ").trim();
+        if (normalized.length() <= 120) {
+            return normalized;
+        }
+        return normalized.substring(0, 117) + "...";
+    }
+
     private static void printUsage() {
         System.out.println(
                 "Usage: auto-manim [concept] [options]\n"
+                + "   or: auto-manim --problem-file FILE [options]\n"
                 + "\n"
                 + "Arguments:\n"
                 + "  concept                    Concept or problem to animate"
-                + " (required unless --from-graph/--from-code is used)\n"
+                + " (required unless --problem-file/--from-graph/--from-code is used)\n"
                 + "\n"
                 + "Options:\n"
+                + "  --problem-file FILE        Read the full problem statement from a text/Markdown file\n"
                 + "  --from-graph FILE|DIR      Skip stage 0: load a pre-built knowledge graph\n"
                 + "                             (accepts 1_knowledge_graph.json or its parent directory).\n"
                 + "                             Outputs are written to the same directory as the graph.\n"
