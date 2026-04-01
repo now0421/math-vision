@@ -157,10 +157,10 @@ class CodeEvaluationNodeTest {
         assertTrue(aiClient.lastUserMessage.contains("\"entering_objects\""));
         assertTrue(aiClient.lastUserMessage.contains("\"actions\""));
         assertTrue(aiClient.lastUserMessage.contains("\"safe_area_plan\""));
+        assertTrue(aiClient.lastUserMessage.contains("\"goal\""));
+        assertTrue(aiClient.lastUserMessage.contains("\"layout_goal\""));
         assertFalse(aiClient.lastUserMessage.contains("\"hook\""));
         assertFalse(aiClient.lastUserMessage.contains("\"summary\""));
-        assertFalse(aiClient.lastUserMessage.contains("\"goal\""));
-        assertFalse(aiClient.lastUserMessage.contains("\"layout_goal\""));
     }
 
     @Test
@@ -185,10 +185,10 @@ class CodeEvaluationNodeTest {
         assertNotNull(request.getStoryboardJson());
         assertTrue(request.getStoryboardJson().contains("\"scenes\""));
         assertTrue(request.getStoryboardJson().contains("\"entering_objects\""));
+        assertTrue(request.getStoryboardJson().contains("\"goal\""));
+        assertTrue(request.getStoryboardJson().contains("\"layout_goal\""));
         assertFalse(request.getStoryboardJson().contains("\"hook\""));
         assertFalse(request.getStoryboardJson().contains("\"summary\""));
-        assertFalse(request.getStoryboardJson().contains("\"goal\""));
-        assertFalse(request.getStoryboardJson().contains("\"layout_goal\""));
     }
 
     private static Map<String, Object> buildContext(AiClient aiClient, String code) {

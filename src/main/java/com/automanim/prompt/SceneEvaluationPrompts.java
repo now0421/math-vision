@@ -14,21 +14,8 @@ public final class SceneEvaluationPrompts {
                     + "For frame repair, use translation/recentering and uniform scaling as the default first-choice strategy before changing geometric constructions or attachment logic.\n"
                     + "Also correct semantically wrong geometric attachments you notice, especially angle markers that are drawn on the wrong side or detached from their true vertex.\n"
                     + "Treat storyboard geometric constraints as hard requirements: if a point is defined as a reflection, midpoint, foot, or intersection, preserve that definition while fixing layout.\n"
-                    + "When a constrained construction goes out of frame, prefer recentering or uniformly scaling the whole related diagram, or moving overlays, instead of moving one constrained point independently.\n"
-                    + "\n"
-                    + "Output format:\n"
-                    + "Return exactly one fenced Python code block containing the full corrected file.\n"
-                    + "\n"
-                    + "Example output:\n"
-                    + "```python\n"
-                    + "from manim import *\n"
-                    + "\n"
-                    + "class OriginalSceneName(Scene):\n"
-                    + "    def construct(self):\n"
-                    + "        pass\n"
-                    + "```\n"
-                    + "\n"
-                    + "Do not add any explanation before or after the code block.";
+                    + "When a constrained construction goes out of frame, prefer recentering or uniformly scaling the whole related diagram, or moving overlays, instead of moving one constrained point independently.\n\n"
+                    + SystemPrompts.PYTHON_CODE_OUTPUT_FORMAT;
 
     private SceneEvaluationPrompts() {}
 
@@ -49,14 +36,8 @@ public final class SceneEvaluationPrompts {
                                              List<String> fixHistory) {
         StringBuilder sb = new StringBuilder();
         sb.append("The following Manim code rendered, but post-render scene evaluation found layout issues in sampled frames.\n\n")
-                .append("Storyboard field guide for this repair pass:\n")
-                .append("- `goal` and `layout_goal`: preserve what the scene is trying to teach and how the frame should be composed.\n")
-                .append("- `safe_area_plan` and `screen_overlay_plan`: use these first when fixing overlap and offscreen issues.\n")
-                .append("- `geometry_constraints` and each object's `constraint_note`: treat these as hard geometric invariants.\n")
-                .append("- `behavior`, `anchor_id`, and `dependency_note`: preserve attachment logic for derived lines, reflected points, moving labels, and overlays.\n")
-                .append("- `persistent_objects`, `exiting_objects`, and `actions`: preserve continuity and scene flow instead of redrawing the construction arbitrarily.\n")
-                .append("- If a reported object is a reflection, midpoint, foot, or intersection, recompute it from its source construction instead of moving it freely.\n\n")
-                .append("Compact storyboard JSON (source of truth):\n```json\n")
+                .append(SystemPrompts.STORYBOARD_FIELD_GUIDE_REPAIR)
+                .append("\n\nCompact storyboard JSON (source of truth):\n```json\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank() ? storyboardJson : "{\"scenes\":[]}")
                 .append("\n```\n\n")
                 .append("```python\n").append(code).append("\n```\n\n")

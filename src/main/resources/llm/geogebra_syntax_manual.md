@@ -106,6 +106,49 @@ R = Point(f)
 ```
 Official behavior: `Point(<Object>)` creates a point on a path/object; the point stays constrained to that object.
 
+### Fixed anchor vs constrained moving point
+Use these as distinct semantic patterns:
+
+Independent fixed anchor:
+```geogebra
+A = (-4, 2)
+B = (4, 2)
+```
+
+Constrained moving point on a path:
+```geogebra
+l = Line((-7, 0), (7, 0))
+P = Point(l)
+```
+
+Guidance:
+
+- A fixed anchor is an independently defined point with no upstream geometric dependency.
+- A constrained moving point is not a free point. It must be created from the path or from an equivalent dependency-safe parameterization.
+- If the storyboard says a point can move on `l`, do not write `P = (-2, 0)` unless the teaching goal is explicitly to start with a free point instead of a constrained one.
+- If the storyboard requires a specific starting area on the path, choose a dependency-safe initialization near that location instead of breaking the constraint.
+
+### Bounded motion
+If a point may move only on a finite part of a locus, encode the bound in the construction:
+
+```geogebra
+s = Segment(( -5, 0), (5, 0))
+P = Point(s)
+```
+
+or use a bounded parameter:
+
+```geogebra
+t = 0
+P = (t, 0)
+```
+
+Guidance:
+
+- Prefer `Point(segment)` when the storyboard describes motion on a finite visible segment.
+- Prefer a bounded slider/parameter only when the motion itself is the teaching object or when no natural bounded path object exists.
+- Do not leave a point free on an unbounded line if the storyboard specifies a finite interval or visible range.
+
 ### Midpoint and center
 ```geogebra
 M = Midpoint(A, B)
@@ -447,6 +490,50 @@ If a base point is dragged or a slider changes:
 - transformed objects should stay attached
 
 Do not freeze dependent geometry into static coordinates.
+
+## 7.4 Do not confuse independence with freedom
+
+Good:
+```geogebra
+A = (-4, 2)
+B = (4, 2)
+l = Line((-7, 0), (7, 0))
+P = Point(l)
+AP = Segment(A, P)
+PB = Segment(P, B)
+```
+
+Avoid:
+```geogebra
+A = (-4, 2)
+B = (4, 2)
+l = Line((-7, 0), (7, 0))
+P = (-2, 0)
+AP = Segment(A, P)
+PB = Segment(P, B)
+```
+
+Why:
+
+- `A` and `B` are independent anchors.
+- `P` is not independent if the problem states `P` lies on `l`.
+- A point can be independent-and-fixed, independent-and-draggable, or dependent-and-draggable. Do not collapse those cases into one generic “free point” pattern.
+
+## 7.5 Avoid guessed overloads
+
+Do not invent non-canonical syntax such as:
+
+```geogebra
+P = Point(l, -2, 0)
+Bperp = Point(l, 4, 0)
+```
+
+Prefer official dependency-safe commands such as:
+
+```geogebra
+P = Point(l)
+Bperp = Intersect(l, PerpendicularLine(B, l))
+```
 
 ---
 

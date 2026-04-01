@@ -75,6 +75,8 @@ class PromptModulesTest {
         assertTrue(geogebraPrompt.contains("GeoGebra style reference:"));
         assertTrue(geogebraPrompt.contains("Allowed Color Inputs"));
         assertTrue(geogebraPrompt.contains("official `SetColor`-compatible inputs"));
+        assertTrue(manimPrompt.contains("high-contrast"));
+        assertTrue(geogebraPrompt.contains("YELLOW` on `WHITE"));
     }
 
     @Test
@@ -88,5 +90,34 @@ class PromptModulesTest {
         assertTrue(systemPrompt.contains("refer to that object by id only"));
         assertTrue(systemPrompt.contains("angle between AP and l at P"));
         assertTrue(codegenPrompt.contains("treat those mentions as object ids only"));
+    }
+
+    @Test
+    void narrativePromptsRequireCamelCaseIdsWithoutUnderscores() {
+        String systemPrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
+        String codegenPrompt = NarrativePrompts.storyboardCodegenPrompt(
+                "Triangle",
+                "{\"scenes\":[{\"entering_objects\":[{\"id\":\"aLabel\",\"kind\":\"label\",\"content\":\"A\"}]}]}",
+                "geogebra");
+
+        assertTrue(systemPrompt.contains("never underscores"));
+        assertTrue(systemPrompt.contains("camelCase"));
+        assertTrue(codegenPrompt.contains("no underscores"));
+        assertTrue(codegenPrompt.contains("camelCase"));
+    }
+
+    @Test
+    void promptsRequireHighContrastColorChoices() {
+        String visualPrompt = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra");
+        String narrativePrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
+        String geogebraCodegenPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "geogebra");
+        String manimCodegenPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "manim");
+
+        assertTrue(visualPrompt.contains("strong visual contrast"));
+        assertTrue(visualPrompt.contains("yellow text on a white panel"));
+        assertTrue(narrativePrompt.contains("high-contrast"));
+        assertTrue(narrativePrompt.contains("yellow text on white"));
+        assertTrue(geogebraCodegenPrompt.contains("high-contrast against the background"));
+        assertTrue(manimCodegenPrompt.contains("yellow on white"));
     }
 }

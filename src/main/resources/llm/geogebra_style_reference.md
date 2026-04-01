@@ -84,6 +84,9 @@ Prefer short phrases such as:
 * Helper objects can use dashed lines, neutral colors, or reduced emphasis.
 * Do not overload one figure with too many saturated highlight colors.
 * Labels and measurements should support the construction rather than crowd it.
+* Keep foreground elements high-contrast against their local background or fill.
+* Avoid pale-on-pale combinations such as `YELLOW` on `WHITE`, `WHITE` on `LIGHTYELLOW`, or `LIGHTGRAY` on `WHITE`.
+* If a region uses a light fill, use a darker text or stroke color on top of it rather than another light accent.
 
 ## 4. Storyboard Output Guidance
 

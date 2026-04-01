@@ -96,6 +96,9 @@ Avoid CSS-style syntax, hex colors, gradients, shadows, blur, or unsupported ren
 * Secondary objects can use lower opacity or neutral colors.
 * Do not overload a single scene with too many saturated highlight colors.
 * Text and subtitles should not visually overpower the main geometry.
+* Keep foreground elements high-contrast against their local background or fill.
+* Avoid pale-on-pale combinations such as `YELLOW` text on `WHITE`, `WHITE` text on `YELLOW_A` or `LIGHTER_GRAY`, and similar washed-out pairings.
+* If a card or panel uses a light fill, use a darker text or border color on top of it rather than another light accent.
 
 ## 4. Storyboard Output Guidance
 

@@ -34,7 +34,7 @@ public final class StoryboardJsonBuilder {
      * Builds a compact storyboard JSON string optimized for code generation.
      */
     public static String buildForCodegen(Storyboard storyboard) {
-        return build(storyboard, new BuildOptions(false, false));
+        return build(storyboard, new BuildOptions(false, true));
     }
 
     /**

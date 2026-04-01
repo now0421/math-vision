@@ -94,11 +94,11 @@ class CodeGenerationNodeRoutingTest {
         assertTrue(aiClient.lastUserMessage.contains("\"actions\""));
         assertTrue(aiClient.lastUserMessage.contains("\"continuity_plan\""));
         assertTrue(aiClient.lastUserMessage.contains("\"safe_area_plan\""));
+        assertTrue(aiClient.lastUserMessage.contains("\"goal\""));
+        assertTrue(aiClient.lastUserMessage.contains("\"layout_goal\""));
 
         assertFalse(aiClient.lastUserMessage.contains("\"hook\""));
         assertFalse(aiClient.lastUserMessage.contains("\"summary\""));
-        assertFalse(aiClient.lastUserMessage.contains("\"goal\""));
-        assertFalse(aiClient.lastUserMessage.contains("\"layout_goal\""));
     }
 
     @Test
