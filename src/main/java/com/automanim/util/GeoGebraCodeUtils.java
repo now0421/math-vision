@@ -36,10 +36,10 @@ public final class GeoGebraCodeUtils {
             "^[^\\x00-\\x7F\\s#/]+\\s*[:=(]|[:=]\\s*[^\\x00-\\x7F][^\\s,)]*");
 
     private static final Pattern ASSIGNMENT_OR_NAMED_OBJECT = Pattern.compile(
-            "^([A-Za-z][A-Za-z0-9_]*)\\s*[:=]\\s*(.+)$");
+            "^([A-Za-z][A-Za-z0-9_'{}]*)\\s*[:=]\\s*(.+)$");
 
     private static final Pattern COMMAND_CALL = Pattern.compile(
-            "^([A-Za-z][A-Za-z0-9_]*)\\s*\\(.*\\)$");
+            "^([A-Za-z][A-Za-z0-9_'{}]*)\\s*\\(.*\\)$");
 
     public static final class SceneDirective {
         public String id;

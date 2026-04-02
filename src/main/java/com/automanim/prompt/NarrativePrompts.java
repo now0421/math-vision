@@ -30,8 +30,7 @@ public final class NarrativePrompts {
                     + "- Use enrichment fields only when they sharpen the explanation\n"
                     + "- If the target is a problem, every scene must directly advance the solution\n"
                     + "- Prefer 3 to 5 strong scenes for problem-solving unless more are truly needed\n"
-                    + "- If a point or marker moves, its label should usually be a separate object with `behavior = follows_anchor`\n"
-                    + "- Keep object ids concise, ASCII-only, and non-redundant. Use camelCase or concise math-style identifiers only, never underscores: prefer `A`, `B`, `P`, `Pstar`, `ABprime`, `river`, `aLabel` over ids like `pointA`, `labelA`, `A_label`, or `line_river`\n"
+                    + "- Keep object ids concise and non-redundant: prefer `A`, `B`, `P`, `river` over ids like `pointA`, `labelA`, or `line_river`, since `kind` already carries the type. See the backend-specific naming rules below for allowed id conventions.\n"
                     + "- Reuse the exact same concise ids consistently in `anchor_id`, `persistent_objects`, `exiting_objects`, and `actions.targets`\n"
                     + "- When any field inside `entering_objects` refers to another object, especially `content`, refer to that object by id only. Do not restate its kind there.\n"
                     + "- For example, write `angle between AP and l at P`, not `angle between segment AP and line l at point P`.\n"
@@ -39,6 +38,8 @@ public final class NarrativePrompts {
                     + "- Do not use a free-text `instructions` field inside style entries. Encode visual intent directly in `properties` using concrete keys and values.\n"
                     + "- For text cards, formulas with badges, boxed labels, counters, or callouts, encode separate text and background layers as separate entries inside `style`.\n"
                     + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n"
+                    + "- Prefer restyling an existing object (color, thickness, dash style) over creating a duplicate on the same endpoints; this keeps the construction clean and avoids overlapping objects\n"
+                    + "- Each scene shows only the elements needed for its teaching goal; when a temporary comparison element (test point, alternate path) has served its purpose, include it in `exiting_objects` of the current or next scene\n"
                     + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES + "\n"
                     + "Output format:\n"
                     + "Return a JSON object with this shape:\n"
@@ -64,7 +65,7 @@ public final class NarrativePrompts {
                     + "      \"step_refs\": [\"string, referenced knowledge-graph step or solving beat covered by this scene\"],\n"
                     + "      \"entering_objects\": [\n"
                     + "        {\n"
-                    + "          \"id\": \"string, stable visual identity for continuity and transforms; use ASCII camelCase or concise math-style identifiers only, never underscores, e.g. `A`, `P`, `ABprime`, `aLabel`\",\n"
+                    + "          \"id\": \"string, stable visual identity for continuity and transforms; use concise identifiers, e.g. `A`, `P`, `river`; keep ids non-redundant since `kind` carries the type; see backend-specific naming rules for allowed conventions\",\n"
                     + "          \"kind\": \"string, object category such as text|equation|axes|point|graph|label|region|helper; do not repeat this type inside `id`\",\n"
                     + "          \"content\": \"string, mathematical or visual content shown by the object. If this text references other storyboard objects, mention those objects by id only and do not repeat their kind, for example `angle between AP and l at P`\",\n"
                     + "          \"placement\": \"string, explicit initial placement or layout intent relative to the frame or existing anchors; do not use it as the only place to encode hard geometry\",\n"
@@ -228,7 +229,16 @@ public final class NarrativePrompts {
                     + "- This applies broadly to points, lines, segments, rays, circles, polygons, angles, and other geometric objects that already have a natural object name.\n"
                     + "- If the visible text is simply the object's own name or symbol, keep it as the object's native label and do not create a separate storyboard object for it.\n"
                     + "- Create separate `label` or `text` objects only for overlays, formulas, counters, captions, explanatory annotations, or text that is not the object's own native name.\n"
-                    + "- Avoid redundant pairs such as `A` plus `aLabel`, `lineL` plus `labelL`, or `circleO` plus `labelO` unless the extra text is semantically different from the object's native label.\n";
+                    + "- Avoid redundant pairs such as `A` plus `aLabel`, `lineL` plus `labelL`, or `circleO` plus `labelO` unless the extra text is semantically different from the object's native label.\n"
+                    + "- Follow GeoGebra naming conventions for object ids: point ids must start with an uppercase letter (e.g. `A`, `P_1`), vector ids with a lowercase letter (e.g. `v`, `u`); use `_` for subscripts (`P_1`, `s_{AB}`) and `'` for primes (`B'`). Do not use GeoGebra reserved names (`x`, `y`, `z`, `e`, `i`, `sin`, `cos`, `log`, etc.) as object ids.\n"
+                    + "- Translate ASCII-spelled ids to GeoGebra-native math names: `Bprime` → `B'`, `ABprime` → `AB'`, `Popt` → `P_{opt}`, `P1` → `P_1`. If the storyboard already uses native names like `B'`, keep them verbatim.\n"
+                    + "- Use style changes (color, line thickness, dash style) on existing objects rather than creating visual duplicates on the same endpoints. GeoGebra objects persist globally, so every redundant object adds permanent clutter.\n"
+                    + "- For angle markers, use `Angle(B, A, C)` with `SetFilling` for filled sectors. Use `CircularArc` only for decorative arcs not associated with angle measurement.\n";
+        } else {
+            prompt += "\nManim-specific storyboard rules:\n"
+                    + "- Use ASCII-only camelCase or snake_case identifiers for object ids: `aLabel`, `numberLine`, `formula_card`. These become Python variable names in downstream code generation.\n"
+                    + "- Do not use Python reserved words (`class`, `def`, `lambda`, `for`, `if`, `in`, `is`, `not`, `None`, `True`, `False`, etc.) as object ids.\n"
+                    + "- For moving points or markers, create a separate label object with `behavior = follows_anchor` so the label tracks the moving object.\n";
         }
         prompt += "\n"
                 + SYSTEM;

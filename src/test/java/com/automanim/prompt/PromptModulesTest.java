@@ -93,17 +93,16 @@ class PromptModulesTest {
     }
 
     @Test
-    void narrativePromptsRequireCamelCaseIdsWithoutUnderscores() {
+    void narrativePromptsRequireConciseMathStyleIds() {
         String systemPrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
         String codegenPrompt = NarrativePrompts.storyboardCodegenPrompt(
                 "Triangle",
                 "{\"scenes\":[{\"entering_objects\":[{\"id\":\"aLabel\",\"kind\":\"label\",\"content\":\"A\"}]}]}",
                 "geogebra");
 
-        assertTrue(systemPrompt.contains("never underscores"));
-        assertTrue(systemPrompt.contains("camelCase"));
-        assertTrue(codegenPrompt.contains("no underscores"));
-        assertTrue(codegenPrompt.contains("camelCase"));
+        assertTrue(systemPrompt.contains("concise") && systemPrompt.contains("math-style"));
+        assertTrue(systemPrompt.contains("GeoGebra-native"));
+        assertTrue(codegenPrompt.contains("naming source"));
     }
 
     @Test
@@ -113,11 +112,11 @@ class PromptModulesTest {
         String geogebraCodegenPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "geogebra");
         String manimCodegenPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "manim");
 
-        assertTrue(visualPrompt.contains("strong visual contrast"));
-        assertTrue(visualPrompt.contains("yellow text on a white panel"));
-        assertTrue(narrativePrompt.contains("high-contrast"));
-        assertTrue(narrativePrompt.contains("yellow text on white"));
-        assertTrue(geogebraCodegenPrompt.contains("high-contrast against the background"));
+        assertTrue(visualPrompt.contains("high-contrast"));
+        assertTrue(visualPrompt.contains("yellow on white"));
+        assertTrue(narrativePrompt.contains("visually distinct"));
+        assertTrue(narrativePrompt.contains("yellow on white"));
+        assertTrue(geogebraCodegenPrompt.contains("visually distinct from their background"));
         assertTrue(manimCodegenPrompt.contains("yellow on white"));
     }
 }

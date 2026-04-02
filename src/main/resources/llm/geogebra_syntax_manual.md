@@ -87,6 +87,78 @@ This preserves a clean dependency graph and reduces fragile constructions.
 
 ---
 
+## 2.5 Object Naming Conventions (from Official Manual)
+
+GeoGebra enforces strict naming rules. The case of the first letter determines the object type for coordinate-pair definitions, and many built-in names are reserved.
+
+### Points
+Point names **must start with an uppercase letter**.
+```geogebra
+A = (0, 0)
+P = (3, 2)
+C_1 = (1, 4)
+```
+A coordinate pair assigned to a lowercase name creates a **vector**, not a point.
+
+### Vectors
+Vector names **must start with a lowercase letter**.
+```geogebra
+v = (1, 3)
+u = (3; 90°)
+```
+A coordinate pair assigned to an uppercase name creates a **point**, not a vector.
+
+### Lines, circles, and conics via implicit equations
+When defining objects through implicit equations in the input bar, use the **colon syntax**:
+```geogebra
+g: y = x + 3
+c: (x-1)^2 + (y - 2)^2 = 4
+hyp: x^2 - y^2 = 2
+```
+When using construction commands, use normal assignment:
+```geogebra
+g = Line(A, B)
+c = Circle(O, 3)
+```
+
+### Functions
+Name functions with their variable in parentheses:
+```geogebra
+f(x) = x^2 - 2x + 1
+h(x) = 2 x + 4
+trig(x) = sin(x)
+```
+
+### Subscripts
+Use an underscore to create subscripts:
+- Single character subscript: `A_1` renders as A₁
+- Multi-character subscript: `s_{AB}` renders as s_AB (use curly braces)
+
+### Reserved labels (CANNOT be used as object names)
+The following names are reserved by GeoGebra and must never be used as variable or object names:
+
+**Coordinates and axes:** `x`, `y`, `z`, `xAxis`, `yAxis`, `zAxis`
+
+**Math functions:** `abs`, `sgn`, `sqrt`, `exp`, `log`, `ln`, `ld`, `lg`, `cos`, `sin`, `tan`, `acos`, `arcos`, `arccos`, `asin`, `arcsin`, `atan`, `arctan`, `cosh`, `sinh`, `tanh`, `acosh`, `arcosh`, `arccosh`, `asinh`, `arcsinh`, `atanh`, `arctanh`, `atan2`, `erf`, `floor`, `ceil`, `round`, `random`, `conjugate`, `arg`, `gamma`, `gammaRegularized`, `beta`, `betaRegularized`, `sec`, `csc`, `cosec`, `cot`, `sech`, `csch`, `coth`
+
+### Special constants
+- **π** (pi): the circle constant
+- **ℯ** (Euler's number): used for exponential functions like ℯ^x
+- **ί** (imaginary unit): for complex numbers like z = 3 + ί
+
+When `e` and `i` are not already assigned to existing objects, GeoGebra automatically reads them as ℯ and ί respectively. Avoid using bare `e` or `i` as object names.
+
+### Auto-naming
+If you do not manually assign a name, GeoGebra assigns new object names in alphabetical order.
+
+### Practical guidance for LLM generation
+- Always use uppercase-starting names for points, even helper points.
+- Always use lowercase-starting names for vectors.
+- If you need a numeric variable, choose a name that is not reserved: prefer `dist`, `len`, `rad`, `val` over `d`, `l`, `r` (which are unambiguous but short), and absolutely avoid `x`, `y`, `z`, `e`, `i`.
+- For lines defined by equation, use the colon syntax. For lines defined by command, use assignment.
+
+---
+
 ## 3. Core Object Patterns
 
 ## 3.1 Points
@@ -260,7 +332,15 @@ beta = Angle(line1, line2)
 Guidance:
 
 - In `Angle(B, A, C)`, the **middle argument is the vertex**.
+- `Angle(B, A, C)` measures the angle **counterclockwise** from ray AB to ray AC at vertex A.
+- To mark a specific small angle sector, choose point order so the counterclockwise sweep covers the intended region.
+- **Concrete example**: Given point A at upper-left, vertex P on a horizontal line, and point B at upper-right, to mark the incidence angle (small angle between segment PA and the rightward horizontal):
+  - `Angle((x(P)+1, 0), P, A)` — sweeps CCW from rightward ray to ray PA = small angle above the line. Correct.
+  - `Angle(A, P, (x(P)+1, 0))` — sweeps CCW from ray PA to rightward ray = large angle (~330°). Wrong.
+- For equal-angle markers (e.g., reflection angles), ensure both `Angle(...)` calls sweep the same-sized small sector on their respective sides.
 - Prefer `Angle(...)` over hardcoded text labels like `"30 deg"` unless the angle is intentionally fixed.
+- Use `SetFilling(alpha, 0.3)` to create a filled angle sector for visual emphasis.
+- **Use `Angle(...)` as the sole method for angle markers.** Do not use `CircularArc` for angle marking — it draws a decorative arc unrelated to angle measurement and produces incorrect visual output.
 - For dynamic geometry, define the angle from the actual objects so it updates automatically.
 
 ---

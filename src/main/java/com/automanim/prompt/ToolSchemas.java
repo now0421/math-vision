@@ -282,7 +282,7 @@ public final class ToolSchemas {
             + "                  \"properties\": {"
             + "                    \"id\": {"
             + "                      \"type\": \"string\","
-            + "                      \"description\": \"Stable object id used for continuity, transforms, and later references. Use ASCII camelCase or concise math-style identifiers only, with no underscores. Keep it short and non-redundant because `kind` already carries the type, for example `A`, `P`, `ABprime`, `aLabel` rather than `pointA`, `labelA`, or `A_label`\""
+            + "                      \"description\": \"Stable object id used for continuity, transforms, and later references. Use concise math-style identifiers. Keep it short and non-redundant because `kind` already carries the type, for example `A`, `P`, `river`, `aLabel` rather than `pointA`, `labelA`, or `A_label`. For GeoGebra targets, use native math names directly: `B'` (not `Bprime`), `AB'` (not `ABprime`), `P_{opt}` (not `Popt`). GeoGebra renders `'` as prime and `_{...}` as subscript. Point ids must start uppercase (A, P, M_1); vector ids must start lowercase (v, u). Avoid GeoGebra reserved names (x, y, z, e, i, sin, cos, log, etc.).\""
             + "                    },"
             + "                    \"kind\": {"
             + "                      \"type\": \"string\","

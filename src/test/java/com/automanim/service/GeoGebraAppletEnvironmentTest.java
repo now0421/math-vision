@@ -81,6 +81,7 @@ class GeoGebraAppletEnvironmentTest {
             return validateWithHeadlessBrowser(Path.of("geogebra-applet-environment-check.html"),
                     figureName,
                     commands,
+                    List.of(),
                     null);
         }
     }

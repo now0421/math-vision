@@ -105,6 +105,7 @@ class RenderNodeCodeGateTest {
             protected ValidationReport validateWithHeadlessBrowser(Path previewPath,
                                                                    String figureName,
                                                                    List<String> commands,
+                                                                   List<GeoGebraCodeUtils.SceneDirective> sceneDirectives,
                                                                    Path geometryPath) {
                 return successfulValidationReport(figureName, commands);
             }

@@ -26,6 +26,7 @@ class GeoGebraRenderServiceTest {
             protected ValidationReport validateWithHeadlessBrowser(Path previewPath,
                                                                    String figureName,
                                                                    List<String> commands,
+                                                                   List<GeoGebraCodeUtils.SceneDirective> sceneDirectives,
                                                                    Path geometryPath) {
                 ValidationReport report = new ValidationReport();
                 report.figureName = figureName;
@@ -89,6 +90,7 @@ class GeoGebraRenderServiceTest {
             protected ValidationReport validateWithHeadlessBrowser(Path previewPath,
                                                                    String figureName,
                                                                    List<String> commands,
+                                                                   List<GeoGebraCodeUtils.SceneDirective> sceneDirectives,
                                                                    Path geometryPath) {
                 ValidationReport report = new ValidationReport();
                 report.figureName = figureName;
@@ -126,6 +128,7 @@ class GeoGebraRenderServiceTest {
             protected ValidationReport validateWithHeadlessBrowser(Path previewPath,
                                                                    String figureName,
                                                                    List<String> commands,
+                                                                   List<GeoGebraCodeUtils.SceneDirective> sceneDirectives,
                                                                    Path geometryPath) {
                 return successfulReport(figureName, commands);
             }
@@ -158,30 +161,29 @@ class GeoGebraRenderServiceTest {
             protected ValidationReport validateWithHeadlessBrowser(Path previewPath,
                                                                    String figureName,
                                                                    List<String> commands,
+                                                                   List<GeoGebraCodeUtils.SceneDirective> sceneDirectives,
                                                                    Path geometryPath) {
                 // Simulate writing geometry file (normally done via Playwright JS)
                 if (geometryPath != null) {
-                    String mockGeometry = """
-                            {
-                              "scene_name": "GeoGebraFigure",
-                              "report_type": "geogebra_element_report",
-                              "report_version": 1,
-                              "frame_bounds": {
-                                "min": [-7.0, -4.0, 0],
-                                "max": [7.0, 4.0, 0]
-                              },
-                              "sample_count": 1,
-                              "samples": [{
-                                "sample_id": "geogebra-initial",
-                                "sample_role": "geogebra_construction",
-                                "element_count": 2,
-                                "elements": [
-                                  {"stable_id": "ggb-A", "name": "A", "class_name": "point", "visible": true},
-                                  {"stable_id": "ggb-B", "name": "B", "class_name": "point", "visible": true}
-                                ]
-                              }]
-                            }
-                            """;
+                    String mockGeometry = "{\n"
+                            + "  \"scene_name\": \"GeoGebraFigure\",\n"
+                            + "  \"report_type\": \"geogebra_element_report\",\n"
+                            + "  \"report_version\": 1,\n"
+                            + "  \"frame_bounds\": {\n"
+                            + "    \"min\": [-7.0, -4.0, 0],\n"
+                            + "    \"max\": [7.0, 4.0, 0]\n"
+                            + "  },\n"
+                            + "  \"sample_count\": 1,\n"
+                            + "  \"samples\": [{\n"
+                            + "    \"sample_id\": \"geogebra-initial\",\n"
+                            + "    \"sample_role\": \"geogebra_construction\",\n"
+                            + "    \"element_count\": 2,\n"
+                            + "    \"elements\": [\n"
+                            + "      {\"stable_id\": \"ggb-A\", \"name\": \"A\", \"class_name\": \"point\", \"visible\": true},\n"
+                            + "      {\"stable_id\": \"ggb-B\", \"name\": \"B\", \"class_name\": \"point\", \"visible\": true}\n"
+                            + "    ]\n"
+                            + "  }]\n"
+                            + "}";
                     try {
                         Files.writeString(geometryPath, mockGeometry, StandardCharsets.UTF_8);
                     } catch (IOException e) {

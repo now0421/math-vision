@@ -80,7 +80,8 @@ public class GeoGebraRenderService {
                 report.completed = true;
                 report.error = "No executable GeoGebra commands were found after stripping comments.";
             } else {
-                report = validateWithHeadlessBrowser(previewPath, safeFigureName, commands, geometryPath);
+                report = validateWithHeadlessBrowser(previewPath, safeFigureName, commands,
+                        sceneDirectives, geometryPath);
             }
 
             Files.writeString(validationPath, JsonUtils.toPrettyJson(report), StandardCharsets.UTF_8);
@@ -107,6 +108,7 @@ public class GeoGebraRenderService {
     protected ValidationReport validateWithHeadlessBrowser(Path previewPath,
                                                            String figureName,
                                                            List<String> commands,
+                                                           List<GeoGebraCodeUtils.SceneDirective> sceneDirectives,
                                                            Path geometryPath) {
         ValidationReport fallback = newValidationReport(figureName, commands);
         fallback.browserExecutable = PLAYWRIGHT_BUNDLED_CHROMIUM;
@@ -145,16 +147,40 @@ public class GeoGebraRenderService {
                 return fallback;
             }
 
-            // Extract geometry for scene evaluation
-            if (geometryPath != null && parsed.allSuccessful()) {
+            // Extract geometry for scene evaluation (repainting stays disabled — the
+            // applet API still returns valid object data in this state, and re-enabling
+            // repainting can cause a transient state where getAllObjectNames() returns empty)
+            if (geometryPath != null && parsed.completed && parsed.appletLoaded) {
                 try {
-                    String geometryJson = extractGeometry(page, figureName);
+                    String geometryJson = extractGeometry(page, figureName, sceneDirectives);
                     if (geometryJson != null && !geometryJson.isBlank()) {
-                        Files.writeString(geometryPath, geometryJson, StandardCharsets.UTF_8);
-                        log.info("GeoGebra geometry report generated: {}", geometryPath);
+                        // Check for extraction errors embedded in the JSON
+                        if (geometryJson.contains("\"error\"")) {
+                            log.warn("GeoGebra geometry extraction reported error: {}",
+                                    geometryJson.length() > 300 ? geometryJson.substring(0, 300) : geometryJson);
+                            Files.writeString(geometryPath, buildFallbackElementGeometryReport(figureName, sceneDirectives), StandardCharsets.UTF_8);
+                            log.info("Wrote fallback geometry report due to extraction error");
+                        } else {
+                            // Check if extraction actually found elements; log a warning if not
+                            if (geometryJson.contains("\"element_count\": 0") || geometryJson.contains("\"element_count\":0")) {
+                                log.warn("GeoGebra geometry extraction returned 0 elements (expected {} from validation); "
+                                        + "writing report anyway", parsed.totalObjects);
+                            }
+                            Files.writeString(geometryPath, geometryJson, StandardCharsets.UTF_8);
+                            log.info("GeoGebra geometry report generated: {}", geometryPath);
+                        }
+                    } else {
+                        Files.writeString(geometryPath, buildFallbackElementGeometryReport(figureName, sceneDirectives), StandardCharsets.UTF_8);
+                        log.warn("GeoGebra geometry extraction returned empty; wrote minimal fallback");
                     }
                 } catch (Exception e) {
                     log.warn("Failed to extract GeoGebra geometry: {}", e.getMessage());
+                    try {
+                        Files.writeString(geometryPath, buildFallbackElementGeometryReport(figureName, sceneDirectives), StandardCharsets.UTF_8);
+                        log.info("Wrote minimal fallback geometry report after extraction failure");
+                    } catch (IOException writeError) {
+                        log.warn("Failed to write fallback geometry report: {}", writeError.getMessage());
+                    }
                 }
             }
 
@@ -178,9 +204,16 @@ public class GeoGebraRenderService {
         }
     }
 
-    private String extractGeometry(Page page, String figureName) {
+    private String extractGeometry(Page page, String figureName,
+                                    List<GeoGebraCodeUtils.SceneDirective> sceneDirectives) {
+        // Build a JSON array of scene directives for the browser-side script
+        String scenesJson = "[]";
+        if (sceneDirectives != null && !sceneDirectives.isEmpty()) {
+            scenesJson = JsonUtils.toJson(sceneDirectives);
+        }
+
         return asString(page.evaluate(
-                "(figureName) => {"
+                "([figureName, scenesJson]) => {"
                         + " const safeCall = (fn, fallback) => {"
                         + "   try { const v = fn(); return v === undefined ? fallback : v; }"
                         + "   catch (e) { return fallback; }"
@@ -191,92 +224,84 @@ public class GeoGebraRenderService {
                         + " };"
                         + " const api = window.ggbApplet;"
                         + " if (!api) { return JSON.stringify({ error: 'GeoGebra applet not available' }); }"
-                        + " const names = safeCall(() => Array.from(api.getAllObjectNames()), []);"
-                        + " const elements = [];"
+                        + " let rawNames = null;"
+                        + " try { rawNames = api.getAllObjectNames(); } catch (e) { return JSON.stringify({ error: 'getAllObjectNames() threw: ' + e }); }"
+                        + " if (!rawNames) { return JSON.stringify({ error: 'getAllObjectNames() returned null/undefined' }); }"
+                        + " const allNames = typeof rawNames === 'string' ? rawNames.split(',').filter(s => s.trim()) : Array.from(rawNames);"
                         + " const TEXT_CHAR_WIDTH = 0.15;"
                         + " const TEXT_HEIGHT = 0.4;"
                         + " const POINT_RADIUS = 0.15;"
-                        + " for (const name of names) {"
-                        + "   const type = safeCall(() => api.getObjectType(name), 'unknown');"
-                        + "   const visible = safeCall(() => api.getVisible(name), true);"
-                        + "   const x = safeNumber(safeCall(() => api.getXcoord(name), null));"
-                        + "   const y = safeNumber(safeCall(() => api.getYcoord(name), null));"
-                        + "   const caption = safeCall(() => api.getCaption(name), null);"
-                        + "   const defString = safeCall(() => api.getDefinitionString(name), null);"
-                        + "   const valueString = safeCall(() => api.getValueString(name), null);"
-                        + "   let bounds = null;"
-                        + "   let center = null;"
-                        + "   let displayText = null;"
-                        + "   let semanticClass = 'unknown';"
-                        + "   const typeLower = (type || '').toLowerCase();"
-                        + "   if (typeLower === 'point') {"
-                        + "     semanticClass = 'point';"
-                        + "     if (x !== null && y !== null) {"
-                        + "       center = [x, y, 0];"
-                        + "       bounds = {"
-                        + "         min: [x - POINT_RADIUS, y - POINT_RADIUS, 0],"
-                        + "         max: [x + POINT_RADIUS, y + POINT_RADIUS, 0]"
-                        + "       };"
+                        + ""
+                        + " function snapshotElements(names) {"
+                        + "   const elements = [];"
+                        + "   for (const name of names) {"
+                        + "     const type = safeCall(() => api.getObjectType(name), 'unknown');"
+                        + "     const visible = safeCall(() => api.getVisible(name), true);"
+                        + "     const x = safeNumber(safeCall(() => api.getXcoord(name), null));"
+                        + "     const y = safeNumber(safeCall(() => api.getYcoord(name), null));"
+                        + "     const caption = safeCall(() => api.getCaption(name), null);"
+                        + "     const defString = safeCall(() => api.getDefinitionString(name), null);"
+                        + "     const valueString = safeCall(() => api.getValueString(name), null);"
+                        + "     let bounds = null;"
+                        + "     let center = null;"
+                        + "     let displayText = null;"
+                        + "     let semanticClass = 'unknown';"
+                        + "     const typeLower = (type || '').toLowerCase();"
+                        + "     if (typeLower === 'point') {"
+                        + "       semanticClass = 'point';"
+                        + "       if (x !== null && y !== null) {"
+                        + "         center = [x, y, 0];"
+                        + "         bounds = {"
+                        + "           min: [x - POINT_RADIUS, y - POINT_RADIUS, 0],"
+                        + "           max: [x + POINT_RADIUS, y + POINT_RADIUS, 0]"
+                        + "         };"
+                        + "       }"
+                        + "     } else if (typeLower === 'text') {"
+                        + "       semanticClass = 'text';"
+                        + "       displayText = valueString || caption || name;"
+                        + "       if (x !== null && y !== null) {"
+                        + "         const textLen = (displayText || '').length || 1;"
+                        + "         const width = textLen * TEXT_CHAR_WIDTH;"
+                        + "         center = [x + width / 2, y + TEXT_HEIGHT / 2, 0];"
+                        + "         bounds = {"
+                        + "           min: [x, y, 0],"
+                        + "           max: [x + width, y + TEXT_HEIGHT, 0]"
+                        + "         };"
+                        + "       }"
+                        + "     } else if (typeLower === 'line' || typeLower === 'ray' || typeLower === 'segment') {"
+                        + "       semanticClass = 'line';"
+                        + "     } else if (typeLower === 'circle' || typeLower === 'ellipse' || typeLower === 'conic') {"
+                        + "       semanticClass = 'shape';"
+                        + "     } else if (typeLower === 'polygon') {"
+                        + "       semanticClass = 'shape';"
+                        + "     } else if (typeLower === 'numeric' || typeLower === 'angle') {"
+                        + "       semanticClass = 'formula';"
+                        + "       displayText = valueString;"
                         + "     }"
-                        + "   } else if (typeLower === 'text') {"
-                        + "     semanticClass = 'text';"
-                        + "     displayText = valueString || caption || name;"
-                        + "     if (x !== null && y !== null) {"
-                        + "       const textLen = (displayText || '').length || 1;"
-                        + "       const width = textLen * TEXT_CHAR_WIDTH;"
-                        + "       center = [x + width / 2, y + TEXT_HEIGHT / 2, 0];"
-                        + "       bounds = {"
-                        + "         min: [x, y, 0],"
-                        + "         max: [x + width, y + TEXT_HEIGHT, 0]"
-                        + "       };"
-                        + "     }"
-                        + "   } else if (typeLower === 'line' || typeLower === 'ray' || typeLower === 'segment') {"
-                        + "     semanticClass = 'line';"
-                        + "     // Lines extend infinitely; we skip bounds for unbounded lines"
-                        + "     if (typeLower === 'segment') {"
-                        + "       // Attempt to get segment endpoints from definition"
-                        + "       const p1x = safeNumber(safeCall(() => api.getXcoord(name + '_1'), null));"
-                        + "       const p1y = safeNumber(safeCall(() => api.getYcoord(name + '_1'), null));"
-                        + "       const p2x = safeNumber(safeCall(() => api.getXcoord(name + '_2'), null));"
-                        + "       const p2y = safeNumber(safeCall(() => api.getYcoord(name + '_2'), null));"
-                        + "       // Segments don't typically expose endpoints this way, so bounds may be null"
-                        + "     }"
-                        + "   } else if (typeLower === 'circle' || typeLower === 'ellipse' || typeLower === 'conic') {"
-                        + "     semanticClass = 'shape';"
-                        + "   } else if (typeLower === 'polygon') {"
-                        + "     semanticClass = 'shape';"
-                        + "   } else if (typeLower === 'numeric' || typeLower === 'angle') {"
-                        + "     semanticClass = 'formula';"
-                        + "     displayText = valueString;"
+                        + "     elements.push({"
+                        + "       stable_id: 'ggb-' + name,"
+                        + "       name: name,"
+                        + "       semantic_name: name,"
+                        + "       class_name: type,"
+                        + "       semantic_class: semanticClass,"
+                        + "       display_text: displayText,"
+                        + "       visible: visible,"
+                        + "       center: center,"
+                        + "       bounds: bounds,"
+                        + "       top_level_stable_id: 'ggb-' + name,"
+                        + "       element_path: String(elements.length),"
+                        + "       sample_order: elements.length"
+                        + "     });"
                         + "   }"
-                        + "   elements.push({"
-                        + "     stable_id: 'ggb-' + name,"
-                        + "     name: name,"
-                        + "     semantic_name: name,"
-                        + "     class_name: type,"
-                        + "     semantic_class: semanticClass,"
-                        + "     display_text: displayText,"
-                        + "     visible: visible,"
-                        + "     center: center,"
-                        + "     bounds: bounds,"
-                        + "     top_level_stable_id: 'ggb-' + name,"
-                        + "     element_path: String(elements.length),"
-                        + "     sample_order: elements.length"
-                        + "   });"
+                        + "   return elements;"
                         + " }"
-                        + " const report = {"
-                        + "   scene_name: figureName,"
-                        + "   report_type: 'geogebra_element_report',"
-                        + "   report_version: 1,"
-                        + "   frame_bounds: {"
-                        + "     min: [" + DEFAULT_FRAME_X_MIN + ", " + DEFAULT_FRAME_Y_MIN + ", 0],"
-                        + "     max: [" + DEFAULT_FRAME_X_MAX + ", " + DEFAULT_FRAME_Y_MAX + ", 0],"
-                        + "     width: " + (DEFAULT_FRAME_X_MAX - DEFAULT_FRAME_X_MIN) + ","
-                        + "     height: " + (DEFAULT_FRAME_Y_MAX - DEFAULT_FRAME_Y_MIN)
-                        + "   },"
-                        + "   element_bounds_space: 'world',"
-                        + "   sample_count: 1,"
-                        + "   samples: [{"
+                        + ""
+                        + " const scenes = JSON.parse(scenesJson);"
+                        + " const samples = [];"
+                        + ""
+                        + " if (scenes.length === 0) {"
+                        + "   const elements = snapshotElements(allNames);"
+                        + "   samples.push({"
                         + "     sample_id: 'geogebra-initial',"
                         + "     play_index: null,"
                         + "     play_type: 'geogebra',"
@@ -289,12 +314,101 @@ public class GeoGebraRenderService {
                         + "     trigger: 'construction_complete',"
                         + "     element_count: elements.length,"
                         + "     elements: elements"
-                        + "   }]"
+                        + "   });"
+                        + " } else {"
+                        + "   for (let i = 0; i < scenes.length; i++) {"
+                        + "     const scene = scenes[i];"
+                        + "     const showSet = new Set(scene.show || []);"
+                        + "     const hideSet = new Set(scene.hide || []);"
+                        + "     for (const name of allNames) {"
+                        + "       if (showSet.has(name)) {"
+                        + "         try { api.setVisible(name, true); } catch(e) {}"
+                        + "       } else if (hideSet.has(name)) {"
+                        + "         try { api.setVisible(name, false); } catch(e) {}"
+                        + "       }"
+                        + "     }"
+                        + "     const elements = snapshotElements(allNames).filter(e => e.visible);"
+                        + "     samples.push({"
+                        + "       sample_id: scene.id || ('scene-' + (i + 1)),"
+                        + "       play_index: i,"
+                        + "       play_type: 'geogebra',"
+                        + "       sample_role: 'scene_final',"
+                        + "       scene_method: 'construct',"
+                        + "       source_line: null,"
+                        + "       source_code: null,"
+                        + "       animation_time_seconds: null,"
+                        + "       scene_time_seconds: i,"
+                        + "       trigger: 'scene_visible',"
+                        + "       element_count: elements.length,"
+                        + "       elements: elements"
+                        + "     });"
+                        + "   }"
+                        + " }"
+                        + ""
+                        + " const report = {"
+                        + "   scene_name: figureName,"
+                        + "   report_type: 'geogebra_element_report',"
+                        + "   report_version: 1,"
+                        + "   frame_bounds: {"
+                        + "     min: [" + DEFAULT_FRAME_X_MIN + ", " + DEFAULT_FRAME_Y_MIN + ", 0],"
+                        + "     max: [" + DEFAULT_FRAME_X_MAX + ", " + DEFAULT_FRAME_Y_MAX + ", 0],"
+                        + "     width: " + (DEFAULT_FRAME_X_MAX - DEFAULT_FRAME_X_MIN) + ","
+                        + "     height: " + (DEFAULT_FRAME_Y_MAX - DEFAULT_FRAME_Y_MIN)
+                        + "   },"
+                        + "   element_bounds_space: 'world',"
+                        + "   sample_count: samples.length,"
+                        + "   samples: samples"
                         + " };"
                         + " return JSON.stringify(report, null, 2);"
                         + "}",
-                figureName
+                new Object[] { figureName, scenesJson }
         ));
+    }
+
+    private String buildFallbackElementGeometryReport(String figureName,
+                                                       List<GeoGebraCodeUtils.SceneDirective> sceneDirectives) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\n")
+                .append("  \"scene_name\": ").append(JsonUtils.toJson(figureName)).append(",\n")
+                .append("  \"report_type\": \"geogebra_element_report\",\n")
+                .append("  \"report_version\": 1,\n")
+                .append("  \"frame_bounds\": {\n")
+                .append("    \"min\": [").append(DEFAULT_FRAME_X_MIN).append(", ").append(DEFAULT_FRAME_Y_MIN).append(", 0],\n")
+                .append("    \"max\": [").append(DEFAULT_FRAME_X_MAX).append(", ").append(DEFAULT_FRAME_Y_MAX).append(", 0],\n")
+                .append("    \"width\": ").append(DEFAULT_FRAME_X_MAX - DEFAULT_FRAME_X_MIN).append(",\n")
+                .append("    \"height\": ").append(DEFAULT_FRAME_Y_MAX - DEFAULT_FRAME_Y_MIN).append("\n")
+                .append("  },\n")
+                .append("  \"element_bounds_space\": \"world\",\n");
+
+        int sceneCount = (sceneDirectives != null && !sceneDirectives.isEmpty()) ? sceneDirectives.size() : 1;
+        sb.append("  \"sample_count\": ").append(sceneCount).append(",\n")
+                .append("  \"samples\": [");
+
+        for (int i = 0; i < sceneCount; i++) {
+            if (i > 0) sb.append(",");
+            String sampleId = (sceneDirectives != null && i < sceneDirectives.size()
+                    && sceneDirectives.get(i).id != null)
+                    ? sceneDirectives.get(i).id
+                    : (sceneCount == 1 ? "geogebra-initial" : "scene-" + (i + 1));
+            String sampleRole = sceneCount == 1 ? "geogebra_construction" : "scene_final";
+            sb.append("{\n")
+                    .append("    \"sample_id\": \"").append(sampleId).append("\",\n")
+                    .append("    \"play_index\": ").append(sceneCount == 1 ? "null" : String.valueOf(i)).append(",\n")
+                    .append("    \"play_type\": \"geogebra\",\n")
+                    .append("    \"sample_role\": \"").append(sampleRole).append("\",\n")
+                    .append("    \"scene_method\": \"construct\",\n")
+                    .append("    \"source_line\": null,\n")
+                    .append("    \"source_code\": null,\n")
+                    .append("    \"animation_time_seconds\": null,\n")
+                    .append("    \"scene_time_seconds\": ").append(i).append(",\n")
+                    .append("    \"trigger\": \"").append(sceneCount == 1 ? "construction_complete" : "scene_visible").append("\",\n")
+                    .append("    \"element_count\": 0,\n")
+                    .append("    \"elements\": []\n")
+                    .append("  }");
+        }
+
+        sb.append("]\n").append("}");
+        return sb.toString();
     }
 
     private Browser launchBrowser(BrowserType chromium) {
