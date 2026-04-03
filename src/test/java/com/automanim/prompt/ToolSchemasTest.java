@@ -116,4 +116,20 @@ class ToolSchemasTest {
         assertTrue(ToolSchemas.STORYBOARD.contains("angle between AP and l at P"));
         assertTrue(ToolSchemas.STORYBOARD.contains("do not restate their kind"));
     }
+
+    @Test
+    void sharedSchemasUseBackendNeutralContinuityLanguage() {
+        assertFalse(ToolSchemas.VISUAL_DESIGN.contains("Manim color names"));
+        assertTrue(ToolSchemas.VISUAL_DESIGN.contains("Backend-compatible color names"));
+        assertFalse(ToolSchemas.STORYBOARD.contains("reuse mobjects safely"));
+        assertFalse(ToolSchemas.STORYBOARD.contains("Ordered animation operations"));
+        assertTrue(ToolSchemas.STORYBOARD.contains("same logical objects safely"));
+        assertTrue(ToolSchemas.STORYBOARD.contains("scene or presentation operations"));
+    }
+
+    @Test
+    void storyboardToolExplainsFixedOverlayAsOverlaySpecific() {
+        assertTrue(ToolSchemas.STORYBOARD.contains("Use `fixed_overlay` mainly for explanatory text"));
+        assertTrue(ToolSchemas.STORYBOARD.contains("rather than native geometry"));
+    }
 }

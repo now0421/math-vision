@@ -101,7 +101,7 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         }
 
         String codegenPrompt = NarrativePrompts.storyboardCodegenPrompt(
-                targetConcept, storyboard);
+                targetConcept, storyboard, outputTarget);
 
         Narrative narrative = new Narrative(
                 targetConcept,
@@ -621,7 +621,8 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
                 graph.getTargetConcept(),
                 root != null ? root.getStep() : "",
                 "",
-                problemMode);
+                problemMode,
+                outputTarget);
     }
 
     private static final class NarrativeDraft {

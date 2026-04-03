@@ -55,7 +55,7 @@ public final class CodeEvaluationPrompts {
                 "Review code for layout, continuity, pacing, and clutter risk",
                 targetConcept,
                 targetDescription,
-                true
+                "manim"
         ) + REVIEW_SYSTEM;
     }
 
@@ -82,7 +82,7 @@ public final class CodeEvaluationPrompts {
                 "Revise Manim code after code evaluation before render",
                 targetConcept,
                 targetDescription,
-                true
+                "manim"
         ) + REVISION_SYSTEM);
     }
 

@@ -160,7 +160,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private KnowledgeGraph buildProblemGraph(String problemStatement) {
         String normalizedProblem = problemStatement == null ? "" : problemStatement.trim();
         String prompt = "Math problem:\n" + normalizedProblem + "\n\n"
-                + "Plan the animation-ready teaching beats for solving this problem.\n"
+                + "Plan the presentation-ready teaching beats for solving this problem.\n"
                 + "The downstream presentation target is " + outputTarget + ".\n"
                 + "Return the small set of major beats that a strong teaching presentation should"
                 + " present, in a dependency graph format.\n"
@@ -939,10 +939,10 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         String trimmedInput = input == null ? "" : input.trim();
         if (WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)) {
             return TargetDescriptionBuilder.workflowTargetDescription(
-                    trimmedInput, trimmedInput, trimmedInput, true);
+                    trimmedInput, trimmedInput, trimmedInput, true, outputTarget);
         }
         return TargetDescriptionBuilder.workflowTargetDescription(
-                trimmedInput, trimmedInput, "", false);
+                trimmedInput, trimmedInput, "", false, outputTarget);
     }
 
     private JsonNode parseFoundationDecisionTextResponse(String response) {

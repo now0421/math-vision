@@ -36,7 +36,7 @@ public final class EnrichmentPrompts {
                 "Mathematical content enrichment",
                 targetConcept,
                 targetDescription,
-                false
+                (String) null
         ) + SYSTEM;
     }
 }

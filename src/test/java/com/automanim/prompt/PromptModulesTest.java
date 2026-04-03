@@ -1,7 +1,9 @@
 package com.automanim.prompt;
 
+import com.automanim.util.TargetDescriptionBuilder;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PromptModulesTest {
@@ -80,6 +82,22 @@ class PromptModulesTest {
     }
 
     @Test
+    void geogebraWorkflowPromptsUseConstructionLanguageInsteadOfAnimationLanguage() {
+        String targetDescription = TargetDescriptionBuilder.workflowTargetDescription(
+                "Triangle",
+                "Reflect B across l and connect A to B'",
+                "Use reflection to turn the broken route into one straight construction.",
+                true,
+                "geogebra");
+        String systemPrompt = CodeGenerationPrompts.systemPrompt("Triangle", targetDescription, "geogebra");
+
+        assertTrue(targetDescription.contains("interactive geometry construction"));
+        assertFalse(targetDescription.contains("teaching animation"));
+        assertTrue(systemPrompt.contains("Final construction target"));
+        assertFalse(systemPrompt.contains("Final animation target"));
+    }
+
+    @Test
     void narrativePromptsRequireObjectReferencesToUseIdsOnly() {
         String systemPrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
         String codegenPrompt = NarrativePrompts.storyboardCodegenPrompt(
@@ -100,8 +118,9 @@ class PromptModulesTest {
                 "{\"scenes\":[{\"entering_objects\":[{\"id\":\"aLabel\",\"kind\":\"label\",\"content\":\"A\"}]}]}",
                 "geogebra");
 
-        assertTrue(systemPrompt.contains("concise") && systemPrompt.contains("math-style"));
-        assertTrue(systemPrompt.contains("GeoGebra-native"));
+        assertTrue(systemPrompt.contains("Keep object ids concise"));
+        assertTrue(systemPrompt.contains("Follow GeoGebra naming conventions"));
+        assertTrue(systemPrompt.contains("native names like `B'`"));
         assertTrue(codegenPrompt.contains("naming source"));
     }
 
@@ -118,5 +137,30 @@ class PromptModulesTest {
         assertTrue(narrativePrompt.contains("yellow on white"));
         assertTrue(geogebraCodegenPrompt.contains("visually distinct from their background"));
         assertTrue(manimCodegenPrompt.contains("yellow on white"));
+    }
+
+    @Test
+    void geogebraCodegenPromptsAvoidManimInstructionsAndAsciiConflict() {
+        String storyboardPrompt = NarrativePrompts.storyboardCodegenPrompt(
+                "Triangle",
+                "{\"scenes\":[{\"entering_objects\":[{\"id\":\"B'\",\"kind\":\"point\",\"content\":\"reflected point\"}]}]}",
+                "geogebra");
+        String codegenPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "GeoGebra demo", "geogebra");
+
+        assertTrue(storyboardPrompt.contains("GeoGebra code block"));
+        assertFalse(storyboardPrompt.contains("Python code block"));
+        assertFalse(storyboardPrompt.contains("ThreeDScene"));
+        assertFalse(storyboardPrompt.contains("add_fixed_in_frame_mobjects"));
+        assertTrue(codegenPrompt.contains("`B'`"));
+        assertTrue(codegenPrompt.contains("`P_{opt}`"));
+        assertFalse(codegenPrompt.contains("ASCII-only"));
+    }
+
+    @Test
+    void geogebraNarrativePromptGuidesFixedOverlayTowardTextualOverlays() {
+        String geogebraPrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
+
+        assertTrue(geogebraPrompt.contains("Use `fixed_overlay` mainly for explanatory text"));
+        assertTrue(geogebraPrompt.contains("bullseye-style highlights"));
     }
 }

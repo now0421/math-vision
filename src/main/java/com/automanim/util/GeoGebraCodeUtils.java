@@ -260,22 +260,20 @@ public final class GeoGebraCodeUtils {
         int parentheses = 0;
         int brackets = 0;
         int braces = 0;
-        boolean inSingleQuote = false;
         boolean inDoubleQuote = false;
 
         for (int i = 0; i < command.length(); i++) {
             char ch = command.charAt(i);
             char previous = i > 0 ? command.charAt(i - 1) : '\0';
 
-            if (ch == '\'' && !inDoubleQuote && previous != '\\') {
-                inSingleQuote = !inSingleQuote;
-                continue;
-            }
-            if (ch == '"' && !inSingleQuote && previous != '\\') {
+            // In GeoGebra, ' (apostrophe) is the prime notation for object names
+            // (e.g. A', B', AB') — not a string quote delimiter. Only " is used
+            // for string literals, so we skip single-quote toggling entirely.
+            if (ch == '"' && previous != '\\') {
                 inDoubleQuote = !inDoubleQuote;
                 continue;
             }
-            if (inSingleQuote || inDoubleQuote) {
+            if (inDoubleQuote) {
                 continue;
             }
 
@@ -298,8 +296,7 @@ public final class GeoGebraCodeUtils {
             }
         }
 
-        return !inSingleQuote
-                && !inDoubleQuote
+        return !inDoubleQuote
                 && parentheses == 0
                 && brackets == 0
                 && braces == 0;
@@ -422,4 +419,5 @@ public final class GeoGebraCodeUtils {
         }
         return null;
     }
+
 }

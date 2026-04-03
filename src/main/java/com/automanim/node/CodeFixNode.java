@@ -210,7 +210,9 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
                     ? CodeGenerationPrompts.geoGebraValidationFixSystemPrompt(targetConcept, targetDescription)
                     : CodeGenerationPrompts.validationFixSystemPrompt(targetConcept, targetDescription);
         } else if (request.getSource() == CodeFixSource.SCENE_LAYOUT_EVALUATION) {
-            systemPrompt = SceneEvaluationPrompts.layoutFixSystemPrompt(targetConcept, targetDescription);
+            systemPrompt = isGeoGebraTarget()
+                    ? SceneEvaluationPrompts.geoGebraLayoutFixSystemPrompt(targetConcept, targetDescription)
+                    : SceneEvaluationPrompts.layoutFixSystemPrompt(targetConcept, targetDescription);
         } else {
             systemPrompt = isGeoGebraTarget()
                     ? RenderFixPrompts.geoGebraSystemPrompt(targetConcept, targetDescription)
@@ -248,6 +250,15 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             );
         }
         if (request.getSource() == CodeFixSource.SCENE_LAYOUT_EVALUATION) {
+            if (isGeoGebraTarget()) {
+                return SceneEvaluationPrompts.geoGebraLayoutFixUserPrompt(
+                        TextUtils.defaultIfBlank(request.getStoryboardJson(), StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON),
+                        request.getGeneratedCode(),
+                        TextUtils.firstNonBlank(request.getErrorReason(), "Unknown scene evaluation issue"),
+                        TextUtils.defaultIfBlank(request.getSceneEvaluationJson(), "{}"),
+                        request.getFixHistory() != null ? request.getFixHistory() : Collections.emptyList()
+                );
+            }
             return SceneEvaluationPrompts.layoutFixUserPrompt(
                     TextUtils.defaultIfBlank(request.getStoryboardJson(), StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON),
                     request.getGeneratedCode(),

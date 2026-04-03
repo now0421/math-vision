@@ -65,33 +65,44 @@ public final class TargetDescriptionBuilder {
                                                    String rootConcept,
                                                    String rootDescription,
                                                    boolean problemMode) {
+        return workflowTargetDescription(targetConcept, rootConcept, rootDescription, problemMode, null);
+    }
+
+    public static String workflowTargetDescription(String targetConcept,
+                                                   String rootConcept,
+                                                   String rootDescription,
+                                                   boolean problemMode,
+                                                   String outputTarget) {
         String safeTarget = sanitize(targetConcept, "Unknown target");
         String safeRootConcept = sanitize(rootConcept, safeTarget);
         String safeRootDescription = sanitize(rootDescription, "");
+        boolean geoGebraTarget = "geogebra".equalsIgnoreCase(outputTarget);
+
+        String mediumNoun = geoGebraTarget ? "interactive geometry construction" : "teaching animation";
+        String mediumObject = geoGebraTarget ? "construction" : "animation";
+        String culminationVerb = geoGebraTarget ? "culminate in the final construction insight" : "culminate in the final conclusion";
 
         if (problemMode) {
             if (!safeRootDescription.isEmpty()) {
                 return String.format(
-                        "Explain and solve the math problem \"%s\" through a coherent teaching"
-                                + " animation. The goal is not only to reach the answer, but to"
-                                + " help the viewer understand why it works. The animation should"
-                                + " culminate in the final conclusion \"%s\": %s",
-                        safeTarget, safeRootConcept, safeRootDescription);
+                        "Explain and solve the math problem \"%s\" through a coherent %s. The"
+                                + " goal is not only to reach the answer, but to help the viewer"
+                                + " understand why it works. The %s should %s \"%s\": %s",
+                        safeTarget, mediumNoun, mediumObject, culminationVerb, safeRootConcept, safeRootDescription);
             }
             return String.format(
-                    "Explain and solve the math problem \"%s\" through a coherent teaching"
-                            + " animation that leads to the final conclusion \"%s\" while helping"
-                            + " the viewer understand the reasoning.",
-                    safeTarget, safeRootConcept);
+                    "Explain and solve the math problem \"%s\" through a coherent %s that leads"
+                            + " to \"%s\" while helping the viewer understand the reasoning.",
+                    safeTarget, mediumNoun, safeRootConcept);
         }
 
         if (!safeRootDescription.isEmpty()) {
             return safeRootDescription;
         }
         return String.format(
-                "Explain the concept \"%s\" through a coherent teaching animation built from the"
-                        + " necessary prerequisites up to the final idea.",
-                safeTarget);
+                "Explain the concept \"%s\" through a coherent %s built from the necessary"
+                        + " prerequisites up to the final idea.",
+                safeTarget, mediumNoun);
     }
 
     /**

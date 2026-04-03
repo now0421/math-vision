@@ -87,6 +87,16 @@ public final class SystemPrompts {
                     + "- `persistent_objects`, `exiting_objects`, and `actions`: preserve continuity and scene flow instead of redrawing the construction arbitrarily.\n"
                     + "- If a reported object is a reflection, midpoint, foot, or intersection, recompute it from its source construction instead of moving it freely.\n";
 
+    /** Storyboard field guide for GeoGebra scene evaluation/repair pass. */
+    public static final String STORYBOARD_FIELD_GUIDE_GEOGEBRA_REPAIR =
+            "Storyboard field guide for this GeoGebra repair pass:\n"
+                    + "- `goal` and `layout_goal`: preserve what the scene is trying to teach and how the construction should be laid out.\n"
+                    + "- GeoGebra is interactive and freely zoomable, so out-of-bounds issues are not a concern. Focus on text overlap only.\n"
+                    + "- `geometry_constraints` and each object's `constraint_note`: treat these as hard geometric invariants.\n"
+                    + "- `behavior`, `anchor_id`, and `dependency_note`: preserve dependency-safe construction order for reflected points, intersections, midpoints, and derived objects.\n"
+                    + "- `persistent_objects`, `exiting_objects`, and `actions`: preserve object visibility progression instead of rewriting the construction arbitrarily.\n"
+                    + "- If a reported object is a reflection, midpoint, foot, or intersection, keep it defined from its source objects via GeoGebra dependency commands.\n";
+
     /** Geometry constraint preservation rules. */
     public static final String GEOMETRY_CONSTRAINT_RULES =
             "Preserve storyboard geometric invariants such as symmetry, reflection, collinearity, equal distances, and intersection definitions.\n"
@@ -98,6 +108,10 @@ public final class SystemPrompts {
             "Keep text, labels, strokes, and fills visually distinct from their background.\n"
                     + "Avoid low-contrast pairings such as yellow on white, white on light yellow, light-gray on white, or similar pale-on-pale combinations.\n";
 
+    /** High-contrast color rules formatted as bullet lines for direct prompt insertion. */
+    public static final String HIGH_CONTRAST_COLOR_RULES_BULLETS =
+            "- " + HIGH_CONTRAST_COLOR_RULES.replace("\n", "\n- ").trim() + "\n";
+
     /** Angle marker best practices for Manim. */
     public static final String ANGLE_MARKER_RULES =
             "For angle markers, prefer `Angle(...)` built from two lines/rays sharing the true vertex instead of hand-written `Arc(start_angle=..., angle=...)` formulas.\n"
@@ -107,6 +121,20 @@ public final class SystemPrompts {
     /** ASCII identifier rules. */
     public static final String ASCII_IDENTIFIER_RULES =
             "Keep all Python identifiers and object names ASCII only.\n";
+
+    /** Shared Manim naming rules for storyboard ids and generated identifiers. */
+    public static final String MANIM_NAMING_RULES =
+            "- Keep all Python identifiers and object names ASCII only.\n"
+                    + "- When object ids become Python variable names, keep them concise and non-redundant because the role/type is already carried elsewhere; prefer `river` over `line_river` and `A` over `pointA`.\n"
+                    + "- Single uppercase letters are acceptable for geometric points (e.g. `A`, `B`, `P`); use camelCase or snake_case for compound names.\n"
+                    + "- Do not use Python reserved words (`class`, `def`, `lambda`, `for`, `if`, `in`, `is`, `not`, `None`, `True`, `False`, etc.) or Manim built-in class names (`Scene`, `Mobject`, `Line`, `Circle`, `Text`, etc.) as identifiers.\n";
+
+    /** Shared GeoGebra naming rules for storyboard ids and generated identifiers. */
+    public static final String GEOGEBRA_NAMING_RULES =
+            "- Keep object names concise and non-redundant because the role/type is already carried elsewhere; prefer `l` over `lineL` and `c` over `circleC`.\n"
+                    + "- Prefer native GeoGebra math-style names. Point names must start with an uppercase letter (e.g. `A`, `P_1`); vector names must start with a lowercase letter (e.g. `v`, `u`); lines, circles, and other non-point objects may start with a lowercase letter (e.g. `l`, `c`, `tri`). Use `_` for subscripts and `'` for primes.\n"
+                    + "- Translate ASCII-spelled ids to GeoGebra-native math names when needed: `Bprime` -> `B'`, `ABprime` -> `AB'`, `Pstar` -> `P_{*}`, `Popt` -> `P_{opt}`, `P1` -> `P_1`. If native names like `B'` or `P_{opt}` are already used, keep them verbatim.\n"
+                    + "- Do not use reserved names such as `x`, `y`, `z`, `xAxis`, `yAxis`, `zAxis`, `e`, `i`, `pi`, `sin`, `cos`, `tan`, `exp`, `log`, `ln`, `abs`, `sqrt`, `floor`, `ceil`, `round`, `random`, `arg`, `gamma`, `beta`, `sec`, `csc`, or `cot` as object identifiers.\n";
 
     /** Tool call hint for structured output prompts. */
     public static final String TOOL_CALL_HINT =
@@ -172,13 +200,13 @@ public final class SystemPrompts {
                     + "- When `content`, `dependency_note`, or other object fields mention another object, treat those mentions as object ids only. Do not reinterpret kind words from prose and do not invent a second object type for the same id.\n"
                     + "- Prefer GeoGebra's native labels for named geometric objects. If an object is named `A`, `l`, `c`, `AB`, or similar, use that object itself as the visible label instead of creating a separate text object like `aLabel = Text(...)`.\n"
                     + "- Treat storyboard object ids as the naming source for generated GeoGebra variables. Preserve those ids in code, and when you must introduce a helper name, use concise camelCase or math-style identifiers.\n"
-                    + "- Follow GeoGebra naming conventions strictly: point names must start with an uppercase letter (e.g. `A`, `P`, `M_1`); vector names must start with a lowercase letter (e.g. `v`, `u`); lines, circles, and conics defined by equations use colon syntax (`g: y = x + 3`); function names use parenthesized variables (`f(x) = ...`); use `_` for subscripts (`A_1`, `s_{AB}`). Never use reserved names (`x`, `y`, `z`, `e`, `i`, `sin`, `cos`, `tan`, `exp`, `log`, `ln`, `abs`, `sqrt`, `floor`, `ceil`, `round`, `random`, `pi`, and other built-in math functions) as object identifiers.\n"
-                    + "- Translate storyboard ASCII ids to GeoGebra-native math names: `Bprime` → `B'`, `ABprime` → `AB'`, `Pstar` → `P_{*}`, `Popt` → `P_{opt}`. GeoGebra renders `'` as prime and `_{...}` as subscript natively. If the storyboard already uses native names like `B'`, keep them verbatim.\n"
+                    + GEOGEBRA_NAMING_RULES
+                    + "- For functions, use parenthesized variables such as `f(x) = ...`; for lines, circles, or conics defined by equations, use equation-label syntax such as `g: y = x + 3`.\n"
                     + "- This naming convention applies to all geometric objects with native names: points, lines, segments, rays, circles, polygons, angles, vectors, and functions.\n"
                     + "- Create a separate label/text object only when the visible text is not the object's own native label, such as overlays, formulas, counters, captions, or explanatory annotations.\n"
                     + "- If the storyboard contains a redundant geometry-label pair, prefer keeping the geometry object and dropping the extra label object in the generated GeoGebra commands.\n"
                     + "- Choose readable coordinates and label placement that respect `layout_goal`, `placement`, and `safe_area_plan`.\n"
-                    + "- Keep labels, highlights, and filled regions visually distinct from the background and from each other; avoid low-contrast color pairs such as white with yellow or other pale-on-pale combinations.\n"
+                    + HIGH_CONTRAST_COLOR_RULES_BULLETS
                     + "- For angle markers, use only `Angle(B, vertex, C)` with `SetFilling`; never `CircularArc`. The angle sweeps counterclockwise from ray(vertex→B) to ray(vertex→C), so place the starting-ray point first: e.g. for the small angle between a rightward horizontal and an upper-left segment at vertex P, use `Angle((x(P)+1,0), P, A)` (CCW from right to upper-left = small angle above line).\n";
 
     // ========================================================================
@@ -214,19 +242,35 @@ public final class SystemPrompts {
         return normalized.isEmpty() ? defaultValue : normalized;
     }
 
+    /**
+     * Build workflow prefix with explicit output target.
+     *
+     * @param outputTarget {@code "manim"}, {@code "geogebra"}, or {@code null} for generic
+     */
     public static String buildWorkflowPrefix(String stageLabel,
                                              String substepLabel,
                                              String targetTitle,
                                              String targetDescription,
-                                             boolean manimSpecific) {
-        String workflowLabel = manimSpecific
-                ? "multi-stage Manim animation generation workflow"
-                : "multi-stage teaching animation generation workflow";
+                                             String outputTarget) {
+        String workflowLabel;
+        String targetLabel;
+
+        if ("manim".equalsIgnoreCase(outputTarget)) {
+            workflowLabel = "multi-stage Manim animation generation workflow";
+            targetLabel = "Final animation target";
+        } else if ("geogebra".equalsIgnoreCase(outputTarget)) {
+            workflowLabel = "multi-stage GeoGebra construction generation workflow";
+            targetLabel = "Final construction target";
+        } else {
+            workflowLabel = "multi-stage teaching content generation workflow";
+            targetLabel = "Final target";
+        }
+
         return "You are working inside a " + workflowLabel + ".\n"
                 + "Current workflow stage: " + sanitize(stageLabel, "Unknown stage") + "\n"
                 + "Current substep: " + sanitize(substepLabel, "Unknown substep") + "\n"
                 + "Overall workflow: " + WORKFLOW_OVERVIEW + "\n"
-                + "Final animation target: " + sanitize(targetTitle, "Unknown target") + "\n"
+                + targetLabel + ": " + sanitize(targetTitle, "Unknown target") + "\n"
                 + "Final target description: "
                 + sanitize(targetDescription, "No explicit target description is available yet.")
                 + "\n"

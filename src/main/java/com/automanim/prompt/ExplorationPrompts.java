@@ -95,7 +95,7 @@ public final class ExplorationPrompts {
                 "Foundation sufficiency check",
                 targetTitle,
                 targetDescription,
-                false
+                (String) null
         ) + FOUNDATION_CHECK_SYSTEM;
     }
 
@@ -105,7 +105,7 @@ public final class ExplorationPrompts {
                 "Direct prerequisite extraction",
                 targetTitle,
                 targetDescription,
-                false
+                (String) null
         ) + PREREQUISITES_SYSTEM;
     }
 
@@ -115,7 +115,7 @@ public final class ExplorationPrompts {
                 "Input mode classification",
                 inputText,
                 "Decide whether this input should follow the concept-explanation workflow or the problem-solving workflow.",
-                false
+                (String) null
         ) + INPUT_MODE_CLASSIFIER_SYSTEM;
     }
 
@@ -125,7 +125,7 @@ public final class ExplorationPrompts {
                 "Problem solution-step graph planning",
                 targetTitle,
                 targetDescription,
-                false
+                (String) null
         ) + PROBLEM_STEP_GRAPH_SYSTEM;
     }
 }

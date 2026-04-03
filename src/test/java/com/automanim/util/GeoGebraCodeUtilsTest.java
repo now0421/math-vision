@@ -149,4 +149,5 @@ class GeoGebraCodeUtilsTest {
         assertEquals(List.of("point_A", "helper_line"), directives.get(1).show);
         assertEquals(List.of("point_B"), directives.get(1).hide);
     }
+
 }

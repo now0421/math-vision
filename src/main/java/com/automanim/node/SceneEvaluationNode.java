@@ -162,10 +162,12 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             int totalIssues = 0;
             int issueSamples = 0;
 
+            boolean skipOffscreen = input.config() != null && input.config().isGeoGebraTarget();
+
             JsonNode samplesNode = root.path("samples");
             if (samplesNode.isArray()) {
                 for (JsonNode sampleNode : samplesNode) {
-                    SampleEvaluation sampleEvaluation = evaluateSample(sampleNode, frameMin, frameMax);
+                    SampleEvaluation sampleEvaluation = evaluateSample(sampleNode, frameMin, frameMax, skipOffscreen);
                     sampleEvaluations.add(sampleEvaluation);
                     if (sampleEvaluation.isHasIssues()) {
                         issueSamples++;
@@ -297,7 +299,8 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         }
     }
 
-    private SampleEvaluation evaluateSample(JsonNode sampleNode, double[] frameMin, double[] frameMax) {
+    private SampleEvaluation evaluateSample(JsonNode sampleNode, double[] frameMin, double[] frameMax,
+                                              boolean skipOffscreen) {
         SampleEvaluation sample = new SampleEvaluation();
         sample.setSampleId(readText(sampleNode, "sample_id", ""));
         sample.setPlayIndex(sampleNode.hasNonNull("play_index") ? sampleNode.get("play_index").asInt() : null);
@@ -314,25 +317,29 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         int overlapCount = 0;
         int blockingCount = 0;
 
-        for (ElementGeometry element : elements) {
-            OverflowMetrics overflow = frameOverflow(element, frameMin, frameMax);
-            if (overflow == null) {
-                continue;
+        // GeoGebra is interactive and freely zoomable/pannable, so offscreen
+        // issues are irrelevant — only text overlap matters.
+        if (!skipOffscreen) {
+            for (ElementGeometry element : elements) {
+                OverflowMetrics overflow = frameOverflow(element, frameMin, frameMax);
+                if (overflow == null) {
+                    continue;
+                }
+                LayoutIssue issue = new LayoutIssue();
+                issue.setType("offscreen");
+                issue.setMessage(String.format(
+                        "Element %s extends outside the frame bounds",
+                        element.displayName()));
+                issue.setSeverity("blocking");
+                issue.setReasonCode("OFFSCREEN");
+                issue.setLikelyFalsePositive(false);
+                issue.setRecommendedAction("move_or_scale_into_safe_frame");
+                issue.setPrimaryElement(toElementRef(element, sample.getSampleRole()));
+                issue.setOverflow(toOverflow(overflow));
+                issues.add(issue);
+                offscreenCount++;
+                blockingCount++;
             }
-            LayoutIssue issue = new LayoutIssue();
-            issue.setType("offscreen");
-            issue.setMessage(String.format(
-                    "Element %s extends outside the frame bounds",
-                    element.displayName()));
-            issue.setSeverity("blocking");
-            issue.setReasonCode("OFFSCREEN");
-            issue.setLikelyFalsePositive(false);
-            issue.setRecommendedAction("move_or_scale_into_safe_frame");
-            issue.setPrimaryElement(toElementRef(element, sample.getSampleRole()));
-            issue.setOverflow(toOverflow(overflow));
-            issues.add(issue);
-            offscreenCount++;
-            blockingCount++;
         }
 
         List<LayoutIssue> overlapIssues = evaluateOverlapIssues(elements, sample.getSampleRole());

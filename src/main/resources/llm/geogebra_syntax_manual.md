@@ -335,7 +335,17 @@ gamma = Angle(v)              // angle between x-axis and vector v
 delta = Angle(P)              // angle between x-axis and position vector of point P
 angles = Angle(poly)          // all interior angles of a polygon (returned individually)
 epsilon = Angle(conic1)       // twist angle of a conic's major axis
+numAngle = Angle(1.2)         // converts a number into an angle (result in [0,360°] or [0,2π])
 fixedAngle = Angle(A, B, 45°) // angle of size 45° drawn from A with apex B; also creates the rotated point
+vecAngle = Angle(u, v)        // angle between two vectors
+lineAngle = Angle(line1, line2) // angle between direction vectors of two lines
+```
+
+3D-specific angle overloads:
+```geogebra
+planeAngle = Angle(line1, plane1)             // angle between a line and a plane
+dihedralAngle = Angle(plane1, plane2)         // angle between two planes
+dirAngle = Angle(A, B, C, zAxis)             // angle with explicit direction (line or plane); bypasses 3D display restrictions
 ```
 
 Guidance:
@@ -348,7 +358,10 @@ Guidance:
   - `Angle(A, P, (x(P)+1, 0))` — sweeps CCW from ray PA to rightward ray = large angle (~330°). Wrong.
 - For equal-angle markers (e.g., reflection angles), ensure both `Angle(...)` calls sweep the same-sized small sector on their respective sides.
 - `Angle(<Polygon>)` creates all angles in mathematically positive (CCW) orientation. If the polygon was created CCW, you get interior angles; if CW, you get exterior angles.
+- `Angle(<Number>)` converts a number into an angle in [0, 360°] or [0, 2π] depending on the angle unit setting.
+- `Angle(<Vector>, <Vector>)` returns the angle between two vectors.
 - `Angle(<Point>, <Apex>, <Angle>)` creates an angle of the given size and also creates a rotated point via `Rotate(<Point>, <Angle>, <Apex>)`.
+- `Angle(<Point>, <Point>, <Point>, <Direction>)` (3D only) uses an explicit line or plane as direction to bypass standard 3D angle display restrictions.
 - Prefer `Angle(...)` over hardcoded text labels like `"30 deg"` unless the angle is intentionally fixed.
 - Use `SetFilling(alpha, 0.3)` to create a filled angle sector for visual emphasis.
 - **Use `Angle(...)` as the sole method for angle markers.** Do not use `CircularArc` for angle marking — it draws a decorative arc unrelated to angle measurement and produces incorrect visual output.
@@ -363,6 +376,13 @@ Guidance:
 t1 = Text("Construct the perpendicular bisector")
 ```
 
+### Substitution control
+```geogebra
+t2a = Text(c, true)              // substitutes variable values into the formula
+t2b = Text(c, false)             // shows the symbolic formula with variable names
+```
+`Text(<Object>, <Boolean>)` — when `true`, variable values are substituted; when `false`, variable names are shown.
+
 ### Dynamic text
 ```geogebra
 d1 = Distance(A, B)
@@ -375,11 +395,14 @@ t3 = Text("alpha = " + Round(alpha, 1) + " deg")
 t4 = Text("A note", (2, 1))
 t5 = Text(alpha, (2, 1), true, true)
 ```
+Full form: `Text(<Object>, <Point>, <Boolean for Substitution>, <Boolean for LaTeX>)`
 
 ### Positioned text with alignment
 ```geogebra
 t6 = Text(alpha, (2, 1), true, true, -1, 0)
 ```
+Full form: `Text(<Object>, <Point>, <Boolean for Substitution>, <Boolean for LaTeX>, <H-alignment [-1|0|1]>, <V-alignment [-1|0|1]>)`
+
 The last two parameters control horizontal and vertical alignment:
 - `-1`: shift left / shift down
 - `0`: center horizontally / vertically at the point
@@ -403,6 +426,7 @@ Y = Intersect(c, d)
 Z = Intersect(lineAB, c, 2)     // 2nd intersection point (index-based)
 W = Intersect(f, g, C)          // intersection near initial point C (iterative)
 pts = Intersect(f, g, -1, 2)    // all intersections in x ∈ [-1, 2]
+V = Intersect(curve1, curve2, 0, 2)  // curve intersection seeded at parameter values
 P = Point(lineAB)
 Q = Point(c)
 ```
@@ -413,6 +437,7 @@ Guidance:
 - `Intersect(<Object>, <Object>, <Index>)` returns the n-th intersection point. Useful when two objects have multiple intersections.
 - `Intersect(<Object>, <Object>, <Initial Point>)` uses an iterative numerical method seeded at the initial point.
 - `Intersect(<Function>, <Function>, <Start x-Value>, <End x-Value>)` returns all intersection points in the given x-interval.
+- `Intersect(<Curve1>, <Curve2>, <Parameter1>, <Parameter2>)` finds one intersection point using an iterative method starting at the given parameter values for each curve.
 - Prefer `Point(...)` over fake coordinate-based attachment.
 
 ---
@@ -423,6 +448,7 @@ Guidance:
 perp = PerpendicularLine(A, lineAB)
 perpSeg = PerpendicularLine(A, s)
 perpVec = PerpendicularLine(A, u)
+perpLL = PerpendicularLine(line1, line2)  // perpendicular to both lines through their intersection
 para = ParallelLine(C, lineAB)
 pb = PerpendicularBisector(A, B)
 pbSeg = PerpendicularBisector(s)
@@ -432,7 +458,8 @@ bisLines = AngleBisector(line1, line2)
 
 Guidance:
 
-- `PerpendicularLine` accepts a line, segment, or vector as the direction reference.
+- `PerpendicularLine(<Point>, <Line|Segment|Vector>)` creates a line through the point perpendicular to the given direction.
+- `PerpendicularLine(<Line>, <Line>)` creates a perpendicular line to both lines through their intersection point.
 - `PerpendicularBisector` accepts either two points or a segment.
 - `AngleBisector(<Point>, <Point>, <Point>)` returns the bisector of the angle at the middle point (apex).
 - `AngleBisector(<Line>, <Line>)` returns **both** angle bisectors of the two lines.
@@ -513,6 +540,8 @@ t2 = Tangent(2, f)                  // tangent to function at x = 2
 t3 = Tangent(P, conic1)             // tangent(s) through point to conic
 t4 = Tangent(lineAB, conic1)        // tangent(s) to conic parallel to lineAB
 t5 = Tangent(c1, c2)                // common tangents of two circles (up to 4)
+t6 = Tangent(P, curve1)             // tangent to parametric curve at point P on the curve
+t7 = Tangent(P, implicitCurve1)     // tangent to implicit curve at point P
 ```
 
 ### Derivative overloads
@@ -520,8 +549,12 @@ t5 = Tangent(c1, c2)                // common tangents of two circles (up to 4)
 fp(x) = Derivative(f)                // first derivative
 fp2(x) = Derivative(f, 2)            // second derivative
 fpy = Derivative(x^3 * y^2, y)       // partial derivative w.r.t. y
+fpyn = Derivative(x^3 + 3*x*y, x, 2) // n-th partial derivative w.r.t. variable
 curveD = Derivative(Curve(cos(t), sin(t), t, 0, pi))  // derivative of parametric curve
+curveDn = Derivative(Curve(cos(t), sin(t), t, 0, pi), 2)  // n-th derivative of parametric curve
 ```
+
+Note: You can use `f'(x)` instead of `Derivative(f)`, or `f''(x)` instead of `Derivative(f, 2)`, and so on.
 
 Guidance:
 

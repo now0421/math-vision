@@ -12,7 +12,10 @@ public final class RenderFixPrompts {
             "You are a Manim Community debugging expert.\n"
                     + "Fix the code so it renders successfully.\n"
                     + "Preserve the original scene class name and intended animation meaning.\n"
-                    + SystemPrompts.ASCII_IDENTIFIER_RULES
+                    + "Naming rules:\n"
+                    + SystemPrompts.MANIM_NAMING_RULES
+                    + "Color rules:\n"
+                    + SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS
                     + "Fix the reported root cause systematically, and also correct nearby Python/Manim runtime mistakes.\n"
                     + "Do not store mobjects across scene methods via `self`, do not hardcode MathTex numeric indexing, and keep layout inside x[-7,7], y[-4,4].\n"
                     + SystemPrompts.ANGLE_MARKER_RULES
@@ -23,7 +26,12 @@ public final class RenderFixPrompts {
             "You are a GeoGebra Classic debugging expert.\n"
                     + "Fix the GeoGebra command script so each command succeeds when replayed in order via `evalCommand(...)`.\n"
                     + "Preserve the intended construction meaning, object dependency chain, and storyboard teaching order.\n"
-                    + "Use English GeoGebra command names. Follow GeoGebra naming conventions: point names must start with uppercase, vector names with lowercase, use `_` for subscripts and `'` for primes. Do not use reserved labels (x, y, z, e, i, sin, cos, exp, log, etc.) as object names.\n"
+                    + "Use English GeoGebra command names.\n"
+                    + "Naming rules:\n"
+                    + SystemPrompts.GEOGEBRA_NAMING_RULES
+                    + "Color rules:\n"
+                    + SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS
+                    + "If you must rename an identifier or introduce a new one, update the commented `SCENE_BUTTONS` script consistently so it still references the final object names.\n"
                     + "Do not output Python, JavaScript, or explanations.\n"
                     + "If a command currently returns false, correct the root cause and also proactively repair nearby dependent commands.\n"
                     + "Do not break geometric constraints while fixing command failures; keep derived objects derived from their source objects.\n\n"
@@ -37,7 +45,7 @@ public final class RenderFixPrompts {
                 "Repair Manim code after render failure",
                 targetConcept,
                 targetDescription,
-                true
+                "manim"
         ) + SYSTEM);
     }
 
@@ -47,7 +55,7 @@ public final class RenderFixPrompts {
                 "Repair GeoGebra commands after render validation failure",
                 targetConcept,
                 targetDescription,
-                false
+                "geogebra"
         ) + GEOGEBRA_SYSTEM);
     }
 
@@ -73,6 +81,10 @@ public final class RenderFixPrompts {
                 .append("Error output:\n```\n").append(error).append("\n```\n\n")
                 .append("Please fix the reported error and also inspect nearby and structurally similar code paths for the same root cause.\n")
                 .append("If the storyboard encodes geometric constraints or derived constructions, preserve them while fixing the render failure.\n")
+                .append("If you must rename or introduce identifiers, follow these naming rules:\n")
+                .append(SystemPrompts.MANIM_NAMING_RULES)
+                .append("Also keep colors, labels, strokes, and fills high-contrast against their background by following these color rules:\n")
+                .append(SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS)
                 .append("Also proactively check for common Python and Manim runtime mistakes.\n")
                 .append("Remember: Return ONLY the single Python code block containing the full file. No explanation.\n");
 
@@ -104,7 +116,11 @@ public final class RenderFixPrompts {
                 .append("```geogebra\n").append(generatedCode).append("\n```\n\n")
                 .append("Validation failure details:\n```\n").append(error).append("\n```\n\n")
                 .append("Please rewrite the FULL command script so the failing commands become valid and downstream dependent commands remain correct.\n")
-                .append("Use English GeoGebra command names, follow GeoGebra naming conventions (uppercase points, lowercase vectors, no reserved labels), and preserve geometric dependency constraints from the storyboard.\n")
+                .append("Use English GeoGebra command names, preserve geometric dependency constraints from the storyboard, and follow these naming rules:\n")
+                .append(SystemPrompts.GEOGEBRA_NAMING_RULES)
+                .append("Also keep colors, labels, strokes, and fills high-contrast against their background by following these color rules:\n")
+                .append(SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS)
+                .append("If you rename an identifier or add a new one, also update the commented `SCENE_BUTTONS` script so it stays consistent with the final command script.\n")
                 .append("Remember: Return ONLY the single fenced `geogebra` code block. No explanation.\n");
 
         if (fixHistory != null && !fixHistory.isEmpty()) {

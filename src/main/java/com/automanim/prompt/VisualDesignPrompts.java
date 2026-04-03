@@ -15,7 +15,7 @@ public final class VisualDesignPrompts {
                     + "- Let formulas support the visual argument instead of replacing it.\n"
                     + "- If a reasoning step is not naturally visible, design a faithful visual proxy.\n"
                     + "- Keep the design reusable across different presentation backends such as animated scenes or interactive geometry.\n"
-                    + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES.replace("\n", "\n- ").trim() + "\n\n"
+                    + SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS + "\n"
                     + "Visual-planning constraints:\n"
                     + "- " + SystemPrompts.LAYOUT_FRAME_RULES.replace("\n", "\n- ").trim() + "\n"
                     + "- Use `scene_mode = 3d` only when depth is genuinely needed.\n"
@@ -28,7 +28,7 @@ public final class VisualDesignPrompts {
                     + "  \"scene_mode\": \"string, 2d by default or 3d only when depth is genuinely needed\",\n"
                     + "  \"camera_plan\": \"string, viewpoint, framing, or attention-guidance plan\",\n"
                     + "  \"screen_overlay_plan\": \"string, text, formulas, counters, labels, or UI-style annotations that sit outside the main geometry layout\",\n"
-                    + "  \"color_scheme\": \"string, semantic color roles and emphasis plan; keep foreground/background pairings high-contrast\",\n"
+                    + "  \"color_scheme\": \"string, semantic color roles and emphasis plan; follow the shared high-contrast color rules\",\n"
                     + "  \"duration\": \"number, approximate duration in seconds when timing matters\",\n"
                     + "  \"color_palette\": [\"string, concrete color name when useful\"]\n"
                     + "}\n\n"
@@ -45,7 +45,7 @@ public final class VisualDesignPrompts {
                 "Scene visual design",
                 targetConcept,
                 targetDescription,
-                true
+                outputTarget
         ) + "Output target backend: " + outputTarget + ".\n"
                 + "Design for this backend while keeping the visual intent as reusable and backend-neutral as possible.\n\n"
                 + SYSTEM;

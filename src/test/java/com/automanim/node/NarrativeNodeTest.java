@@ -108,11 +108,47 @@ class NarrativeNodeTest {
         assertFalse(narrative.getVerbosePrompt().contains("\"instructions\""));
     }
 
+    @Test
+    void geogebraOutputTargetBuildsGeoGebraVerbosePrompt() {
+        SequentialAiClient aiClient = new SequentialAiClient(List.of(validStoryboardResponse()));
+        Map<String, Object> ctx = buildContext(aiClient, createBasicRootNode(), createWorkflowConfig(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA));
+
+        new NarrativeNode().run(ctx);
+
+        Narrative narrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
+        assertNotNull(narrative);
+        assertTrue(narrative.getVerbosePrompt().contains("GeoGebra code block"));
+        assertFalse(narrative.getVerbosePrompt().contains("Python code block"));
+        assertFalse(narrative.getVerbosePrompt().contains("ThreeDScene"));
+        assertFalse(narrative.getVerbosePrompt().contains("add_fixed_in_frame_mobjects"));
+        assertFalse(narrative.getTargetDescription().contains("teaching animation"));
+        assertTrue(narrative.getTargetDescription().contains("interactive geometry construction"));
+    }
+
+    @Test
+    void manimOutputTargetStillBuildsManimVerbosePrompt() {
+        SequentialAiClient aiClient = new SequentialAiClient(List.of(validStoryboardResponse()));
+        Map<String, Object> ctx = buildContext(aiClient, createBasicRootNode(), createWorkflowConfig(WorkflowConfig.OUTPUT_TARGET_MANIM));
+
+        new NarrativeNode().run(ctx);
+
+        Narrative narrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
+        assertNotNull(narrative);
+        assertTrue(narrative.getVerbosePrompt().contains("Python code block"));
+        assertTrue(narrative.getVerbosePrompt().contains("ThreeDScene"));
+    }
+
     private static Map<String, Object> buildContext(AiClient aiClient) {
-        return buildContext(aiClient, createBasicRootNode());
+        return buildContext(aiClient, createBasicRootNode(), createWorkflowConfig());
     }
 
     private static Map<String, Object> buildContext(AiClient aiClient, KnowledgeNode root) {
+        return buildContext(aiClient, root, createWorkflowConfig());
+    }
+
+    private static Map<String, Object> buildContext(AiClient aiClient,
+                                                    KnowledgeNode root,
+                                                    WorkflowConfig config) {
         root.setReason("Introduce the target concept with one clear visual.");
 
         Map<String, KnowledgeNode> nodes = new LinkedHashMap<>();
@@ -127,7 +163,7 @@ class NarrativeNodeTest {
 
         Map<String, Object> ctx = new LinkedHashMap<>();
         ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
-        ctx.put(WorkflowKeys.CONFIG, createWorkflowConfig());
+        ctx.put(WorkflowKeys.CONFIG, config);
         ctx.put(WorkflowKeys.KNOWLEDGE_GRAPH, graph);
         return ctx;
     }
@@ -153,9 +189,14 @@ class NarrativeNodeTest {
     }
 
     private static WorkflowConfig createWorkflowConfig() {
+        return createWorkflowConfig(WorkflowConfig.OUTPUT_TARGET_MANIM);
+    }
+
+    private static WorkflowConfig createWorkflowConfig(String outputTarget) {
         WorkflowConfig config = new WorkflowConfig();
         config.setModel("test-model");
         config.setInputMode(WorkflowConfig.INPUT_MODE_CONCEPT);
+        config.setOutputTarget(outputTarget);
 
         ModelConfig model = new ModelConfig();
         model.setModel("test-model");

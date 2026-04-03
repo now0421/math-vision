@@ -13,7 +13,7 @@ public final class CodeGenerationPrompts {
                     + "Treat the provided storyboard JSON as an execution specification, not loose inspiration.\n\n"
                     + "Mandatory rules:\n"
                     + "- Use `from manim import *`.\n"
-                    + "- " + SystemPrompts.ASCII_IDENTIFIER_RULES
+                    + SystemPrompts.MANIM_NAMING_RULES
                     + "- Preserve scene continuity instead of clearing the scene between beats.\n"
                     + "- Do not store mobjects on `self` just to reuse them across scene methods.\n"
                     + "- Do not hardcode numeric MathTex subobject indexing.\n"
@@ -63,7 +63,9 @@ public final class CodeGenerationPrompts {
                     + "You will receive generated GeoGebra command code together with static validation failures.\n"
                     + "Rewrite the full command script so it becomes valid, dependency-safe, and ready for the next workflow stage.\n"
                     + "Fix every reported validation problem, preserve the teaching content, keep the requested figure naming intent, and proactively fix nearby GeoGebra mistakes.\n"
-                    + "Use English GeoGebra command names. Follow GeoGebra naming conventions (uppercase-starting point names, lowercase-starting vector names, no reserved labels). Translate any remaining ASCII-spelled ids to GeoGebra-native math names (`Bprime` → `B'`, `Pstar` → `P_{*}`, `Popt` → `P_{opt}`).\n\n"
+                    + "Use English GeoGebra command names.\n"
+                    + "Naming rules:\n"
+                    + SystemPrompts.GEOGEBRA_NAMING_RULES + "\n"
                     + SystemPrompts.GEOGEBRA_CODE_OUTPUT_FORMAT;
 
     private static final String GEOGEBRA_CODE_GENERATION_SYSTEM =
@@ -72,8 +74,7 @@ public final class CodeGenerationPrompts {
                     + "Treat the storyboard as the source of truth for object identity, geometry meaning, layout intent, and teaching order.\n\n"
                     + "Mandatory rules:\n"
                     + "- Return GeoGebra commands, not Python and not JavaScript.\n"
-                    + "- Follow GeoGebra naming conventions: point names must start with an uppercase letter; vector names must start with a lowercase letter; function names use `f(x) = ...` notation; use `_` for subscripts (`A_1`, `s_{AB}`) and `'` for primes (`B'`). Never use GeoGebra reserved labels as object names — this includes `x`, `y`, `z`, `e`, `i`, `pi`, and all built-in math function names such as `sin`, `cos`, `tan`, `exp`, `log`, `ln`, `abs`, `sqrt`, `floor`, `ceil`, `round`, `random`, `arg`, `gamma`, `beta`, `sec`, `csc`, `cot`.\n"
-                    + "- Translate storyboard ASCII ids to GeoGebra-native math names: `Bprime` → `B'`, `ABprime` → `AB'`, `Pstar` → `P_{*}`, `Popt` → `P_{opt}`. If the storyboard already uses native names like `B'` or `P_{opt}`, keep them verbatim.\n"
+                    + SystemPrompts.GEOGEBRA_NAMING_RULES
                     + "- Prefer common, stable GeoGebra Classic commands over obscure tricks.\n"
                     + "- Build from base objects to derived objects in a clear dependency chain.\n"
                     + "- Preserve geometric meaning: intersections, reflections, midpoints, perpendiculars, parallels, equal-radius points, and similar constructions must stay dependency-driven.\n"
@@ -90,7 +91,7 @@ public final class CodeGenerationPrompts {
                     + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES
                     + "- Keep the script organized in scene order so downstream scene buttons can toggle the right visible objects.\n"
                     + "- For angle markers with `Angle(B, A, C)`, the middle argument is the vertex and the angle is measured counterclockwise from ray AB to ray AC. Choose the point order so the counterclockwise sweep covers the intended small angle sector. For example, to mark the angle between an incoming segment from upper-left and a rightward horizontal at vertex P, use `Angle(rightPoint, P, upperLeftPoint)` so the CCW sweep is the small angle above the line.\n"
-                    + "- Use `Angle(...)` with `SetFilling` as the sole method for angle markers and sectors. Never use `CircularArc` for angle marker purposes — it draws decorative arcs unrelated to angle measurement and produces incorrect visual results.\n\n"
+                    + "- Use `Angle(...)` with `SetFilling` as the sole method for angle markers and sectors. Never use `CircularArc` for angle marker purposes; it draws decorative arcs unrelated to angle measurement and produces incorrect visual results.\n\n"
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_GEOGEBRA + "\n"
                     + SystemPrompts.GEOGEBRA_CODE_OUTPUT_FORMAT.replace("corrected command script", "GeoGebra command script");
 
@@ -109,7 +110,7 @@ public final class CodeGenerationPrompts {
                     "Generate executable GeoGebra code",
                     targetConcept,
                     targetDescription,
-                    false
+                    "geogebra"
             ) + GEOGEBRA_CODE_GENERATION_SYSTEM);
         }
         return SystemPrompts.ensureManimSyntaxManual(SystemPrompts.buildWorkflowPrefix(
@@ -117,7 +118,7 @@ public final class CodeGenerationPrompts {
                 "Generate executable Manim code",
                 targetConcept,
                 targetDescription,
-                true
+                "manim"
         ) + CODE_GENERATION_SYSTEM);
     }
 
@@ -127,7 +128,7 @@ public final class CodeGenerationPrompts {
                 "Repair generated code after validation findings",
                 targetConcept,
                 targetDescription,
-                true
+                "manim"
         ) + VALIDATION_FIX_SYSTEM);
     }
 
@@ -137,7 +138,7 @@ public final class CodeGenerationPrompts {
                 "Repair generated GeoGebra commands after validation findings",
                 targetConcept,
                 targetDescription,
-                false
+                "geogebra"
         ) + GEOGEBRA_VALIDATION_FIX_SYSTEM);
     }
 
@@ -167,9 +168,10 @@ public final class CodeGenerationPrompts {
                         + "Problems found:\n%s\n\n"
                         + "Rewrite the FULL code so it satisfies all validation rules while preserving the teaching goal.\n"
                         + "If storyboard geometry constraints or derived-object definitions are present, preserve them while fixing validation issues.\n"
-                        + "Keep `%s` as the exact scene class name, use ASCII-only Python identifiers, and also fix nearby Python/Manim mistakes.\n"
+                        + "Keep `%s` as the exact scene class name, follow these naming rules, and also fix nearby Python/Manim mistakes.\n"
+                        + "%s"
                         + "Return ONLY the full Python code block.",
-                storyboardBlock, sceneName, generatedCode, problemList, sceneName);
+                storyboardBlock, sceneName, generatedCode, problemList, sceneName, SystemPrompts.MANIM_NAMING_RULES);
     }
 
     public static String geoGebraValidationFixUserPrompt(String figureName,
@@ -192,8 +194,9 @@ public final class CodeGenerationPrompts {
                         + "Problems found:\n%s\n\n"
                         + "Rewrite the FULL command script so it satisfies all validation rules while preserving the teaching goal.\n"
                         + "If storyboard geometry constraints or derived-object definitions are present, preserve them while fixing validation issues.\n"
-                        + "Use English GeoGebra command names, follow GeoGebra naming conventions (uppercase points, lowercase vectors, no reserved labels), and preserve the figure naming intent around `%s`.\n"
+                        + "Use English GeoGebra command names, preserve the figure naming intent around `%s`, and follow these naming rules:\n"
+                        + "%s"
                         + "Return ONLY the full GeoGebra code block.",
-                storyboardBlock, figureName, geoGebraCode, problemList, figureName);
+                storyboardBlock, figureName, geoGebraCode, problemList, figureName, SystemPrompts.GEOGEBRA_NAMING_RULES);
     }
 }

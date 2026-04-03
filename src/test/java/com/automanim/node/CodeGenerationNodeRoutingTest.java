@@ -185,6 +185,28 @@ class CodeGenerationNodeRoutingTest {
     }
 
     @Test
+    void geogebraPromptAllowsNativeMathNamesWithoutAsciiOnlyConflict() {
+        QueueAiClient aiClient = new QueueAiClient();
+        aiClient.toolResponses.add(geogebraCodegenResponse(String.join("\n",
+                "B' = (0, 0)",
+                "P_{opt} = (1, 0)")));
+
+        WorkflowConfig config = new WorkflowConfig();
+        config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.CONFIG, config);
+        ctx.put(WorkflowKeys.NARRATIVE, buildStoryboardNarrative());
+
+        new CodeGenerationNode().run(ctx);
+
+        assertNotNull(aiClient.lastUserMessage);
+        assertTrue(aiClient.lastUserMessage.contains("`B'`, `AB'`, and `P_{opt}` are allowed and preferred"));
+        assertFalse(aiClient.lastUserMessage.contains("All object names and identifiers must use ASCII only."));
+    }
+
+    @Test
     void geogebraValidationRoutesFixThroughSharedCodeFixNode() {
         QueueAiClient aiClient = new QueueAiClient();
         aiClient.toolResponses.add(geogebraCodegenResponse(String.join("\n",
@@ -381,4 +403,3 @@ class CodeGenerationNodeRoutingTest {
         }
     }
 }
-
