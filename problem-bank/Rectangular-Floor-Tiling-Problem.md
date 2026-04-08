@@ -14,8 +14,5 @@ Xiaoming’s study room floor is a rectangular area measuring **60 cm** in lengt
 
 **Questions:**
 
-1. Can the floor be exactly covered using only **Tile A**?
-   If yes, provide at least **two different tiling arrangements** and calculate the number of Tile A pieces required in each arrangement.
-
-2. Can the floor be exactly covered using a combination of **Tile A** and **Tile B**?
+Can the floor be exactly covered using a combination of **Tile A** and **Tile B**?
    If yes, provide **one feasible tiling arrangement** and calculate how many Tile A and Tile B tiles are needed.

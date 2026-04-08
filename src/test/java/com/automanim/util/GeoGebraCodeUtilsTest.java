@@ -150,4 +150,35 @@ class GeoGebraCodeUtilsTest {
         assertEquals(List.of("point_B"), directives.get(1).hide);
     }
 
+    @Test
+    void enrichWithSceneButtons_preservesExistingSceneDirectivesFromCodeFix() {
+        Narrative.Storyboard storyboard = new Narrative.Storyboard();
+
+        Narrative.StoryboardScene scene = new Narrative.StoryboardScene();
+        scene.setSceneId("scene_1");
+        scene.setTitle("Storyboard Scene");
+        Narrative.StoryboardObject storyboardPoint = new Narrative.StoryboardObject();
+        storyboardPoint.setId("point_A");
+        scene.setEnteringObjects(List.of(storyboardPoint));
+        storyboard.setScenes(List.of(scene));
+
+        String codeWithUpdatedDirectives = String.join("\n",
+                "A = (0, 0)",
+                "B = (4, 0)",
+                "",
+                "# AUTOGEN_SCENE_BUTTONS_BEGIN",
+                "# @scene {\"id\":\"scene_1\",\"title\":\"Fixed Scene\",\"show\":[\"A\"],\"hide\":[\"B\"]}",
+                "# AUTOGEN_SCENE_BUTTONS_END");
+
+        String enriched = GeoGebraCodeUtils.enrichWithSceneButtons(codeWithUpdatedDirectives, storyboard);
+        List<GeoGebraCodeUtils.SceneDirective> directives = GeoGebraCodeUtils.extractSceneDirectives(enriched);
+
+        assertEquals(1, directives.size());
+        assertEquals("scene_1", directives.get(0).id);
+        assertEquals("Fixed Scene", directives.get(0).title);
+        assertEquals(List.of("A"), directives.get(0).show);
+        assertEquals(List.of("B"), directives.get(0).hide);
+        assertFalse(enriched.contains("point_A"));
+    }
+
 }

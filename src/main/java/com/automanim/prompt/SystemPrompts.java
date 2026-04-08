@@ -106,7 +106,7 @@ public final class SystemPrompts {
     /** High-contrast color rules to avoid pale-on-pale combinations. */
     public static final String HIGH_CONTRAST_COLOR_RULES =
             "Keep text, labels, strokes, and fills visually distinct from their background.\n"
-                    + "Avoid low-contrast pairings such as yellow on white, white on light yellow, light-gray on white, or similar pale-on-pale combinations.\n";
+                    + "Avoid low-contrast pairings such as yellow on white, white on light yellow, or similar pale-on-pale combinations.\n";
 
     /** High-contrast color rules formatted as bullet lines for direct prompt insertion. */
     public static final String HIGH_CONTRAST_COLOR_RULES_BULLETS =
