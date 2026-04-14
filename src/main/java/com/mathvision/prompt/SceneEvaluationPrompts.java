@@ -7,7 +7,7 @@ import java.util.List;
  */
 public final class SceneEvaluationPrompts {
 
-    private static final String SYSTEM =
+    private static final String MANIM_SYSTEM =
             "You are fixing Manim code that rendered but has layout issues detected by geometry analysis.\n"
                     + "Preserve the teaching goal, visual intent, scene class name, and continuity.\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
@@ -53,7 +53,7 @@ public final class SceneEvaluationPrompts {
                 targetConcept,
                 targetDescription,
                 "manim"
-        ) + SYSTEM);
+        ) + MANIM_SYSTEM);
     }
 
     public static String geoGebraLayoutFixSystemPrompt(String targetConcept, String targetDescription) {

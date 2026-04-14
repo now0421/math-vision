@@ -7,7 +7,7 @@ import java.util.List;
  */
 public final class CodeGenerationPrompts {
 
-    private static final String CODE_GENERATION_SYSTEM =
+    private static final String MANIM_CODE_GENERATION_SYSTEM =
             "You are an expert Manim Community engineer and Python programmer.\n"
                     + "Generate complete, runnable, maintainable Python code that implements the storyboard.\n"
                     + "Treat the provided storyboard JSON as an execution specification, not loose inspiration.\n\n"
@@ -69,7 +69,7 @@ public final class CodeGenerationPrompts {
                     + "- Use subtitle-ready beats for major reveals when narration alignment matters.\n\n"
                     + SystemPrompts.PYTHON_CODE_OUTPUT_FORMAT.replace("corrected", "runnable");
 
-    private static final String VALIDATION_FIX_SYSTEM =
+    private static final String MANIM_VALIDATION_FIX_SYSTEM =
             "You are a Manim code correction specialist.\n"
                     + "You will receive generated Manim code together with validation failures.\n"
                     + "Rewrite the full file so it becomes valid, consistent, and ready for the next workflow stage.\n"
@@ -150,7 +150,7 @@ public final class CodeGenerationPrompts {
                 targetConcept,
                 targetDescription,
                 "manim"
-        ) + CODE_GENERATION_SYSTEM);
+        ) + MANIM_CODE_GENERATION_SYSTEM);
     }
 
     public static String validationFixSystemPrompt(String targetConcept, String targetDescription) {
@@ -160,7 +160,7 @@ public final class CodeGenerationPrompts {
                 targetConcept,
                 targetDescription,
                 "manim"
-        ) + VALIDATION_FIX_SYSTEM);
+        ) + MANIM_VALIDATION_FIX_SYSTEM);
     }
 
     public static String geoGebraValidationFixSystemPrompt(String targetConcept, String targetDescription) {

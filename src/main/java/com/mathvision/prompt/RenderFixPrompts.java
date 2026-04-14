@@ -8,7 +8,7 @@ import java.util.List;
  */
 public final class RenderFixPrompts {
 
-    private static final String SYSTEM =
+    private static final String MANIM_SYSTEM =
             "You are a Manim Community debugging expert.\n"
                     + "Fix the code so it renders successfully.\n"
                     + "Preserve the original scene class name and intended animation meaning.\n"
@@ -51,7 +51,7 @@ public final class RenderFixPrompts {
                 targetConcept,
                 targetDescription,
                 "manim"
-        ) + SYSTEM);
+        ) + MANIM_SYSTEM);
     }
 
     public static String geoGebraSystemPrompt(String targetConcept, String targetDescription) {
