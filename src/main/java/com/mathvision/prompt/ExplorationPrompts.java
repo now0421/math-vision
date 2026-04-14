@@ -57,6 +57,8 @@ public final class ExplorationPrompts {
                     + "Each node should feel close to one scene or one major reveal.\n"
                     + "Prefer a discovery arc or problem-solution arc over a dry list of algebraic manipulations.\n"
                     + "The graph should help the learner move from hook to observation to key insight to conclusion.\n"
+                    + "Use `step` for what the beat does or shows, and `reason` for why that beat is needed before the next one.\n"
+                    + "Make the key insight or transformation explicit in its own beat.\n"
                     + "Use node types from: problem, observation, construction, derivation, conclusion.\n"
                     + "The root must be the final conclusion node at depth 0.\n"
                     + "Prefer 4 to 7 strong beats unless the problem truly needs more.\n"
@@ -86,23 +88,31 @@ public final class ExplorationPrompts {
         ) + INPUT_MODE_CLASSIFIER_SYSTEM;
     }
 
-    public static String conceptGraphSystemPrompt(String targetTitle, String targetDescription) {
+    public static String conceptGraphSystemPrompt(String targetTitle, String targetDescription,
+                                                   int maxDepth, int minDepth) {
         return SystemPrompts.buildWorkflowPrefix(
                 "Stage 0 / Exploration",
                 "Concept teaching-graph planning",
                 targetTitle,
                 targetDescription,
                 (String) null
-        ) + CONCEPT_GRAPH_SYSTEM;
+        ) + CONCEPT_GRAPH_SYSTEM + depthBudgetInstruction(maxDepth, minDepth);
     }
 
-    public static String problemGraphSystemPrompt(String targetTitle, String targetDescription) {
+    public static String problemGraphSystemPrompt(String targetTitle, String targetDescription,
+                                                   int maxDepth, int minDepth) {
         return SystemPrompts.buildWorkflowPrefix(
                 "Stage 0 / Exploration",
                 "Problem solution-step graph planning",
                 targetTitle,
                 targetDescription,
                 (String) null
-        ) + PROBLEM_GRAPH_SYSTEM;
+        ) + PROBLEM_GRAPH_SYSTEM + depthBudgetInstruction(maxDepth, minDepth);
+    }
+
+    private static String depthBudgetInstruction(int maxDepth, int minDepth) {
+        return "Stay within an overall depth budget of about " + Math.max(1, maxDepth)
+                + " levels when possible, and try to make the graph at least " + Math.max(0, minDepth)
+                + " levels deep when the teaching flow naturally supports it.\n";
     }
 }

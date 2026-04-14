@@ -11,21 +11,20 @@ public final class NarrativePrompts {
             "You are a STEM narrative designer writing a structured storyboard for a math teaching visualization.\n"
                     + "Write a scene-by-scene storyboard that functions as a visual presentation plan rather than a written solution.\n"
                     + "Begin with a clear hook, introduce foundations before advanced content, and keep the storyboard continuity-safe.\n\n"
+                    + SystemPrompts.NARRATIVE_PHILOSOPHY
+                    + SystemPrompts.VISUAL_PLANNING_RULES
+                    + SystemPrompts.COMPOSITION_RULES
+                    + SystemPrompts.OBJECT_LIFECYCLE_RULES
                     + "Layout rules:\n"
                     + "- Frame is 16:9 with " + SystemPrompts.LAYOUT_FRAME_RULES.toLowerCase()
                     .replace("keep important content within", "important content kept inside")
                     .replace("usually keep each step to", "keep simultaneous main visual elements around")
                     .replace(".\n", "\n- ").trim() + "\n"
                     + "- Place formulas near edges, not over the main geometry\n"
-                    + "- Keep the diagram stable across scenes and change only the necessary layer\n"
                     + "- " + SystemPrompts.STORYBOARD_FIELD_GUIDE
                     .replace("\n- ", "\n- ")
                     .replace("How to interpret the storyboard fields:\n", "Field responsibilities: ").trim() + "\n"
-                    + "- If an object is movable but constrained, keep `behavior` for dependency semantics and encode the motion/path/range constraint explicitly in `geometry_constraints`, `constraint_note`, `dependency_note`, `placement`, or `notes_for_codegen`\n"
-                    + "- When an object depends on another object's position, encode that dependency explicitly with `behavior`, `anchor_id`, and `dependency_note`\n"
-                    + "- When a geometric relationship must survive later layout fixes, record it explicitly in `geometry_constraints` and in object-level `constraint_note`\n"
-                    + "- Treat relationships such as symmetry, reflection, equal length, equal angle, collinearity, intersection, perpendicularity, and shared-center motion as hard constraints, not optional style notes\n"
-                    + "- If a layout risks overflow, prefer planning a smaller or recentered whole construction rather than placing mathematically linked points independently near the edges\n\n"
+                    + SystemPrompts.GEOMETRY_CONSTRAINT_AUTHORING_RULES
                     + "3D rules:\n"
                     + "- Use `scene_mode = 3d` only when depth is genuinely needed\n"
                     + "- Include explicit `camera_plan`\n"
@@ -33,10 +32,8 @@ public final class NarrativePrompts {
                     + "Narrative rules:\n"
                     + "- Narrative must not be constrained by a fixed word count\n"
                     + "- Use enrichment fields only when they sharpen the explanation\n"
-                    + "- If the target is a problem, every scene should advance understanding or the solution arc; observation, contrast, failed attempt, evidence, and key insight beats are all valid when they are learner-useful\n"
                     + "- Prefer 3 to 5 strong scenes for problem-solving unless more are truly needed\n"
                     + "- Write narration as learner-facing beats: each sentence should correspond to something visible, highlighted, transformed, or deliberately held on screen\n"
-                    + "- Prefer one new idea per scene, and use progressive disclosure instead of dumping the final state at once\n"
                     + "- Leave breathing room after key reveals; the storyboard should not imply nonstop motion with no time to read\n"
                     + "- Plan scene transitions intentionally: choose clean break (fade all, pause), carry-forward (keep one anchor, fade rest), or transform bridge for each scene boundary. Record the chosen style in `notes_for_codegen` when the intent is non-obvious\n"
                     + "- Plan per-scene variation: vary the dominant visual focus, spatial layout pattern, and visual density across scenes. Avoid identical composition for consecutive scenes\n"
@@ -49,9 +46,7 @@ public final class NarrativePrompts {
                     + "- Do not use a free-text `instructions` field inside style entries. Encode visual intent directly in `properties` using concrete keys and values.\n"
                     + "- For text cards, formulas with badges, boxed labels, counters, or callouts, encode separate text and background layers as separate entries inside `style`.\n"
                     + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n"
-                    + "- Prefer restyling an existing object (color, thickness, dash style) over creating a duplicate on the same endpoints; this keeps the construction clean and avoids overlapping objects\n"
-                    + "- Each scene shows only the elements needed for its teaching goal; when a temporary comparison element (test point, alternate path) has served its purpose, include it in `exiting_objects` of the current or next scene\n"
-                    + "- Plan transitions intentionally: a scene may end with a clean break, a carry-forward anchor, or a transform bridge, but not with accidental clutter\n"
+                    + "- When a temporary element has served its purpose, include it in `exiting_objects` of the current or next scene\n"
                     + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES + "\n";
 
     private static final String GEOGEBRA_RULES =
@@ -67,17 +62,13 @@ public final class NarrativePrompts {
 
     private static final String MANIM_RULES =
             "Manim-specific storyboard rules:\n"
-                    + SystemPrompts.MANIM_NARRATIVE_PHILOSOPHY
-                    + SystemPrompts.MANIM_VISUAL_PLANNING_RULES
                     + SystemPrompts.MANIM_MOTION_AND_PACING_RULES
-                    + SystemPrompts.MANIM_COMPOSITION_RULES
                     + SystemPrompts.MANIM_TEXT_AND_READABILITY_RULES
-                    + SystemPrompts.MANIM_OBJECT_LIFECYCLE_RULES
                     + SystemPrompts.MANIM_NAMING_RULES
                     + "- Every learner-visible Manim object must be explicitly represented in `entering_objects` or `persistent_objects`; do not hide visible labels inside another object's prose description.\n"
                     + "- If a point, marker, label, counter, or helper must visibly follow another object, create a separate object and describe the attachment with `behavior`, `anchor_id`, and `dependency_note`.\n"
                     + "- For moving points or markers, create a separate label object with `behavior = follows_anchor` so the label tracks the moving object.\n"
-                    + "- Manim does not auto-label points. For every named `kind: point` object (e.g. A, B, P), declare a companion `kind: text` label in the same scene's `entering_objects` with `behavior = follows_anchor` and `anchor_id` pointing to the point id. Omit a label only when the point is purely structural and its identity is never referenced by the narration or other objects.\n"
+                    + "- Manim does not auto-label any object. For every object (points, lines, angles, arcs, etc.) whose name or value must appear on screen, explicitly declare a companion `kind: text` label in the same scene's `entering_objects`; attach it with `behavior = follows_anchor` and `anchor_id` pointing to the parent object's id. Never assume a label will appear automatically.\n"
                     + "- Use `screen_overlay_plan` only for true viewport-fixed explanatory overlays, not as a vague place to hide layout conflicts.\n"
                     + "- Once a color is assigned to a concept, it keeps that meaning across the entire storyboard. Record color-to-concept assignments in `global_visual_rules`.\n";
 

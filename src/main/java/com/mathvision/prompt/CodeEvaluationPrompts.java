@@ -92,7 +92,7 @@ public final class CodeEvaluationPrompts {
                     + "Rewrite the full code so it is visually safer before render.\n"
                     + "Reduce clutter, preserve continuity with transforms, correct semantically wrong placements, keep 3D camera plans readable, and also fix common Python/Manim runtime mistakes.\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
-                    + SystemPrompts.MANIM_COMPOSITION_RULES
+                    + SystemPrompts.COMPOSITION_RULES
                     + SystemPrompts.MANIM_TEXT_AND_READABILITY_RULES
                     + SystemPrompts.MANIM_CODE_HYGIENE_RULES
                     + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
@@ -108,6 +108,8 @@ public final class CodeEvaluationPrompts {
                     + "Preserve dependency-safe geometry, object identities, scene visibility progression, and teaching intent.\n"
                     + "Fix storyboard misalignments such as missing constructions, incorrect scene visibility, incorrect substitutions for requested geometry, and captions unsupported by the actual construction.\n"
                     + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
+                    + SystemPrompts.COMPOSITION_RULES
+                    + SystemPrompts.OBJECT_LIFECYCLE_RULES
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_GEOGEBRA_REPAIR
                     + SystemPrompts.GEOMETRY_CONSTRAINT_RULES + "\n"
                     + SystemPrompts.GEOGEBRA_CODE_OUTPUT_FORMAT;

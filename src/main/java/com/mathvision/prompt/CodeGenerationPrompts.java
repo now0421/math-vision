@@ -14,16 +14,16 @@ public final class CodeGenerationPrompts {
                     + "Mandatory rules:\n"
                     + "- Use `from manim import *`.\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
-                    + SystemPrompts.MANIM_NARRATIVE_PHILOSOPHY
-                    + SystemPrompts.MANIM_VISUAL_PLANNING_RULES
+                    + SystemPrompts.NARRATIVE_PHILOSOPHY
+                    + SystemPrompts.VISUAL_PLANNING_RULES
                     + SystemPrompts.MANIM_MOTION_AND_PACING_RULES
-                    + SystemPrompts.MANIM_COMPOSITION_RULES
+                    + SystemPrompts.COMPOSITION_RULES
                     + SystemPrompts.MANIM_TEXT_AND_READABILITY_RULES
                     + SystemPrompts.MANIM_ANIMATION_SELECTION_RULES
-                    + SystemPrompts.MANIM_OBJECT_LIFECYCLE_RULES
+                    + SystemPrompts.OBJECT_LIFECYCLE_RULES
                     + SystemPrompts.MANIM_CODE_HYGIENE_RULES
                     + SystemPrompts.MANIM_TYPOGRAPHY_SCALE
-                    + SystemPrompts.MANIM_OPACITY_LEVELS
+                    + SystemPrompts.OPACITY_LEVELS
                     + SystemPrompts.MANIM_TIMING_REFERENCE
                     + SystemPrompts.MANIM_SCENE_TRANSITION_RULES
                     + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
@@ -97,11 +97,16 @@ public final class CodeGenerationPrompts {
                     + "Mandatory rules:\n"
                     + "- Return GeoGebra commands, not Python and not JavaScript.\n"
                     + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
+                    + SystemPrompts.NARRATIVE_PHILOSOPHY
+                    + SystemPrompts.VISUAL_PLANNING_RULES
+                    + SystemPrompts.COMPOSITION_RULES
+                    + SystemPrompts.OPACITY_LEVELS
                     + SystemPrompts.GEOGEBRA_NAMING_RULES
                     + "- Prefer common, stable GeoGebra Classic commands over obscure tricks.\n"
                     + "- Build from base objects to derived objects in a clear dependency chain.\n"
                     + "- Preserve geometric meaning: intersections, reflections, midpoints, perpendiculars, parallels, equal-radius points, and similar constructions must stay dependency-driven.\n"
                     + "- Treat storyboard `geometry_constraints` and object `constraint_note` fields as hard mathematical invariants.\n"
+                    + SystemPrompts.GEOMETRY_CONSTRAINT_RULES
                     + "- Interpret storyboard `behavior` by dependency semantics, not by motion permission: `static` means independently defined base object, not automatically a free point.\n"
                     + "- If a point is constrained to a path or object, construct it as a point on that object or with an equivalent dependency-safe definition. Do not replace it with a free coordinate point.\n"
                     + "- If a point is described as fixed and no dependency is stated, define it as an independent anchor and keep it fixed unless the storyboard explicitly asks for dragging.\n"
@@ -115,6 +120,7 @@ public final class CodeGenerationPrompts {
                     + "- Keep the script organized in scene order so downstream scene buttons can toggle the right visible objects.\n"
                     + "- If a requested visual effect would require a command not documented in the manual, re-express it with documented commands or omit that unsupported decoration.\n\n"
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_GEOGEBRA + "\n"
+                    + SystemPrompts.OBJECT_LIFECYCLE_RULES
                     + "Additional storyboard field rules:\n"
                     + "- When `content`, `dependency_note`, or other object fields mention another object, treat those mentions as object ids only. Do not reinterpret kind words from prose and do not invent a second object type for the same id.\n"
                     + "- Treat storyboard object ids as the naming source for generated GeoGebra variables. Preserve those ids in code, and when you must introduce a helper name, use concise camelCase or math-style identifiers.\n\n"

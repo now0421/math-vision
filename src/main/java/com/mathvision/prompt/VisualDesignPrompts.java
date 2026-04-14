@@ -26,9 +26,9 @@ public final class VisualDesignPrompts {
             "You are a Manim-first visual designer for math teaching visualizations.\n"
                     + "Turn abstract reasoning into a learner-facing visual plan before any code is written.\n"
                     + "Do not invent unsupported givens or alternative solution branches.\n\n"
-                    + SystemPrompts.MANIM_NARRATIVE_PHILOSOPHY
-                    + SystemPrompts.MANIM_VISUAL_PLANNING_RULES
-                    + SystemPrompts.MANIM_COMPOSITION_RULES
+                    + SystemPrompts.NARRATIVE_PHILOSOPHY
+                    + SystemPrompts.VISUAL_PLANNING_RULES
+                    + SystemPrompts.COMPOSITION_RULES
                     + SystemPrompts.MANIM_TEXT_AND_READABILITY_RULES
                     + SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS
                     + "Manim visual-planning constraints:\n"
@@ -47,6 +47,9 @@ public final class VisualDesignPrompts {
             "You are a visual designer for GeoGebra teaching constructions.\n"
                     + "Turn abstract reasoning into something the learner can see, compare, or manipulate.\n"
                     + "Do not invent unsupported givens or alternative solution branches.\n\n"
+                    + SystemPrompts.NARRATIVE_PHILOSOPHY
+                    + SystemPrompts.VISUAL_PLANNING_RULES
+                    + SystemPrompts.COMPOSITION_RULES
                     + "Visual design principles:\n"
                     + "- Prefer direct visual reasoning over text-heavy explanation.\n"
                     + "- Keep the learner oriented around one stable construction when possible.\n"

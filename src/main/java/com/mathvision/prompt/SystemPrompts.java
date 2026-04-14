@@ -114,32 +114,40 @@ public final class SystemPrompts {
                     + "For reflected points, intersections, midpoints, feet of perpendiculars, or similar derived geometry, compute them from source objects instead of assigning unrelated coordinates.\n"
                     + "If layout is unsafe, prefer moving/scaling whole constrained groups or recentering, not editing derived coordinates independently.\n";
 
+    /** Storyboard authoring rules for encoding geometry constraints that downstream stages must preserve. */
+    public static final String GEOMETRY_CONSTRAINT_AUTHORING_RULES =
+            "Storyboard geometry constraint authoring rules:\n"
+                    + "- If an object is movable but constrained, keep `behavior` for dependency semantics and encode the motion/path/range constraint explicitly in `geometry_constraints`, `constraint_note`, `dependency_note`, `placement`, or `notes_for_codegen`.\n"
+                    + "- When an object depends on another object's position, encode that dependency explicitly with `behavior`, `anchor_id`, and `dependency_note`.\n"
+                    + "- When a geometric relationship must survive later layout fixes, record it explicitly in `geometry_constraints` and in object-level `constraint_note`.\n"
+                    + "- Treat geometric relationships such as symmetry, reflection, equal length, equal angle, collinearity, intersection, perpendicularity, and shared-center motion as hard constraints, not optional style notes.\n"
+                    + "- If a layout risks overflow, prefer planning a smaller or recentered whole construction rather than placing mathematically linked points independently near the edges.\n";
+
     /** High-contrast color rules to avoid pale-on-pale combinations. */
     public static final String HIGH_CONTRAST_COLOR_RULES =
             "Keep text, labels, strokes, and fills visually distinct from their background.\n"
-                    + "Avoid low-contrast pairings such as yellow on white, white on light yellow, or similar pale-on-pale combinations.\n"
-                    + "In Manim, MathTex and Tex default to WHITE text. When placing them inside a WHITE BackgroundRectangle or on any light-colored card, always set the text color to BLACK (or another dark color) explicitly with `.set_color(BLACK)`.\n";
+                    + "Avoid low-contrast pairings such as yellow on white, white on light yellow, or similar pale-on-pale combinations.\n";
 
     /** High-contrast color rules formatted as bullet lines for direct prompt insertion. */
     public static final String HIGH_CONTRAST_COLOR_RULES_BULLETS =
             "- " + HIGH_CONTRAST_COLOR_RULES.replace("\n", "\n- ").trim() + "\n";
 
-    /** Shared Manim storytelling philosophy. */
-    public static final String MANIM_NARRATIVE_PHILOSOPHY =
-            "Manim teaching philosophy:\n"
-                    + "- Treat every scene as educational cinema: each scene should move the learner toward one clear insight.\n"
+    /** Shared storytelling philosophy for all output targets. */
+    public static final String NARRATIVE_PHILOSOPHY =
+            "Teaching philosophy:\n"
+                    + "- Treat every scene or step as a teaching moment: each should move the learner toward one clear insight.\n"
                     + "- Start from a hook, question, failed intuition, or contrast whenever it improves understanding.\n"
                     + "- Explain why before how when both cannot fit comfortably.\n"
                     + "- Put geometry or visual intuition before algebra whenever possible so formulas feel earned.\n"
-                    + "- A problem storyboard may include observation, failed attempt, key insight, evidence, and conclusion beats; it is not limited to raw solving steps.\n";
+                    + "- A problem storyboard may include observation, failed attempt, key insight, evidence, and conclusion beats or steps; it is not limited to raw solving steps.\n";
 
-    /** Shared Manim visual planning rules. */
-    public static final String MANIM_VISUAL_PLANNING_RULES =
-            "Manim visual planning rules:\n"
-                    + "- One new idea per scene or per major beat.\n"
+    /** Shared visual planning rules for all output targets. */
+    public static final String VISUAL_PLANNING_RULES =
+            "Visual planning rules:\n"
+                    + "- One new idea per scene or step.\n"
                     + "- Prefer progressive disclosure: show the simplest readable state first, then add complexity.\n"
-                    + "- Keep the same concept in the same region and color across scenes unless the move itself teaches something.\n"
-                    + "- Use color semantically: assign colors to concepts, not to arbitrary mobjects.\n"
+                    + "- Keep the same concept in the same region and color across scenes or steps unless the move itself teaches something.\n"
+                    + "- Use color semantically: assign colors to concepts, not to arbitrary objects.\n"
                     + "- Prefer transform- or restyle-based continuity over replacing everything.\n"
                     + "- Decide intentionally whether a concept should animate or remain static; motion should clarify change, not add load.\n";
 
@@ -152,14 +160,14 @@ public final class SystemPrompts {
                     + "- Vary tempo: slower for core reveals, faster for supporting details, and a longer pause around the key insight.\n"
                     + "- Prefer the \"see, then hear\" timing pattern for major ideas.\n";
 
-    /** Shared Manim composition and empty-space rules. */
-    public static final String MANIM_COMPOSITION_RULES =
-            "Manim composition rules:\n"
-                    + "- Maintain one clear focus per frame using size, color, brightness, or placement.\n"
+    /** Shared composition and empty-space rules for all output targets. */
+    public static final String COMPOSITION_RULES =
+            "Composition rules:\n"
+                    + "- Maintain one clear focus per frame or view using size, color, brightness, or placement.\n"
                     + "- Apply the three-tier opacity hierarchy: primary focus at 1.0, contextual elements at 0.3–0.4, structural scaffolding (axes, grids) at 0.15.\n"
                     + "- Keep visual weight balanced across the frame instead of clustering everything on one side.\n"
-                    + "- Preserve intentional empty space and a safe overlay zone; do not solve layout problems by stacking opaque cards over the active geometry.\n"
-                    + "- If a scene becomes crowded, split the content, dim the old context, or remove temporary annotations instead of squeezing everything tighter.\n";
+                    + "- Preserve intentional empty space and a safe overlay zone; do not solve layout problems by piling overlays or opaque objects over the active geometry.\n"
+                    + "- If the view becomes crowded, split the content, dim the old context, or remove temporary annotations instead of squeezing everything tighter.\n";
 
     /** Shared Manim text and readability rules. */
     public static final String MANIM_TEXT_AND_READABILITY_RULES =
@@ -169,6 +177,7 @@ public final class SystemPrompts {
                     + "- Keep supporting text comfortably readable; avoid tiny labels and long edge-to-edge strings.\n"
                     + "- Use `buff=0.5` or larger on every `.to_edge()` call; values below 0.5 risk clipping.\n"
                     + "- After creating long text, check whether `text.width > config.frame_width - 1.0` and call `text.set_width(config.frame_width - 1.0)` if so.\n"
+                    + "- MathTex and Tex default to WHITE text. When placing them inside a WHITE BackgroundRectangle or on any light-colored card, always set the text color to BLACK (or another dark color) explicitly with `.set_color(BLACK)`.\n"
                     + "- If text overlaps busy geometry, plan a background box or backstroke-style treatment.\n"
                     + "- Use screen-fixed overlays for explanatory text only when that text should stay independent of world motion.\n";
 
@@ -180,17 +189,17 @@ public final class SystemPrompts {
                     + "- Use `Indicate`, `Circumscribe`, `Flash`, or `ShowPassingFlash` to direct attention without changing the underlying object.\n"
                     + "- Use `always_redraw(...)`, `add_updater(...)`, or `ValueTracker(...)` for continuous dependencies.\n"
                     + "- Prefer `add_updater(...)` for simple position or color tracking (cheap). Use `always_redraw(...)` only when the mobject's structure or shape must be rebuilt each frame (expensive).\n"
+                    + "- For a label that follows a moving object, use `add_updater` to reposition the existing label in-place (`label.add_updater(lambda m: m.next_to(anchor, UP))`). Use `always_redraw` only when the label's text content itself changes dynamically (e.g., live coordinates, counter values).\n"
                     + "- Use `FadeOut`, `Uncreate`, or `ShrinkToCenter` for temporary objects that have served their purpose.\n";
 
-    /** Shared Manim object lifecycle and storyboard contract rules. */
-    public static final String MANIM_OBJECT_LIFECYCLE_RULES =
-            "Manim storyboard and object-lifecycle rules:\n"
-                    + "- Every learner-visible object that should appear in the animation must be declared explicitly in the storyboard; do not rely on unstated inferred visuals.\n"
-                    + "- If an object remains visible across beats, keep the same visual identity instead of silently recreating it.\n"
+    /** Shared object lifecycle and storyboard contract rules for all output targets. */
+    public static final String OBJECT_LIFECYCLE_RULES =
+            "Storyboard and object-lifecycle rules:\n"
+                    + "- Every learner-visible object that should appear in the scene or construction must be declared explicitly in the storyboard; do not rely on unstated inferred visuals.\n"
+                    + "- If an object remains visible across beats or steps, keep the same visual identity instead of silently recreating it.\n"
                     + "- If an object depends on another object's motion, make the dependency explicit in storyboard fields and preserve it in code.\n"
                     + "- Temporary annotations, comparison aids, and helper overlays need an exit plan; once they have taught their point, remove or dim them.\n"
-                    + "- Add `self.add_subcaption(...)` or `subcaption=` on every significant animation for accessibility and narration sync, not just major reveals.\n"
-                    + "- End scenes cleanly: use clean breaks, carry-forward anchors, or transform bridges intentionally rather than leaving accidental residue.\n";
+                    + "- End scenes or steps cleanly: use clean breaks, carry-forward anchors, or transition bridges intentionally rather than leaving accidental residue.\n";
 
     /** Shared Manim implementation and code-hygiene rules. */
     public static final String MANIM_CODE_HYGIENE_RULES =
@@ -205,6 +214,7 @@ public final class SystemPrompts {
                     + "- After `Transform(A, B)`, variable `A` references the on-screen object while `B` is NOT on screen. Use `ReplacementTransform` when you need to reference `B` afterward.\n"
                     + "- Never animate a mobject that has not been added to the scene.\n"
                     + "- When an updater would fight an animation, call `mob.suspend_updating()` before and `mob.resume_updating()` after the `self.play()` call.\n"
+                    + "- Add `self.add_subcaption(...)` or `subcaption=` on every significant animation for accessibility and narration sync, not just major reveals.\n"
                     + "- Use subcaptions or subtitle-ready beats for major reveals when narration alignment matters.\n";
 
     /** Shared Manim review checklist. */
@@ -243,9 +253,9 @@ public final class SystemPrompts {
                     + "- Caption / fine print: font_size=20\n"
                     + "- Hard minimum: font_size=18 — anything smaller blurs at draft quality and is barely legible at production quality.\n";
 
-    /** Manim opacity hierarchy for visual layering. */
-    public static final String MANIM_OPACITY_LEVELS =
-            "Manim opacity hierarchy:\n"
+    /** Opacity hierarchy for visual layering, applicable to all output targets. */
+    public static final String OPACITY_LEVELS =
+            "Opacity hierarchy:\n"
                     + "- Primary focus elements: opacity 1.0\n"
                     + "- Contextual / previously-introduced elements: opacity 0.3–0.4\n"
                     + "- Structural scaffolding (axes, grids, construction lines): opacity 0.15\n"

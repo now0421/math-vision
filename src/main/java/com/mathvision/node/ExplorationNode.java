@@ -118,14 +118,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private KnowledgeGraph buildConceptGraph(String concept) {
         String normalizedConcept = concept == null ? "" : concept.trim();
         String prompt = "Math concept:\n" + normalizedConcept + "\n\n"
-                + "Plan a compact teaching DAG for explaining this concept.\n"
-                + "The downstream presentation target is " + outputTarget + ".\n"
-                + "Return 5 to 9 learner-facing teaching beats when possible.\n"
-                + "Use node types from: concept, observation, construction, derivation, conclusion.\n"
-                + "Root the graph at the final culmination beat at depth 0.\n"
-                + "Prefer a compact teaching path over exhaustive prerequisite coverage.\n"
-                + "Keep the graph acyclic, visually teachable, and easy to present in topological order.\n"
-                + depthBudgetInstruction();
+                + "Presentation target: " + outputTarget + ".";
 
         JsonNode payload = requestDirectGraphPayload(
                 normalizedConcept,
@@ -140,15 +133,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private KnowledgeGraph buildProblemGraph(String problemStatement) {
         String normalizedProblem = problemStatement == null ? "" : problemStatement.trim();
         String prompt = "Math problem:\n" + normalizedProblem + "\n\n"
-                + "Plan the presentation-ready teaching beats for solving this problem.\n"
-                + "The downstream presentation target is " + outputTarget + ".\n"
-                + "Return the small set of major beats that a strong teaching presentation should"
-                + " present, in a dependency graph format.\n"
-                + "Use `step` for what each beat does or shows, and `reason` for why that beat"
-                + " is needed before the next one.\n"
-                + "Prefer intuitive, visually teachable reasoning over textbook-style"
-                + " decomposition, and make the key insight or transformation explicit.\n"
-                + depthBudgetInstruction();
+                + "Presentation target: " + outputTarget + ".";
 
         JsonNode payload = requestDirectGraphPayload(
                 normalizedProblem,
@@ -180,17 +165,6 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
             throw new RuntimeException(failureMessage + ": " + cause.getMessage(), cause);
         }
-    }
-
-    private String depthBudgetInstruction() {
-        return String.format(
-                Locale.ROOT,
-                "Stay within an overall depth budget of about %d levels when possible, and try to"
-                        + " make the graph at least %d levels deep when the teaching flow naturally"
-                        + " supports it.",
-                Math.max(1, maxDepth),
-                Math.max(0, minDepth)
-        );
     }
 
     private KnowledgeGraph parseDirectGraphPayload(JsonNode payload,
@@ -597,11 +571,11 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
         conceptGraphContext = new NodeConversationContext(maxInputTokens);
         conceptGraphContext.setSystemMessage(
-                ExplorationPrompts.conceptGraphSystemPrompt(input, targetDescription));
+                ExplorationPrompts.conceptGraphSystemPrompt(input, targetDescription, maxDepth, minDepth));
 
         problemGraphContext = new NodeConversationContext(maxInputTokens);
         problemGraphContext.setSystemMessage(
-                ExplorationPrompts.problemGraphSystemPrompt(input, targetDescription));
+                ExplorationPrompts.problemGraphSystemPrompt(input, targetDescription, maxDepth, minDepth));
     }
 
     private String buildGraphTargetDescription(String input, String resolvedMode) {

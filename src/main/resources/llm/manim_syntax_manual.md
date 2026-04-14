@@ -770,6 +770,9 @@ cycle_animation(animation, ...)
 ValueTracker(value)
 AnimatedBoundary(vmobject, ...)
 TracedPath(callable, ...)
+mobject.add_updater(lambda m: ...)          # updater without dt
+mobject.add_updater(lambda m, dt: ...)      # updater with elapsed-time dt
+mobject.clear_updaters()
 ```
 
 - Use `always_redraw(...)` when the object itself must be rebuilt from moving dependencies.
@@ -777,6 +780,7 @@ TracedPath(callable, ...)
 - `always_shift(...)` and `always_rotate(...)` are for continuous background motion.
 - `ValueTracker(...)` stores changing values; `TracedPath(...)` traces a moving point.
 - `turn_animation_into_updater(...)` and `cycle_animation(...)` are advanced patterns.
+- Use `add_updater(...)` (or its shorthand `always(...)`) when only position, color, or non-structural properties change — it mutates the object in-place and is cheap. Use `always_redraw(...)` only when the object's structure or content must be rebuilt each frame — it destroys and recreates the object every frame and is expensive. Updaters attached via `add_updater` remain active across `self.play(...)` calls until `clear_updaters()` is called; never call `self.play(...)` inside an updater.
 
 ```python
 label = always_redraw(lambda: Text("A").next_to(dot, UP))
@@ -790,6 +794,16 @@ self.play(x_tracker.animate.set_value(2), run_time=4)
 
 boundary = AnimatedBoundary(title, colors=[RED, GREEN, BLUE], cycle_rate=2)
 path = TracedPath(dot.get_center, stroke_color=YELLOW, stroke_width=4)
+
+# follow anchor
+label.add_updater(lambda m: m.next_to(dot, UP))
+self.play(dot.animate.shift(RIGHT * 3))
+label.clear_updaters()
+
+# dt-based drift
+cloud.add_updater(lambda m, dt: m.shift(RIGHT * 0.4 * dt))
+self.wait(3)
+cloud.clear_updaters()
 ```
 
 ## Common Render Failure Guardrails
