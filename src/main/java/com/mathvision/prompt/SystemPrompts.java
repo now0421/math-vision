@@ -167,7 +167,8 @@ public final class SystemPrompts {
                     + "- Apply the three-tier opacity hierarchy: primary focus at 1.0, contextual elements at 0.3–0.4, structural scaffolding (axes, grids) at 0.15.\n"
                     + "- Keep visual weight balanced across the frame instead of clustering everything on one side.\n"
                     + "- Preserve intentional empty space and a safe overlay zone; do not solve layout problems by piling overlays or opaque objects over the active geometry.\n"
-                    + "- If the view becomes crowded, split the content, dim the old context, or remove temporary annotations instead of squeezing everything tighter.\n";
+                    + "- If the view becomes crowded, split the content, dim the old context, or remove temporary annotations instead of squeezing everything tighter.\n"
+                    + "- When correcting out-of-bounds elements, reposition them with adequate clearance from every frame edge (minimum 0.5 units on all sides); never fix a boundary violation by placing objects flush against the edge.\n";
 
     /** Shared Manim text and readability rules. */
     public static final String MANIM_TEXT_AND_READABILITY_RULES =

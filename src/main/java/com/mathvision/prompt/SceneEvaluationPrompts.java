@@ -84,7 +84,7 @@ public final class SceneEvaluationPrompts {
                 .append("1. First identify the affected storyboard scene(s) and the ids/constraints tied to the reported elements.\n")
                 .append("2. For overlap and offscreen repair, first try translation/recentering and uniform scaling of the affected overlay or constrained group before changing geometry or redefining attachments.\n")
                 .append("3. Fix overlap only through text/overlay layout changes, spacing, grouping, recentering, or uniform scaling of constrained groups.\n")
-                .append("4. Fix offscreen issues using `safe_area_plan` and `layout_goal`; do not push text farther off frame just to avoid overlap.\n")
+                .append("4. Fix offscreen issues using `safe_area_plan` and `layout_goal`; do not push text farther off frame just to avoid overlap. After repositioning, every element must maintain at least 0.5 units of clearance from every frame edge — never place a corrected element flush against the boundary.\n")
                 .append("5. Preserve reflections, symmetry, intersections, equal distances, and anchor-follow relationships exactly.\n")
                 .append("6. Prefer cleaning up temporary annotations or stale overlays over covering them with new opaque cards.\n")
                 .append("7. Preserve a readable empty zone for overlays and key conclusions.\n\n")
