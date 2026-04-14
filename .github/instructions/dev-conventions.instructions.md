@@ -1,8 +1,8 @@
 ---
 applyTo: "src/**"
-description: "Use when modifying or adding code in auto-manim. Covers backward compatibility policy and naming symmetry conventions for the testing phase."
+description: "Use when modifying or adding code in mathvision. Covers backward compatibility policy and naming symmetry conventions for the testing phase."
 ---
-# Auto-Manim 开发约定（测试阶段）
+# MathVision 开发约定（测试阶段）
 
 ## 无需向后兼容
 

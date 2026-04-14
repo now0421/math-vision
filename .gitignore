@@ -42,7 +42,7 @@ Thumbs.db
 *.log
 logs/
 
-# Auto-Manim pipeline outputs
+# MathVision pipeline outputs
 output/
 filedata/
 tmp/

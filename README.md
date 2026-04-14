@@ -1,19 +1,19 @@
-# Auto-Manim
+# MathVision
 
 **Automated mathematical animation pipeline** built on [PocketFlow-Java](https://github.com/The-Pocket/PocketFlow-Java).
 
-Takes a math concept as input, explores its prerequisite tree via AI, enriches each concept with equations and visual designs, composes a narrative, generates Manim code, and renders the final video ¡ª all automatically.
+Takes a math concept as input, explores its prerequisite tree via AI, enriches each concept with equations and visual designs, composes a narrative, generates Manim code, and renders the final video ï¿½ï¿½ all automatically.
 
 ## Architecture
 
 PocketFlow workflow pipeline:
 
 ```
-ExplorationNode ¡ú MathEnrichmentNode ¡ú VisualDesignNode
-    ¡ú NarrativeNode ¡ú CodeGenerationNode ¡ú CodeEvaluationNode ¡ú RenderNode ¡ú SceneEvaluationNode
+ExplorationNode ï¿½ï¿½ MathEnrichmentNode ï¿½ï¿½ VisualDesignNode
+    ï¿½ï¿½ NarrativeNode ï¿½ï¿½ CodeGenerationNode ï¿½ï¿½ CodeEvaluationNode ï¿½ï¿½ RenderNode ï¿½ï¿½ SceneEvaluationNode
 ```
 
-Each node follows the PocketFlow `prep ¡ú exec ¡ú post` pattern:
+Each node follows the PocketFlow `prep ï¿½ï¿½ exec ï¿½ï¿½ post` pattern:
 - **prep**: reads from shared context (`Map<String, Object>`)
 - **exec**: performs the transformation (AI calls, rendering, etc.)
 - **post**: writes results back to context, persists to disk
@@ -22,7 +22,7 @@ Each node follows the PocketFlow `prep ¡ú exec ¡ú post` pattern:
 
 - **Java 17+**
 - **Maven 3.8+**
-- **Manim** (for rendering ¡ª optional, use `--no-render` to skip)
+- **Manim** (for rendering ï¿½ï¿½ optional, use `--no-render` to skip)
 - AI API key: `MOONSHOT_API_KEY` (Kimi) or `GEMINI_API_KEY` (Gemini)
 
 ## Build
@@ -31,23 +31,23 @@ Each node follows the PocketFlow `prep ¡ú exec ¡ú post` pattern:
 mvn clean package
 ```
 
-This produces a fat JAR at `target/auto-manim-1.0-SNAPSHOT.jar`.
+This produces a fat JAR at `target/mathvision-1.0-SNAPSHOT.jar`.
 
 ## Usage
 
 ```bash
 # Basic usage (uses Kimi by default)
-java -jar target/auto-manim-1.0-SNAPSHOT.jar "Fourier Transform"
+java -jar target/mathvision-1.0-SNAPSHOT.jar "Fourier Transform"
 
 # With options
-java -jar target/auto-manim-1.0-SNAPSHOT.jar "Taylor Series" \
+java -jar target/mathvision-1.0-SNAPSHOT.jar "Taylor Series" \
     --provider gemini \
     --quality medium \
     --max-depth 3 \
     --render-retries 5
 
 # Code generation only (no rendering)
-java -jar target/auto-manim-1.0-SNAPSHOT.jar "Euler's Formula" --no-render
+java -jar target/mathvision-1.0-SNAPSHOT.jar "Euler's Formula" --no-render
 ```
 
 ### Options
@@ -77,49 +77,49 @@ Each run creates timestamped output files:
 
 ```
 output/fourier_transform_20250101_120000/
-©À©¤©¤ 1_knowledge_tree.json     # Prerequisite tree
-©À©¤©¤ 2_enriched_tree.json      # With equations + visual specs
-©À©¤©¤ 3_narrative.json          # Composed animation script
-©À©¤©¤ 4_manim_code.py           # Generated Manim code
-©À©¤©¤ 5_render_result.json      # Render outcome + metadata
-©¸©¤©¤ 6_pipeline_summary.json   # Timing and stats
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 1_knowledge_tree.json     # Prerequisite tree
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 2_enriched_tree.json      # With equations + visual specs
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 3_narrative.json          # Composed animation script
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 4_manim_code.py           # Generated Manim code
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 5_render_result.json      # Render outcome + metadata
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 6_pipeline_summary.json   # Timing and stats
 ```
 
 ## Project Structure
 
 ```
-src/main/java/com/automanim/
-©À©¤©¤ AutoManimApplication.java    # CLI entry point
-©À©¤©¤ WorkflowFlow.java            # Flow assembly
-©À©¤©¤ config/
-©¦   ©¸©¤©¤ WorkflowConfig.java      # Workflow/runtime config
-©À©¤©¤ model/
-©¦   ©À©¤©¤ KnowledgeNode.java       # Prerequisite tree node
-©¦   ©À©¤©¤ Narrative.java           # Narrative composition result
-©¦   ©À©¤©¤ CodeResult.java          # Code generation result
-©¦   ©À©¤©¤ CodeEvaluationResult.java # Pre-render review result
-©¦   ©¸©¤©¤ WorkflowKeys.java        # Shared context key constants
-©À©¤©¤ node/
-©¦   ©À©¤©¤ ExplorationNode.java     # Stage 0: prerequisite discovery
-©¦   ©À©¤©¤ MathEnrichmentNode.java  # Stage 1a: equations + definitions
-©¦   ©À©¤©¤ VisualDesignNode.java    # Stage 1b: visual specifications
-©¦   ©À©¤©¤ NarrativeNode.java       # Stage 1c: narrative composition
-©¦   ©À©¤©¤ CodeGenerationNode.java  # Stage 2: Manim code generation
-©¦   ©À©¤©¤ CodeEvaluationNode.java  # Stage 3: pre-render semantic review
-©¦   ©À©¤©¤ RenderNode.java          # Stage 4: render + retry loop
-©¦   ©À©¤©¤ SceneEvaluationNode.java # Stage 5: geometry/layout review
-©¦   ©¸©¤©¤ CodeFixNode.java         # Shared routed code-fix node
-©À©¤©¤ service/
-©¦   ©À©¤©¤ AiClient.java            # AI provider interface
-©¦   ©À©¤©¤ OpenAiCompatibleAiClient.java # Config-driven OpenAI-compatible client
-©¦   ©À©¤©¤ AbstractOpenAiCompatibleAiClient.java # Shared provider base
-©¦   ©À©¤©¤ GeminiAiClient.java      # Google Gemini implementation
-©¦   ©À©¤©¤ ManimRendererService.java # Manim CLI subprocess
-©¦   ©¸©¤©¤ FileOutputService.java   # Intermediate file persistence
-©¸©¤©¤ util/
-    ©À©¤©¤ JsonUtils.java           # Jackson helpers
-    ©À©¤©¤ CodeUtils.java           # Shared Manim code extraction/validation helpers
-    ©À©¤©¤ ErrorSummarizer.java     # Shared render error summarization
-    ©À©¤©¤ TargetDescriptionBuilder.java # Shared workflow target/context builders
-    ©¸©¤©¤ NodeConversationContext.java # Rolling chat context per node
+src/main/java/com/mathvision/
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ MathVisionApplication.java    # CLI entry point
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ WorkflowFlow.java            # Flow assembly
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ config/
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ WorkflowConfig.java      # Workflow/runtime config
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ model/
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ KnowledgeNode.java       # Prerequisite tree node
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Narrative.java           # Narrative composition result
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ CodeResult.java          # Code generation result
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ CodeEvaluationResult.java # Pre-render review result
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ WorkflowKeys.java        # Shared context key constants
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ node/
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ExplorationNode.java     # Stage 0: prerequisite discovery
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ MathEnrichmentNode.java  # Stage 1a: equations + definitions
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ VisualDesignNode.java    # Stage 1b: visual specifications
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ NarrativeNode.java       # Stage 1c: narrative composition
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ CodeGenerationNode.java  # Stage 2: Manim code generation
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ CodeEvaluationNode.java  # Stage 3: pre-render semantic review
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ RenderNode.java          # Stage 4: render + retry loop
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ SceneEvaluationNode.java # Stage 5: geometry/layout review
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ CodeFixNode.java         # Shared routed code-fix node
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ service/
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ AiClient.java            # AI provider interface
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ OpenAiCompatibleAiClient.java # Config-driven OpenAI-compatible client
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ AbstractOpenAiCompatibleAiClient.java # Shared provider base
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ GeminiAiClient.java      # Google Gemini implementation
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ManimRendererService.java # Manim CLI subprocess
+ï¿½ï¿½   ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ FileOutputService.java   # Intermediate file persistence
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ util/
+    ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ JsonUtils.java           # Jackson helpers
+    ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ CodeUtils.java           # Shared Manim code extraction/validation helpers
+    ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ErrorSummarizer.java     # Shared render error summarization
+    ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ TargetDescriptionBuilder.java # Shared workflow target/context builders
+    ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ NodeConversationContext.java # Rolling chat context per node
 ```

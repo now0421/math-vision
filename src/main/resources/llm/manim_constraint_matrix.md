@@ -1,7 +1,7 @@
 # Manim Constraint Matrix
 
 This file is the source-of-truth mapping between the upstream `manim-video`
-skill reference and Auto-Manim's Manim prompt pipeline.
+skill reference and MathVision's Manim prompt pipeline.
 
 Each upstream source document is mapped into one or more of these destinations:
 

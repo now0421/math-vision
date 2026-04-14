@@ -6,17 +6,17 @@
     </appender>
 
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
-        <file>auto-manim.log</file>
+        <file>mathvision.log</file>
         <encoder>
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%-5level] %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
 
-    <logger name="com.automanim.ai.trace" level="DEBUG" additivity="false">
+    <logger name="com.mathvision.ai.trace" level="DEBUG" additivity="false">
         <appender-ref ref="FILE"/>
     </logger>
 
-    <logger name="com.automanim" level="DEBUG"/>
+    <logger name="com.mathvision" level="DEBUG"/>
 
     <root level="INFO">
         <appender-ref ref="STDOUT"/>
