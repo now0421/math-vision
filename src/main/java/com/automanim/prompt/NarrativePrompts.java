@@ -38,6 +38,9 @@ public final class NarrativePrompts {
                     + "- Write narration as learner-facing beats: each sentence should correspond to something visible, highlighted, transformed, or deliberately held on screen\n"
                     + "- Prefer one new idea per scene, and use progressive disclosure instead of dumping the final state at once\n"
                     + "- Leave breathing room after key reveals; the storyboard should not imply nonstop motion with no time to read\n"
+                    + "- Plan scene transitions intentionally: choose clean break (fade all, pause), carry-forward (keep one anchor, fade rest), or transform bridge for each scene boundary. Record the chosen style in `notes_for_codegen` when the intent is non-obvious\n"
+                    + "- Plan per-scene variation: vary the dominant visual focus, spatial layout pattern, and visual density across scenes. Avoid identical composition for consecutive scenes\n"
+                    + "- Duration estimation reference: title card 3–5s, concept introduction 10–20s, equation reveal 15–25s, algorithm step 5–10s, aha-moment beat 15–30s, conclusion 5–10s. Use these ranges when setting `duration_seconds`\n"
                     + "- Keep object ids concise and non-redundant since `kind` already carries the type. Follow only the naming rules for the active backend.\n"
                     + "- Reuse the exact same concise ids consistently in `anchor_id`, `persistent_objects`, `exiting_objects`, and `actions.targets`\n"
                     + "- When any field inside `entering_objects` refers to another object, especially `content`, refer to that object by id only. Do not restate its kind there.\n"
@@ -75,7 +78,8 @@ public final class NarrativePrompts {
                     + "- If a point, marker, label, counter, or helper must visibly follow another object, create a separate object and describe the attachment with `behavior`, `anchor_id`, and `dependency_note`.\n"
                     + "- For moving points or markers, create a separate label object with `behavior = follows_anchor` so the label tracks the moving object.\n"
                     + "- Manim does not auto-label points. For every named `kind: point` object (e.g. A, B, P), declare a companion `kind: text` label in the same scene's `entering_objects` with `behavior = follows_anchor` and `anchor_id` pointing to the point id. Omit a label only when the point is purely structural and its identity is never referenced by the narration or other objects.\n"
-                    + "- Use `screen_overlay_plan` only for true viewport-fixed explanatory overlays, not as a vague place to hide layout conflicts.\n";
+                    + "- Use `screen_overlay_plan` only for true viewport-fixed explanatory overlays, not as a vague place to hide layout conflicts.\n"
+                    + "- Once a color is assigned to a concept, it keeps that meaning across the entire storyboard. Record color-to-concept assignments in `global_visual_rules`.\n";
 
     private static final String OUTPUT_FORMAT =
             "Output format:\n"

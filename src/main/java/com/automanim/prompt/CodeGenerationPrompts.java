@@ -22,6 +22,10 @@ public final class CodeGenerationPrompts {
                     + SystemPrompts.MANIM_ANIMATION_SELECTION_RULES
                     + SystemPrompts.MANIM_OBJECT_LIFECYCLE_RULES
                     + SystemPrompts.MANIM_CODE_HYGIENE_RULES
+                    + SystemPrompts.MANIM_TYPOGRAPHY_SCALE
+                    + SystemPrompts.MANIM_OPACITY_LEVELS
+                    + SystemPrompts.MANIM_TIMING_REFERENCE
+                    + SystemPrompts.MANIM_SCENE_TRANSITION_RULES
                     + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
                     + SystemPrompts.MANIM_NAMING_RULES
                     + "- Preserve scene continuity instead of clearing the scene between beats.\n"

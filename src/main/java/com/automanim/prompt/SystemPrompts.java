@@ -156,7 +156,7 @@ public final class SystemPrompts {
     public static final String MANIM_COMPOSITION_RULES =
             "Manim composition rules:\n"
                     + "- Maintain one clear focus per frame using size, color, brightness, or placement.\n"
-                    + "- Use opacity layering: primary focus at full strength, context dimmed, structural elements faint.\n"
+                    + "- Apply the three-tier opacity hierarchy: primary focus at 1.0, contextual elements at 0.3–0.4, structural scaffolding (axes, grids) at 0.15.\n"
                     + "- Keep visual weight balanced across the frame instead of clustering everything on one side.\n"
                     + "- Preserve intentional empty space and a safe overlay zone; do not solve layout problems by stacking opaque cards over the active geometry.\n"
                     + "- If a scene becomes crowded, split the content, dim the old context, or remove temporary annotations instead of squeezing everything tighter.\n";
@@ -164,8 +164,11 @@ public final class SystemPrompts {
     /** Shared Manim text and readability rules. */
     public static final String MANIM_TEXT_AND_READABILITY_RULES =
             "Manim text and readability rules:\n"
-                    + "- Prefer monospace fonts for `Text(...)` and `MarkupText(...)` content that must remain highly readable.\n"
+                    + "- Use monospace fonts (e.g. Menlo, Courier New, DejaVu Sans Mono) for all `Text(...)` and `MarkupText(...)` content. Manim's Pango renderer produces broken kerning with proportional fonts.\n"
+                    + "- Hard minimum `font_size=18` for any on-screen text.\n"
                     + "- Keep supporting text comfortably readable; avoid tiny labels and long edge-to-edge strings.\n"
+                    + "- Use `buff=0.5` or larger on every `.to_edge()` call; values below 0.5 risk clipping.\n"
+                    + "- After creating long text, check whether `text.width > config.frame_width - 1.0` and call `text.set_width(config.frame_width - 1.0)` if so.\n"
                     + "- If text overlaps busy geometry, plan a background box or backstroke-style treatment.\n"
                     + "- Use screen-fixed overlays for explanatory text only when that text should stay independent of world motion.\n";
 
@@ -176,6 +179,7 @@ public final class SystemPrompts {
                     + "- Use `Transform`, `ReplacementTransform`, or `FadeTransform` when the learner should see continuity between states.\n"
                     + "- Use `Indicate`, `Circumscribe`, `Flash`, or `ShowPassingFlash` to direct attention without changing the underlying object.\n"
                     + "- Use `always_redraw(...)`, `add_updater(...)`, or `ValueTracker(...)` for continuous dependencies.\n"
+                    + "- Prefer `add_updater(...)` for simple position or color tracking (cheap). Use `always_redraw(...)` only when the mobject's structure or shape must be rebuilt each frame (expensive).\n"
                     + "- Use `FadeOut`, `Uncreate`, or `ShrinkToCenter` for temporary objects that have served their purpose.\n";
 
     /** Shared Manim object lifecycle and storyboard contract rules. */
@@ -185,6 +189,7 @@ public final class SystemPrompts {
                     + "- If an object remains visible across beats, keep the same visual identity instead of silently recreating it.\n"
                     + "- If an object depends on another object's motion, make the dependency explicit in storyboard fields and preserve it in code.\n"
                     + "- Temporary annotations, comparison aids, and helper overlays need an exit plan; once they have taught their point, remove or dim them.\n"
+                    + "- Add `self.add_subcaption(...)` or `subcaption=` on every significant animation for accessibility and narration sync, not just major reveals.\n"
                     + "- End scenes cleanly: use clean breaks, carry-forward anchors, or transform bridges intentionally rather than leaving accidental residue.\n";
 
     /** Shared Manim implementation and code-hygiene rules. */
@@ -194,6 +199,12 @@ public final class SystemPrompts {
                     + "- Use raw strings for LaTeX and keep `MathTex(...)` segments stable when matching transforms will be needed later.\n"
                     + "- Prefer helper builders, shared style constants, and stable layout helpers over scattered ad hoc coordinates.\n"
                     + "- Keep background color, palette meaning, and typography consistent across the full file.\n"
+                    + "- Define shared color constants (BG, PRIMARY, SECONDARY, ACCENT) at the top of the file; never hardcode hex color strings inside scene methods.\n"
+                    + "- Set `self.camera.background_color = BG` in every scene's `construct` method.\n"
+                    + "- Use `ReplacementTransform(old, new)` when replacing visible text or mobjects; do not `Write` new content on top of old content without removing the old first.\n"
+                    + "- After `Transform(A, B)`, variable `A` references the on-screen object while `B` is NOT on screen. Use `ReplacementTransform` when you need to reference `B` afterward.\n"
+                    + "- Never animate a mobject that has not been added to the scene.\n"
+                    + "- When an updater would fight an animation, call `mob.suspend_updating()` before and `mob.resume_updating()` after the `self.play()` call.\n"
                     + "- Use subcaptions or subtitle-ready beats for major reveals when narration alignment matters.\n";
 
     /** Shared Manim review checklist. */
@@ -221,6 +232,42 @@ public final class SystemPrompts {
             "For angle markers, prefer `Angle(...)` built from two lines/rays sharing the true vertex instead of hand-written `Arc(start_angle=..., angle=...)` formulas.\n"
                     + "When an angle is measured against a normal, helper line, or moving segment, construct both rays from the shared point inside `always_redraw(...)`.\n"
                     + "If the intended angle sector could be ambiguous, explicitly set `quadrant=...`; if the storyboard intends the interior/smaller angle, explicitly keep `other_angle=False`.\n";
+
+    /** Manim typography scale for consistent text sizing. */
+    public static final String MANIM_TYPOGRAPHY_SCALE =
+            "Manim typography scale:\n"
+                    + "- Title: font_size=48\n"
+                    + "- Heading: font_size=36\n"
+                    + "- Body / explanatory text: font_size=30\n"
+                    + "- Label / annotation: font_size=24\n"
+                    + "- Caption / fine print: font_size=20\n"
+                    + "- Hard minimum: font_size=18 — anything smaller blurs at draft quality and is barely legible at production quality.\n";
+
+    /** Manim opacity hierarchy for visual layering. */
+    public static final String MANIM_OPACITY_LEVELS =
+            "Manim opacity hierarchy:\n"
+                    + "- Primary focus elements: opacity 1.0\n"
+                    + "- Contextual / previously-introduced elements: opacity 0.3–0.4\n"
+                    + "- Structural scaffolding (axes, grids, construction lines): opacity 0.15\n"
+                    + "- Never show everything at full brightness simultaneously.\n";
+
+    /** Manim animation timing reference table. */
+    public static final String MANIM_TIMING_REFERENCE =
+            "Manim animation timing reference:\n"
+                    + "- Title / intro appear: run_time=1.5s, self.wait(1.0)\n"
+                    + "- Key equation reveal: run_time=2.0s, self.wait(2.0)\n"
+                    + "- Transform / morph: run_time=1.5s, self.wait(1.5)\n"
+                    + "- Supporting label: run_time=0.8s, self.wait(0.5)\n"
+                    + "- FadeOut cleanup: run_time=0.5s, self.wait(0.3)\n"
+                    + "- \"Aha moment\" reveal: run_time=2.5s, self.wait(3.0)\n"
+                    + "Treat these as defaults; adjust when the storyboard explicitly calls for different pacing.\n";
+
+    /** Manim scene transition rules. */
+    public static final String MANIM_SCENE_TRANSITION_RULES =
+            "Manim scene transition rules:\n"
+                    + "- End every scene with a clean exit: `self.play(FadeOut(Group(*self.mobjects)), run_time=0.5)` followed by `self.wait(0.3)`.\n"
+                    + "- Never hard-cut between scenes; always animate the transition.\n"
+                    + "- Three transition types: clean break (fade all, pause), carry-forward (keep one anchor, fade rest), transform bridge (end with shape, start next by transforming it).\n";
 
     /** ASCII identifier rules. */
     public static final String ASCII_IDENTIFIER_RULES =
