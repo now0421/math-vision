@@ -1,5 +1,7 @@
 package com.mathvision.prompt;
 
+import com.mathvision.util.ErrorSummarizer;
+
 import java.util.Collections;
 import java.util.List;
 
@@ -76,14 +78,22 @@ public final class RenderFixPrompts {
                                     String error,
                                     String storyboardJson,
                                     List<String> fixHistory) {
+        String errorType = formatErrorType(error);
+        String errorSignature = ErrorSummarizer.summarizeSignature(error);
         StringBuilder sb = new StringBuilder();
-        sb.append("The following Manim code failed to render:\n\n")
+        sb.append("Manim render failure detected.\n")
+                .append("Error type: ").append(errorType).append("\n");
+        if (!errorSignature.isBlank()) {
+            sb.append("Primary error signature: ").append(errorSignature).append("\n");
+        }
+        sb.append("\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank()
                         ? "Compact storyboard JSON (source of truth):\n```json\n"
                         + storyboardJson + "\n```\n\n"
                         : "")
-                .append("```python\n").append(generatedCode).append("\n```\n\n")
                 .append("Error output:\n```\n").append(error).append("\n```\n\n")
+                .append("The following Manim code failed to render:\n\n")
+                .append("```python\n").append(generatedCode).append("\n```\n\n")
                 .append("Please fix the reported error and also inspect nearby and structurally similar code paths for the same root cause.\n")
                 .append("Prioritize fixing the earliest traceback cause instead of patching only downstream timeout symptoms.\n")
                 .append("If the storyboard encodes geometric constraints or derived constructions, preserve them while fixing the render failure.\n")
@@ -109,14 +119,22 @@ public final class RenderFixPrompts {
                                             String error,
                                             String storyboardJson,
                                             List<String> fixHistory) {
+        String errorType = formatErrorType(error);
+        String errorSignature = ErrorSummarizer.summarizeSignature(error);
         StringBuilder sb = new StringBuilder();
-        sb.append("The following GeoGebra command script failed runtime validation after one full replay pass through `evalCommand(...)`.\n\n")
+        sb.append("GeoGebra runtime validation failure detected.\n")
+                .append("Error type: ").append(errorType).append("\n");
+        if (!errorSignature.isBlank()) {
+            sb.append("Primary error signature: ").append(errorSignature).append("\n");
+        }
+        sb.append("\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank()
                         ? "Compact storyboard JSON (source of truth):\n```json\n"
                         + storyboardJson + "\n```\n\n"
                         : "")
-                .append("```geogebra\n").append(generatedCode).append("\n```\n\n")
                 .append("Validation failure details collected from that full pass:\n```\n").append(error).append("\n```\n\n")
+                .append("The following GeoGebra command script failed runtime validation after one full replay pass through `evalCommand(...)`.\n\n")
+                .append("```geogebra\n").append(generatedCode).append("\n```\n\n")
                 .append("Please rewrite the FULL command script so all reported failures become valid in one pass and downstream dependent commands remain correct.\n")
                 .append("Use English GeoGebra command names and preserve geometric dependency constraints from the storyboard.\n")
                 .append("If you rename an identifier or add a new one, also update the commented `SCENE_BUTTONS` script so it stays consistent with the final command script.\n")
@@ -135,5 +153,9 @@ public final class RenderFixPrompts {
             }
         }
         return sb.toString();
+    }
+
+    private static String formatErrorType(String error) {
+        return ErrorSummarizer.classifyError(error).name();
     }
 }

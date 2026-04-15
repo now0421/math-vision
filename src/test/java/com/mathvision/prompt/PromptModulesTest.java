@@ -204,4 +204,19 @@ class PromptModulesTest {
         assertTrue(prompt.contains("all reported failures become valid in one pass"));
         assertTrue(prompt.contains("Validation failure details collected from that full pass"));
     }
+
+    @Test
+    void renderFixUserPromptStartsWithErrorTypeBeforeCodeContext() {
+        String prompt = RenderFixPrompts.userPrompt(
+                "from manim import *\n\nclass Demo(Scene):\n    pass",
+                "Traceback (most recent call last):\nValueError: invalid point data",
+                "{\"scenes\":[]}",
+                java.util.List.of()
+        );
+
+        assertTrue(prompt.startsWith("Manim render failure detected.\nError type: TYPE_VALUE"));
+        assertTrue(prompt.contains("Primary error signature: ValueError: invalid point data"));
+        assertTrue(prompt.indexOf("Error type: TYPE_VALUE") < prompt.indexOf("```python"));
+        assertTrue(prompt.indexOf("Error output:") < prompt.indexOf("```python"));
+    }
 }
