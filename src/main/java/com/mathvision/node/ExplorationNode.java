@@ -27,7 +27,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -171,19 +170,19 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                                                    String targetInput,
                                                    DirectGraphMode graphMode) {
         Map<String, KnowledgeNode> nodes = parseDirectGraphNodes(payload, graphMode);
-        Map<String, List<String>> edges = parseDirectGraphEdges(payload, nodes);
+        Map<String, List<String>> nextEdges = parseDirectGraphNextEdges(payload, nodes);
 
-        String requestedRootId = payload != null && payload.hasNonNull("root_id")
-                ? ConceptUtils.normalizeConcept(payload.get("root_id").asText())
+        String requestedStartId = payload != null && payload.hasNonNull("start_id")
+                ? ConceptUtils.normalizeConcept(payload.get("start_id").asText())
                 : "";
-        String rootId = selectDirectGraphRoot(requestedRootId, nodes, edges, graphMode);
-        recomputeDirectGraphDepths(rootId, nodes, edges);
+        String startId = selectDirectGraphStart(requestedStartId, nodes, nextEdges, graphMode);
+        recomputeDirectGraphDepths(startId, nodes, nextEdges);
 
         return new KnowledgeGraph(
-                rootId,
+                startId,
                 targetInput,
                 orderNodes(nodes),
-                orderDirectGraphEdges(edges, nodes)
+                orderDirectGraphNextEdges(nextEdges, nodes)
         );
     }
 
@@ -231,12 +230,12 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         return nodes;
     }
 
-    private Map<String, List<String>> parseDirectGraphEdges(JsonNode payload,
-                                                            Map<String, KnowledgeNode> nodes) {
-        Map<String, List<String>> edges = new LinkedHashMap<>();
-        JsonNode edgeObject = payload != null ? payload.get("prerequisite_edges") : null;
+    private Map<String, List<String>> parseDirectGraphNextEdges(JsonNode payload,
+                                                                Map<String, KnowledgeNode> nodes) {
+        Map<String, List<String>> nextEdges = new LinkedHashMap<>();
+        JsonNode edgeObject = payload != null ? payload.get("next_edges") : null;
         if (edgeObject == null || !edgeObject.isObject()) {
-            return edges;
+            return nextEdges;
         }
 
         edgeObject.fields().forEachRemaining(entry -> {
@@ -245,26 +244,26 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 return;
             }
 
-            List<String> dependencies = new ArrayList<>();
-            JsonNode dependencyArray = entry.getValue();
-            if (dependencyArray != null && dependencyArray.isArray()) {
-                for (JsonNode dependencyJson : dependencyArray) {
-                    String dependencyId = ConceptUtils.normalizeConcept(dependencyJson.asText());
-                    if (dependencyId.isBlank()
-                            || dependencyId.equals(sourceId)
-                            || !nodes.containsKey(dependencyId)
-                            || dependencies.contains(dependencyId)) {
+            List<String> nextNodeIds = new ArrayList<>();
+            JsonNode nextNodeArray = entry.getValue();
+            if (nextNodeArray != null && nextNodeArray.isArray()) {
+                for (JsonNode nextNodeJson : nextNodeArray) {
+                    String nextNodeId = ConceptUtils.normalizeConcept(nextNodeJson.asText());
+                    if (nextNodeId.isBlank()
+                            || nextNodeId.equals(sourceId)
+                            || !nodes.containsKey(nextNodeId)
+                            || nextNodeIds.contains(nextNodeId)) {
                         continue;
                     }
-                    dependencies.add(dependencyId);
+                    nextNodeIds.add(nextNodeId);
                 }
             }
 
-            if (!dependencies.isEmpty()) {
-                edges.put(sourceId, dependencies);
+            if (!nextNodeIds.isEmpty()) {
+                nextEdges.put(sourceId, nextNodeIds);
             }
         });
-        return edges;
+        return nextEdges;
     }
 
     private String sanitizeNodeType(String rawNodeType, DirectGraphMode graphMode) {
@@ -274,58 +273,51 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 : graphMode.defaultNodeType;
     }
 
-    private String selectDirectGraphRoot(String requestedRootId,
-                                         Map<String, KnowledgeNode> nodes,
-                                         Map<String, List<String>> edges,
-                                         DirectGraphMode graphMode) {
-        Set<String> referencedAsPrerequisite = new LinkedHashSet<>();
-        for (List<String> dependencies : edges.values()) {
-            referencedAsPrerequisite.addAll(dependencies);
-        }
-
-        List<String> terminalCandidates = new ArrayList<>();
+    private String selectDirectGraphStart(String requestedStartId,
+                                          Map<String, KnowledgeNode> nodes,
+                                          Map<String, List<String>> nextEdges,
+                                          DirectGraphMode graphMode) {
+        Map<String, Integer> indegree = computeDirectGraphIndegree(nodes, nextEdges);
+        List<String> startCandidates = new ArrayList<>();
         for (String nodeId : nodes.keySet()) {
-            if (!referencedAsPrerequisite.contains(nodeId) && isValidDirectGraphRoot(nodeId, nodes, graphMode)) {
-                terminalCandidates.add(nodeId);
+            if (indegree.getOrDefault(nodeId, 0) == 0) {
+                startCandidates.add(nodeId);
             }
         }
 
-        String normalizedRequestedRootId = ConceptUtils.normalizeConcept(requestedRootId);
-        if (terminalCandidates.contains(normalizedRequestedRootId)) {
-            return normalizedRequestedRootId;
+        String normalizedRequestedStartId = ConceptUtils.normalizeConcept(requestedStartId);
+        if (startCandidates.contains(normalizedRequestedStartId)) {
+            return normalizedRequestedStartId;
         }
 
-        if (!terminalCandidates.isEmpty()) {
-            terminalCandidates.sort(directGraphRootComparator(nodes, graphMode));
-            return terminalCandidates.get(0);
+        if (!startCandidates.isEmpty()) {
+            startCandidates.sort(directGraphStartComparator(nodes, graphMode));
+            return startCandidates.get(0);
         }
 
-        return createSyntheticConclusionRoot(nodes, edges, graphMode);
+        return createSyntheticStartNode(nodes, nextEdges, graphMode);
     }
 
-    private boolean isValidDirectGraphRoot(String nodeId,
-                                           Map<String, KnowledgeNode> nodes,
-                                           DirectGraphMode graphMode) {
-        if (nodeId == null || nodeId.isBlank() || !nodes.containsKey(nodeId)) {
-            return false;
+    private Map<String, Integer> computeDirectGraphIndegree(Map<String, KnowledgeNode> nodes,
+                                                            Map<String, List<String>> nextEdges) {
+        Map<String, Integer> indegree = new LinkedHashMap<>();
+        for (String nodeId : nodes.keySet()) {
+            indegree.put(nodeId, 0);
         }
 
-        KnowledgeNode node = nodes.get(nodeId);
-        if (node == null) {
-            return false;
+        for (List<String> nextNodeIds : nextEdges.values()) {
+            for (String nextNodeId : nextNodeIds) {
+                indegree.computeIfPresent(nextNodeId, (ignored, count) -> count + 1);
+            }
         }
-
-        if (DirectGraphMode.PROBLEM == graphMode) {
-            return !KnowledgeNode.NODE_TYPE_PROBLEM.equalsIgnoreCase(node.getNodeType());
-        }
-        return true;
+        return indegree;
     }
 
-    private Comparator<String> directGraphRootComparator(Map<String, KnowledgeNode> nodes,
-                                                         DirectGraphMode graphMode) {
+    private Comparator<String> directGraphStartComparator(Map<String, KnowledgeNode> nodes,
+                                                          DirectGraphMode graphMode) {
         return Comparator.comparingInt((String id) -> {
                     KnowledgeNode node = nodes.get(id);
-                    return rootTypeRank(node != null ? node.getNodeType() : "", graphMode);
+                    return startTypeRank(node != null ? node.getNodeType() : "", graphMode);
                 })
                 .thenComparingInt(id -> {
                     KnowledgeNode node = nodes.get(id);
@@ -337,71 +329,84 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 }, String.CASE_INSENSITIVE_ORDER);
     }
 
-    private int rootTypeRank(String nodeType, DirectGraphMode graphMode) {
+    private int startTypeRank(String nodeType, DirectGraphMode graphMode) {
         String normalized = nodeType == null ? "" : nodeType.trim().toLowerCase(Locale.ROOT);
-        if (KnowledgeNode.NODE_TYPE_CONCLUSION.equals(normalized)) {
+        if (DirectGraphMode.CONCEPT == graphMode) {
+            if (KnowledgeNode.NODE_TYPE_CONCEPT.equals(normalized)) {
+                return 0;
+            }
+        } else if (KnowledgeNode.NODE_TYPE_PROBLEM.equals(normalized)) {
             return 0;
         }
-        if (KnowledgeNode.NODE_TYPE_DERIVATION.equals(normalized)) {
+        if (KnowledgeNode.NODE_TYPE_OBSERVATION.equals(normalized)) {
             return 1;
         }
         if (KnowledgeNode.NODE_TYPE_CONSTRUCTION.equals(normalized)) {
             return 2;
         }
-        if (KnowledgeNode.NODE_TYPE_OBSERVATION.equals(normalized)) {
+        if (KnowledgeNode.NODE_TYPE_DERIVATION.equals(normalized)) {
             return 3;
         }
-        if (KnowledgeNode.NODE_TYPE_CONCEPT.equals(normalized)) {
+        if (KnowledgeNode.NODE_TYPE_CONCLUSION.equals(normalized)) {
             return 4;
         }
-        if (KnowledgeNode.NODE_TYPE_PROBLEM.equals(normalized)) {
-            return DirectGraphMode.PROBLEM == graphMode ? 5 : 4;
+        if (KnowledgeNode.NODE_TYPE_CONCEPT.equals(normalized)
+                || KnowledgeNode.NODE_TYPE_PROBLEM.equals(normalized)) {
+            return 5;
         }
         return 6;
     }
 
-    private String createSyntheticConclusionRoot(Map<String, KnowledgeNode> nodes,
-                                                 Map<String, List<String>> edges,
-                                                 DirectGraphMode graphMode) {
-        String candidate = graphMode.syntheticRootBaseId;
+    private String createSyntheticStartNode(Map<String, KnowledgeNode> nodes,
+                                            Map<String, List<String>> nextEdges,
+                                            DirectGraphMode graphMode) {
+        String candidate = graphMode.syntheticStartBaseId;
         int suffix = 2;
         while (nodes.containsKey(candidate)) {
-            candidate = graphMode.syntheticRootBaseId + "_" + suffix++;
+            candidate = graphMode.syntheticStartBaseId + "_" + suffix++;
         }
 
-        KnowledgeNode rootNode = new KnowledgeNode(candidate, graphMode.syntheticRootStep, 0, false);
-        rootNode.setNodeType(KnowledgeNode.NODE_TYPE_CONCLUSION);
-        rootNode.setReason(graphMode.syntheticRootReason);
-        nodes.put(candidate, rootNode);
+        KnowledgeNode startNode = new KnowledgeNode(candidate, graphMode.syntheticStartStep, 0, false);
+        startNode.setNodeType(graphMode.syntheticStartNodeType);
+        startNode.setReason(graphMode.syntheticStartReason);
+        nodes.put(candidate, startNode);
 
-        List<String> prerequisites = new ArrayList<>();
-        List<String> fallbackCandidates = new ArrayList<>(nodes.keySet());
-        fallbackCandidates.remove(candidate);
-        if (!fallbackCandidates.isEmpty()) {
-            fallbackCandidates.sort(directGraphRootComparator(nodes, graphMode));
-            prerequisites.add(fallbackCandidates.get(0));
+        Map<String, Integer> indegree = computeDirectGraphIndegree(nodes, nextEdges);
+        List<String> fallbackStartCandidates = new ArrayList<>();
+        for (String nodeId : nodes.keySet()) {
+            if (candidate.equals(nodeId)) {
+                continue;
+            }
+            if (indegree.getOrDefault(nodeId, 0) == 0) {
+                fallbackStartCandidates.add(nodeId);
+            }
         }
-        if (!prerequisites.isEmpty()) {
-            edges.put(candidate, prerequisites);
+        if (fallbackStartCandidates.isEmpty()) {
+            fallbackStartCandidates.addAll(nodes.keySet());
+            fallbackStartCandidates.remove(candidate);
+        }
+        if (!fallbackStartCandidates.isEmpty()) {
+            fallbackStartCandidates.sort(directGraphStartComparator(nodes, graphMode));
+            nextEdges.put(candidate, fallbackStartCandidates);
         }
         return candidate;
     }
 
-    private void recomputeDirectGraphDepths(String rootId,
+    private void recomputeDirectGraphDepths(String startId,
                                             Map<String, KnowledgeNode> nodes,
-                                            Map<String, List<String>> edges) {
+                                            Map<String, List<String>> nextEdges) {
         Map<String, Integer> computedDepths = new LinkedHashMap<>();
         ArrayDeque<String> queue = new ArrayDeque<>();
 
-        if (nodes.containsKey(rootId)) {
-            computedDepths.put(rootId, 0);
-            queue.add(rootId);
+        if (nodes.containsKey(startId)) {
+            computedDepths.put(startId, 0);
+            queue.add(startId);
         }
 
-        int nextComponentDepth = traverseDirectGraphComponent(queue, computedDepths, edges);
+        int nextComponentDepth = traverseDirectGraphComponent(queue, computedDepths, nextEdges);
 
         List<String> remaining = new ArrayList<>(nodes.keySet());
-        remaining.sort(Comparator.comparingInt((String id) -> nodes.get(id).getMinDepth()).reversed()
+        remaining.sort(Comparator.comparingInt((String id) -> nodes.get(id).getMinDepth())
                 .thenComparing(id -> nodes.get(id).getStep(), String.CASE_INSENSITIVE_ORDER));
 
         for (String nodeId : remaining) {
@@ -410,7 +415,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             }
             computedDepths.put(nodeId, nextComponentDepth);
             queue.add(nodeId);
-            nextComponentDepth = traverseDirectGraphComponent(queue, computedDepths, edges);
+            nextComponentDepth = traverseDirectGraphComponent(queue, computedDepths, nextEdges);
         }
 
         for (KnowledgeNode node : nodes.values()) {
@@ -421,7 +426,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
     private int traverseDirectGraphComponent(ArrayDeque<String> queue,
                                              Map<String, Integer> computedDepths,
-                                             Map<String, List<String>> edges) {
+                                             Map<String, List<String>> nextEdges) {
         int maxSeenDepth = computedDepths.values().stream().mapToInt(Integer::intValue).max().orElse(0);
 
         while (!queue.isEmpty()) {
@@ -429,12 +434,12 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             int currentDepth = computedDepths.getOrDefault(currentId, 0);
             maxSeenDepth = Math.max(maxSeenDepth, currentDepth);
 
-            for (String dependencyId : edges.getOrDefault(currentId, Collections.emptyList())) {
+            for (String nextNodeId : nextEdges.getOrDefault(currentId, Collections.emptyList())) {
                 int candidateDepth = currentDepth + 1;
-                Integer existingDepth = computedDepths.get(dependencyId);
+                Integer existingDepth = computedDepths.get(nextNodeId);
                 if (existingDepth == null || candidateDepth < existingDepth) {
-                    computedDepths.put(dependencyId, candidateDepth);
-                    queue.addLast(dependencyId);
+                    computedDepths.put(nextNodeId, candidateDepth);
+                    queue.addLast(nextNodeId);
                     maxSeenDepth = Math.max(maxSeenDepth, candidateDepth);
                 }
             }
@@ -455,18 +460,18 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         return ordered;
     }
 
-    private Map<String, List<String>> orderDirectGraphEdges(Map<String, List<String>> edgeIndex,
-                                                            Map<String, KnowledgeNode> nodes) {
+    private Map<String, List<String>> orderDirectGraphNextEdges(Map<String, List<String>> edgeIndex,
+                                                                Map<String, KnowledgeNode> nodes) {
         Map<String, List<String>> ordered = new LinkedHashMap<>();
         List<String> sourceIds = new ArrayList<>(edgeIndex.keySet());
         sourceIds.sort(Comparator.comparingInt((String id) -> nodes.get(id).getMinDepth())
                 .thenComparing(id -> nodes.get(id).getStep(), String.CASE_INSENSITIVE_ORDER));
 
         for (String sourceId : sourceIds) {
-            List<String> dependencies = new ArrayList<>(edgeIndex.getOrDefault(sourceId, Collections.emptyList()));
-            dependencies.sort(Comparator.comparingInt((String id) -> nodes.get(id).getMinDepth())
+            List<String> nextNodeIds = new ArrayList<>(edgeIndex.getOrDefault(sourceId, Collections.emptyList()));
+            nextNodeIds.sort(Comparator.comparingInt((String id) -> nodes.get(id).getMinDepth())
                     .thenComparing(id -> nodes.get(id).getStep(), String.CASE_INSENSITIVE_ORDER));
-            ordered.put(sourceId, dependencies);
+            ordered.put(sourceId, nextNodeIds);
         }
         return ordered;
     }
@@ -656,9 +661,10 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                         KnowledgeNode.NODE_TYPE_CONCLUSION
                 ),
                 KnowledgeNode.NODE_TYPE_CONCEPT,
-                "final_conclusion",
-                "Present the final concept takeaway",
-                "This beat culminates the concept explanation and states the key takeaway."
+                "concept_entry",
+                "Introduce the concept and the first key observation",
+                "This beat frames the concept and establishes the first learner-facing anchor.",
+                KnowledgeNode.NODE_TYPE_CONCEPT
         ),
         PROBLEM(
                 Set.of(
@@ -669,27 +675,31 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                         KnowledgeNode.NODE_TYPE_CONCLUSION
                 ),
                 KnowledgeNode.NODE_TYPE_DERIVATION,
-                "final_answer",
-                "Present the final answer and why it is correct",
-                "This beat resolves the problem and summarizes why the solution is correct."
+                "problem_entry",
+                "State the problem and frame the first solving move",
+                "This beat frames the problem and establishes the first solving direction.",
+                KnowledgeNode.NODE_TYPE_PROBLEM
         );
 
         private final Set<String> allowedNodeTypes;
         private final String defaultNodeType;
-        private final String syntheticRootBaseId;
-        private final String syntheticRootStep;
-        private final String syntheticRootReason;
+        private final String syntheticStartBaseId;
+        private final String syntheticStartStep;
+        private final String syntheticStartReason;
+        private final String syntheticStartNodeType;
 
         DirectGraphMode(Set<String> allowedNodeTypes,
                         String defaultNodeType,
-                        String syntheticRootBaseId,
-                        String syntheticRootStep,
-                        String syntheticRootReason) {
+                        String syntheticStartBaseId,
+                        String syntheticStartStep,
+                        String syntheticStartReason,
+                        String syntheticStartNodeType) {
             this.allowedNodeTypes = allowedNodeTypes;
             this.defaultNodeType = defaultNodeType;
-            this.syntheticRootBaseId = syntheticRootBaseId;
-            this.syntheticRootStep = syntheticRootStep;
-            this.syntheticRootReason = syntheticRootReason;
+            this.syntheticStartBaseId = syntheticStartBaseId;
+            this.syntheticStartStep = syntheticStartStep;
+            this.syntheticStartReason = syntheticStartReason;
+            this.syntheticStartNodeType = syntheticStartNodeType;
         }
     }
 }

@@ -142,7 +142,7 @@ class NarrativeNodeTest {
     @Test
     void geogebraOutputTargetBuildsGeoGebraVerbosePrompt() {
         SequentialAiClient aiClient = new SequentialAiClient(List.of(validStoryboardResponse()));
-        Map<String, Object> ctx = buildContext(aiClient, createBasicRootNode(), createWorkflowConfig(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA));
+        Map<String, Object> ctx = buildContext(aiClient, createBasicStartNode(), createWorkflowConfig(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA));
 
         new NarrativeNode().run(ctx);
 
@@ -159,7 +159,7 @@ class NarrativeNodeTest {
     @Test
     void manimOutputTargetStillBuildsManimVerbosePrompt() {
         SequentialAiClient aiClient = new SequentialAiClient(List.of(validStoryboardResponse()));
-        Map<String, Object> ctx = buildContext(aiClient, createBasicRootNode(), createWorkflowConfig(WorkflowConfig.OUTPUT_TARGET_MANIM));
+        Map<String, Object> ctx = buildContext(aiClient, createBasicStartNode(), createWorkflowConfig(WorkflowConfig.OUTPUT_TARGET_MANIM));
 
         new NarrativeNode().run(ctx);
 
@@ -170,28 +170,69 @@ class NarrativeNodeTest {
         assertFalse(narrative.getVerbosePrompt().contains("GeoGebra code block"));
     }
 
-    private static Map<String, Object> buildContext(AiClient aiClient) {
-        return buildContext(aiClient, createBasicRootNode(), createWorkflowConfig());
+    @Test
+    void targetDescriptionUsesPrimaryTerminalInsteadOfStartNode() {
+        SequentialAiClient aiClient = new SequentialAiClient(List.of(validStoryboardResponse()));
+        WorkflowConfig config = createWorkflowConfig(WorkflowConfig.OUTPUT_TARGET_MANIM);
+
+        KnowledgeNode startNode = new KnowledgeNode("hook", "Hook the learner with the setup", 0, false);
+        startNode.setNodeType(KnowledgeNode.NODE_TYPE_CONCEPT);
+        startNode.setReason("Open with the first beat.");
+
+        KnowledgeNode terminalNode = new KnowledgeNode("conclusion", "State the final theorem takeaway", 1, false);
+        terminalNode.setNodeType(KnowledgeNode.NODE_TYPE_CONCLUSION);
+        terminalNode.setReason("Close the lesson with the final conclusion.");
+
+        Map<String, KnowledgeNode> nodes = new LinkedHashMap<>();
+        nodes.put(startNode.getId(), startNode);
+        nodes.put(terminalNode.getId(), terminalNode);
+
+        KnowledgeGraph graph = new KnowledgeGraph(
+                startNode.getId(),
+                "Target concept",
+                nodes,
+                Map.of(startNode.getId(), List.of(terminalNode.getId()))
+        );
+
+        Map<String, Object> ctx = buildContext(aiClient, graph, config);
+
+        new NarrativeNode().run(ctx);
+
+        Narrative narrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
+        assertNotNull(narrative);
+        assertTrue(narrative.getTargetDescription().contains("State the final theorem takeaway"));
+        assertFalse(narrative.getTargetDescription().contains("Hook the learner with the setup"));
     }
 
-    private static Map<String, Object> buildContext(AiClient aiClient, KnowledgeNode root) {
-        return buildContext(aiClient, root, createWorkflowConfig());
+    private static Map<String, Object> buildContext(AiClient aiClient) {
+        return buildContext(aiClient, createBasicStartNode(), createWorkflowConfig());
+    }
+
+    private static Map<String, Object> buildContext(AiClient aiClient, KnowledgeNode startNode) {
+        return buildContext(aiClient, startNode, createWorkflowConfig());
     }
 
     private static Map<String, Object> buildContext(AiClient aiClient,
-                                                    KnowledgeNode root,
+                                                    KnowledgeNode startNode,
                                                     WorkflowConfig config) {
-        root.setReason("Introduce the target concept with one clear visual.");
+        startNode.setReason("Introduce the target concept with one clear visual.");
 
         Map<String, KnowledgeNode> nodes = new LinkedHashMap<>();
-        nodes.put(root.getId(), root);
+        nodes.put(startNode.getId(), startNode);
 
         KnowledgeGraph graph = new KnowledgeGraph(
-                root.getId(),
+                startNode.getId(),
                 "Target concept",
                 nodes,
                 Collections.emptyMap()
         );
+
+        return buildContext(aiClient, graph, config);
+    }
+
+    private static Map<String, Object> buildContext(AiClient aiClient,
+                                                    KnowledgeGraph graph,
+                                                    WorkflowConfig config) {
 
         Map<String, Object> ctx = new LinkedHashMap<>();
         ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
@@ -200,8 +241,8 @@ class NarrativeNodeTest {
         return ctx;
     }
 
-    private static KnowledgeNode createBasicRootNode() {
-        return new KnowledgeNode("root", "Target concept", 0, false);
+    private static KnowledgeNode createBasicStartNode() {
+        return new KnowledgeNode("start", "Target concept", 0, false);
     }
 
     private static KnowledgeNode createNarrativeInputNode() {

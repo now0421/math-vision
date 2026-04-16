@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -27,18 +28,31 @@ class MathEnrichmentNodeTest {
     @Test
     void enrichmentPromptUsesCompactKnowledgeGraphFields() {
         CapturingAiClient aiClient = new CapturingAiClient(validEnrichmentResponse());
-        KnowledgeNode problem = new KnowledgeNode("problem", "Reflect point A across line l", 0, false);
+        KnowledgeNode problem = new KnowledgeNode("problem", "State the shortest-path problem", 0, false);
         problem.setNodeType(KnowledgeNode.NODE_TYPE_PROBLEM);
-        problem.setReason("Use symmetry to compare path lengths.");
+        problem.setReason("Frame the opening beat.");
+
+        KnowledgeNode currentStep = new KnowledgeNode("reflect", "Reflect point A across line l", 1, false);
+        currentStep.setNodeType(KnowledgeNode.NODE_TYPE_CONSTRUCTION);
+        currentStep.setReason("Use symmetry to compare path lengths.");
+
+        KnowledgeNode conclusion = new KnowledgeNode("answer", "Conclude the reflected route is shortest", 2, false);
+        conclusion.setNodeType(KnowledgeNode.NODE_TYPE_CONCLUSION);
+        conclusion.setReason("Close with the final answer.");
 
         Map<String, KnowledgeNode> nodes = new LinkedHashMap<>();
         nodes.put(problem.getId(), problem);
+        nodes.put(currentStep.getId(), currentStep);
+        nodes.put(conclusion.getId(), conclusion);
 
         KnowledgeGraph graph = new KnowledgeGraph(
                 problem.getId(),
                 "Given a point A and line l, find the reflected point",
                 nodes,
-                Map.of()
+                Map.of(
+                        problem.getId(), List.of(currentStep.getId()),
+                        currentStep.getId(), List.of(conclusion.getId())
+                )
         );
 
         Map<String, Object> ctx = new LinkedHashMap<>();
@@ -47,12 +61,14 @@ class MathEnrichmentNodeTest {
 
         new MathEnrichmentNode().run(ctx);
 
-        assertNotNull(aiClient.lastUserMessage);
-        assertTrue(aiClient.lastUserMessage.contains("- Step: Reflect point A across line l"));
-        assertTrue(aiClient.lastUserMessage.contains("- Target problem: Given a point A and line l, find the reflected point"));
-        assertFalse(aiClient.lastUserMessage.contains("- Node type:"));
-        assertFalse(aiClient.lastUserMessage.contains("- Depth:"));
-        assertFalse(aiClient.lastUserMessage.contains("- Reason from Stage 0:"));
+        String currentPrompt = aiClient.findUserMessageContaining("- Step: Reflect point A across line l");
+        assertNotNull(currentPrompt);
+        assertTrue(currentPrompt.contains("- Target problem: Given a point A and line l, find the reflected point"));
+        assertTrue(currentPrompt.contains("Direct prerequisite steps:\n- State the shortest-path problem"));
+        assertTrue(currentPrompt.contains("Direct downstream steps:\n- Conclude the reflected route is shortest"));
+        assertFalse(currentPrompt.contains("- Node type:"));
+        assertFalse(currentPrompt.contains("- Depth:"));
+        assertFalse(currentPrompt.contains("- Reason from Stage 0:"));
 
         assertNotNull(aiClient.lastSystemPrompt);
         assertFalse(aiClient.lastSystemPrompt.contains("Use symmetry to compare path lengths."));
@@ -135,6 +151,7 @@ class MathEnrichmentNodeTest {
 
     private static final class CapturingAiClient implements AiClient {
         private final JsonNode rawResponse;
+        private final List<String> userMessages = new ArrayList<>();
         private String lastUserMessage;
         private String lastSystemPrompt;
 
@@ -144,6 +161,7 @@ class MathEnrichmentNodeTest {
 
         @Override
         public String chat(String userMessage, String systemPrompt) {
+            userMessages.add(userMessage);
             lastUserMessage = userMessage;
             lastSystemPrompt = systemPrompt;
             return "{\"equations\":[],\"definitions\":{}}";
@@ -153,9 +171,19 @@ class MathEnrichmentNodeTest {
         public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
                                                                  String systemPrompt,
                                                                  String toolsJson) {
+            userMessages.add(userMessage);
             lastUserMessage = userMessage;
             lastSystemPrompt = systemPrompt;
             return CompletableFuture.completedFuture(rawResponse);
+        }
+
+        private String findUserMessageContaining(String snippet) {
+            for (String userMessage : userMessages) {
+                if (userMessage != null && userMessage.contains(snippet)) {
+                    return userMessage;
+                }
+            }
+            return null;
         }
 
         @Override

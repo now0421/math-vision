@@ -42,10 +42,11 @@ class ExplorationNodeTest {
         assertEquals(0, aiClient.chatCallCount);
         assertEquals(List.of(ToolSchemas.CONCEPT_GRAPH), aiClient.requestedTools);
         assertEquals(1, ctx.get(WorkflowKeys.EXPLORATION_API_CALLS));
+        assertEquals("intro", graph.getStartNodeId());
     }
 
     @Test
-    void conceptGraphPayloadIsNormalizedIntoKnowledgeGraph() {
+    void conceptGraphPayloadIsNormalizedIntoForwardKnowledgeGraph() {
         QueueAiClient aiClient = new QueueAiClient();
         aiClient.toolResponses.add(toolResponse("write_concept_graph", typedConceptGraphArguments()));
 
@@ -55,20 +56,21 @@ class ExplorationNodeTest {
 
         KnowledgeGraph graph = (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
         assertNotNull(graph);
-        assertEquals("takeaway", graph.getRootNodeId());
+        assertEquals("symmetry", graph.getStartNodeId());
         assertEquals(3, graph.countNodes());
         assertEquals(2, graph.countEdges());
         assertEquals(KnowledgeNode.NODE_TYPE_OBSERVATION, graph.getNode("symmetry").getNodeType());
         assertTrue(graph.getNode("symmetry").isFoundation());
-        assertEquals(List.of("symmetry"), graph.getPrerequisiteEdges().get("build"));
+        assertEquals(List.of("takeaway"), graph.getNextEdges().get("build"));
+        assertEquals("takeaway", graph.findPrimaryTerminalNodeId());
         assertEquals(List.of("symmetry", "build", "takeaway"),
                 graph.topologicalOrder().stream().map(KnowledgeNode::getId).collect(Collectors.toList()));
     }
 
     @Test
-    void conceptGraphFallsBackToValidTerminalRootWhenRootIsInvalid() {
+    void conceptGraphFallsBackToValidSourceWhenStartIsInvalid() {
         QueueAiClient aiClient = new QueueAiClient();
-        aiClient.toolResponses.add(toolResponse("write_concept_graph", invalidRootConceptGraphArguments()));
+        aiClient.toolResponses.add(toolResponse("write_concept_graph", invalidStartConceptGraphArguments()));
 
         Map<String, Object> ctx = buildContext(aiClient, createConfig(WorkflowConfig.INPUT_MODE_CONCEPT), "Inscribed angle");
 
@@ -76,12 +78,13 @@ class ExplorationNodeTest {
 
         KnowledgeGraph graph = (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
         assertNotNull(graph);
-        assertEquals("final_takeaway", graph.getRootNodeId());
-        assertEquals(KnowledgeNode.NODE_TYPE_CONCLUSION, graph.getRootNode().getNodeType());
+        assertEquals("setup", graph.getStartNodeId());
+        assertEquals(KnowledgeNode.NODE_TYPE_CONSTRUCTION, graph.getStartNode().getNodeType());
+        assertEquals("final_takeaway", graph.findPrimaryTerminalNodeId());
     }
 
     @Test
-    void conceptGraphRecomputesInconsistentMinDepthValuesFromEdges() {
+    void conceptGraphRecomputesInconsistentMinDepthValuesFromForwardEdges() {
         QueueAiClient aiClient = new QueueAiClient();
         aiClient.toolResponses.add(toolResponse("write_concept_graph", inconsistentDepthConceptGraphArguments()));
 
@@ -91,9 +94,9 @@ class ExplorationNodeTest {
 
         KnowledgeGraph graph = (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
         assertNotNull(graph);
-        assertEquals(0, graph.getNode("takeaway").getMinDepth());
+        assertEquals(0, graph.getNode("intuition").getMinDepth());
         assertEquals(1, graph.getNode("bridge").getMinDepth());
-        assertEquals(2, graph.getNode("intuition").getMinDepth());
+        assertEquals(2, graph.getNode("takeaway").getMinDepth());
     }
 
     @Test
@@ -110,11 +113,12 @@ class ExplorationNodeTest {
         assertEquals(2, graph.countNodes());
         assertEquals(1, graph.countEdges());
         assertEquals("Keep the first setup node", graph.getNode("setup").getStep());
-        assertEquals(List.of("setup"), graph.getPrerequisiteEdges().get("takeaway"));
+        assertEquals("setup", graph.getStartNodeId());
+        assertEquals(List.of("takeaway"), graph.getNextEdges().get("setup"));
     }
 
     @Test
-    void problemModeDirectGraphGenerationStillNormalizesRootAndDepths() {
+    void problemModeDirectGraphGenerationStillNormalizesStartAndDepths() {
         QueueAiClient aiClient = new QueueAiClient();
         aiClient.toolResponses.add(toolResponse("write_problem_step_graph", problemGraphArguments()));
 
@@ -125,11 +129,29 @@ class ExplorationNodeTest {
         KnowledgeGraph graph = (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
         assertNotNull(graph);
         assertEquals(List.of(ToolSchemas.PROBLEM_GRAPH), aiClient.requestedTools);
-        assertEquals("answer", graph.getRootNodeId());
-        assertEquals(0, graph.getNode("answer").getMinDepth());
+        assertEquals("prompt", graph.getStartNodeId());
+        assertEquals(0, graph.getNode("prompt").getMinDepth());
         assertEquals(1, graph.getNode("observe").getMinDepth());
-        assertEquals(2, graph.getNode("prompt").getMinDepth());
+        assertEquals(2, graph.getNode("answer").getMinDepth());
         assertEquals(KnowledgeNode.NODE_TYPE_PROBLEM, graph.getNode("prompt").getNodeType());
+        assertEquals("answer", graph.findPrimaryTerminalNodeId());
+    }
+
+    @Test
+    void conceptGraphCreatesSyntheticStartWhenNoSourceExists() {
+        QueueAiClient aiClient = new QueueAiClient();
+        aiClient.toolResponses.add(toolResponse("write_concept_graph", cyclicConceptGraphArguments()));
+
+        Map<String, Object> ctx = buildContext(aiClient, createConfig(WorkflowConfig.INPUT_MODE_CONCEPT), "Angle chasing");
+
+        new ExplorationNode().run(ctx);
+
+        KnowledgeGraph graph = (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
+        assertNotNull(graph);
+        assertEquals("concept_entry", graph.getStartNodeId());
+        assertEquals(KnowledgeNode.NODE_TYPE_CONCEPT, graph.getStartNode().getNodeType());
+        assertEquals(List.of("build", "takeaway"), graph.getNextEdges().get("concept_entry"));
+        assertEquals(3, graph.countNodes());
     }
 
     private static Map<String, Object> buildContext(AiClient aiClient,
@@ -153,30 +175,30 @@ class ExplorationNodeTest {
 
     private static ObjectNode basicConceptGraphArguments() {
         ObjectNode arguments = JsonUtils.mapper().createObjectNode();
-        arguments.put("root_id", "takeaway");
+        arguments.put("start_id", "intro");
         ArrayNode nodes = arguments.putArray("nodes");
         nodes.addObject()
-                .put("id", "takeaway")
-                .put("step", "State the final theorem takeaway")
-                .put("reason", "This is the culminating beat.")
-                .put("node_type", "conclusion")
+                .put("id", "intro")
+                .put("step", "Introduce the theorem through one visual hook")
+                .put("reason", "This is the opening beat.")
+                .put("node_type", "concept")
                 .put("min_depth", 0)
                 .put("is_foundation", false);
-        arguments.putObject("prerequisite_edges");
+        arguments.putObject("next_edges");
         return arguments;
     }
 
     private static ObjectNode typedConceptGraphArguments() {
         ObjectNode arguments = JsonUtils.mapper().createObjectNode();
-        arguments.put("root_id", "takeaway");
+        arguments.put("start_id", "symmetry");
         ArrayNode nodes = arguments.putArray("nodes");
         nodes.addObject()
-                .put("id", "takeaway")
-                .put("step", "State the final perpendicular-bisector takeaway")
-                .put("reason", "This closes the explanation.")
-                .put("node_type", "conclusion")
+                .put("id", "symmetry")
+                .put("step", "Observe that intersection points stay equally distant from both endpoints")
+                .put("reason", "This is the learner-facing invariant.")
+                .put("node_type", "observation")
                 .put("min_depth", 8)
-                .put("is_foundation", false);
+                .put("is_foundation", true);
         nodes.addObject()
                 .put("id", "build")
                 .put("step", "Build equal-radius circles from the endpoints")
@@ -185,51 +207,51 @@ class ExplorationNodeTest {
                 .put("min_depth", 0)
                 .put("is_foundation", false);
         nodes.addObject()
-                .put("id", "symmetry")
-                .put("step", "Observe that intersection points stay equally distant from both endpoints")
-                .put("reason", "This is the learner-facing invariant.")
-                .put("node_type", "observation")
+                .put("id", "takeaway")
+                .put("step", "State the final perpendicular-bisector takeaway")
+                .put("reason", "This closes the explanation.")
+                .put("node_type", "conclusion")
                 .put("min_depth", 0)
-                .put("is_foundation", true);
+                .put("is_foundation", false);
 
-        ObjectNode edges = arguments.putObject("prerequisite_edges");
-        edges.putArray("takeaway").add("build");
-        edges.putArray("build").add("symmetry");
+        ObjectNode edges = arguments.putObject("next_edges");
+        edges.putArray("symmetry").add("build");
+        edges.putArray("build").add("takeaway");
         return arguments;
     }
 
-    private static ObjectNode invalidRootConceptGraphArguments() {
+    private static ObjectNode invalidStartConceptGraphArguments() {
         ObjectNode arguments = JsonUtils.mapper().createObjectNode();
-        arguments.put("root_id", "missing_root");
+        arguments.put("start_id", "missing_start");
         ArrayNode nodes = arguments.putArray("nodes");
         nodes.addObject()
                 .put("id", "final_takeaway")
                 .put("step", "Summarize the inscribed-angle conclusion")
                 .put("node_type", "conclusion")
-                .put("min_depth", 4)
+                .put("min_depth", 0)
                 .put("is_foundation", false);
         nodes.addObject()
                 .put("id", "setup")
                 .put("step", "Mark the intercepted arc and the vertex")
                 .put("node_type", "construction")
-                .put("min_depth", 0)
+                .put("min_depth", 4)
                 .put("is_foundation", false);
 
-        ObjectNode edges = arguments.putObject("prerequisite_edges");
-        edges.putArray("final_takeaway").add("setup");
+        ObjectNode edges = arguments.putObject("next_edges");
+        edges.putArray("setup").add("final_takeaway");
         return arguments;
     }
 
     private static ObjectNode inconsistentDepthConceptGraphArguments() {
         ObjectNode arguments = JsonUtils.mapper().createObjectNode();
-        arguments.put("root_id", "takeaway");
+        arguments.put("start_id", "takeaway");
         ArrayNode nodes = arguments.putArray("nodes");
         nodes.addObject()
-                .put("id", "takeaway")
-                .put("step", "Present the reflection shortcut")
-                .put("node_type", "conclusion")
+                .put("id", "intuition")
+                .put("step", "Notice why equal reflected segments preserve distance")
+                .put("node_type", "observation")
                 .put("min_depth", 9)
-                .put("is_foundation", false);
+                .put("is_foundation", true);
         nodes.addObject()
                 .put("id", "bridge")
                 .put("step", "Turn the broken path into a straight path using reflection")
@@ -237,33 +259,33 @@ class ExplorationNodeTest {
                 .put("min_depth", 0)
                 .put("is_foundation", false);
         nodes.addObject()
-                .put("id", "intuition")
-                .put("step", "Notice why equal reflected segments preserve distance")
-                .put("node_type", "observation")
+                .put("id", "takeaway")
+                .put("step", "Present the reflection shortcut")
+                .put("node_type", "conclusion")
                 .put("min_depth", 0)
-                .put("is_foundation", true);
+                .put("is_foundation", false);
 
-        ObjectNode edges = arguments.putObject("prerequisite_edges");
-        edges.putArray("takeaway").add("bridge");
-        edges.putArray("bridge").add("intuition");
+        ObjectNode edges = arguments.putObject("next_edges");
+        edges.putArray("intuition").add("bridge");
+        edges.putArray("bridge").add("takeaway");
         return arguments;
     }
 
     private static ObjectNode noisyConceptGraphArguments() {
         ObjectNode arguments = JsonUtils.mapper().createObjectNode();
-        arguments.put("root_id", "takeaway");
+        arguments.put("start_id", "setup");
         ArrayNode nodes = arguments.putArray("nodes");
-        nodes.addObject()
-                .put("id", "takeaway")
-                .put("step", "Present the midpoint theorem takeaway")
-                .put("node_type", "conclusion")
-                .put("min_depth", 3)
-                .put("is_foundation", false);
         nodes.addObject()
                 .put("id", "setup")
                 .put("step", "Keep the first setup node")
                 .put("node_type", "construction")
                 .put("min_depth", 1)
+                .put("is_foundation", false);
+        nodes.addObject()
+                .put("id", "takeaway")
+                .put("step", "Present the midpoint theorem takeaway")
+                .put("node_type", "conclusion")
+                .put("min_depth", 3)
                 .put("is_foundation", false);
         nodes.addObject()
                 .put("id", "setup")
@@ -278,19 +300,19 @@ class ExplorationNodeTest {
                 .put("min_depth", 0)
                 .put("is_foundation", false);
 
-        ObjectNode edges = arguments.putObject("prerequisite_edges");
-        ArrayNode takeawayDeps = edges.putArray("takeaway");
-        takeawayDeps.add("setup");
-        takeawayDeps.add("setup");
-        takeawayDeps.add("takeaway");
-        takeawayDeps.add("missing");
-        edges.putArray("setup").add("missing");
+        ObjectNode edges = arguments.putObject("next_edges");
+        ArrayNode setupNext = edges.putArray("setup");
+        setupNext.add("takeaway");
+        setupNext.add("takeaway");
+        setupNext.add("setup");
+        setupNext.add("missing");
+        edges.putArray("takeaway").add("missing");
         return arguments;
     }
 
     private static ObjectNode problemGraphArguments() {
         ObjectNode arguments = JsonUtils.mapper().createObjectNode();
-        arguments.put("root_id", "prompt");
+        arguments.put("start_id", "answer");
         ArrayNode nodes = arguments.putArray("nodes");
         nodes.addObject()
                 .put("id", "prompt")
@@ -311,9 +333,32 @@ class ExplorationNodeTest {
                 .put("min_depth", 5)
                 .put("is_foundation", false);
 
-        ObjectNode edges = arguments.putObject("prerequisite_edges");
-        edges.putArray("answer").add("observe");
-        edges.putArray("observe").add("prompt");
+        ObjectNode edges = arguments.putObject("next_edges");
+        edges.putArray("prompt").add("observe");
+        edges.putArray("observe").add("answer");
+        return arguments;
+    }
+
+    private static ObjectNode cyclicConceptGraphArguments() {
+        ObjectNode arguments = JsonUtils.mapper().createObjectNode();
+        arguments.put("start_id", "build");
+        ArrayNode nodes = arguments.putArray("nodes");
+        nodes.addObject()
+                .put("id", "build")
+                .put("step", "Build the equal-angle construction")
+                .put("node_type", "construction")
+                .put("min_depth", 2)
+                .put("is_foundation", false);
+        nodes.addObject()
+                .put("id", "takeaway")
+                .put("step", "State the angle-chasing takeaway")
+                .put("node_type", "conclusion")
+                .put("min_depth", 1)
+                .put("is_foundation", false);
+
+        ObjectNode edges = arguments.putObject("next_edges");
+        edges.putArray("build").add("takeaway");
+        edges.putArray("takeaway").add("build");
         return arguments;
     }
 

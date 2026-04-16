@@ -618,10 +618,10 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
     }
 
     private String buildWorkflowTargetDescription(KnowledgeGraph graph, boolean problemMode) {
-        KnowledgeNode root = graph.getRootNode();
+        KnowledgeNode terminal = graph.findPrimaryTerminalNode();
         return TargetDescriptionBuilder.workflowTargetDescription(
                 graph.getTargetConcept(),
-                root != null ? root.getStep() : "",
+                terminal != null ? terminal.getStep() : "",
                 "",
                 problemMode,
                 outputTarget);

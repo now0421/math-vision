@@ -62,20 +62,20 @@ public final class TargetDescriptionBuilder {
      * Builds the workflow target description used by prompt stages.
      */
     public static String workflowTargetDescription(String targetConcept,
-                                                   String rootConcept,
-                                                   String rootDescription,
+                                                   String terminalConcept,
+                                                   String terminalDescription,
                                                    boolean problemMode) {
-        return workflowTargetDescription(targetConcept, rootConcept, rootDescription, problemMode, null);
+        return workflowTargetDescription(targetConcept, terminalConcept, terminalDescription, problemMode, null);
     }
 
     public static String workflowTargetDescription(String targetConcept,
-                                                   String rootConcept,
-                                                   String rootDescription,
+                                                   String terminalConcept,
+                                                   String terminalDescription,
                                                    boolean problemMode,
                                                    String outputTarget) {
         String safeTarget = sanitize(targetConcept, "Unknown target");
-        String safeRootConcept = sanitize(rootConcept, safeTarget);
-        String safeRootDescription = sanitize(rootDescription, "");
+        String safeTerminalConcept = sanitize(terminalConcept, safeTarget);
+        String safeTerminalDescription = sanitize(terminalDescription, "");
         boolean geoGebraTarget = "geogebra".equalsIgnoreCase(outputTarget);
 
         String mediumNoun = geoGebraTarget ? "interactive geometry construction" : "teaching animation";
@@ -83,26 +83,26 @@ public final class TargetDescriptionBuilder {
         String culminationVerb = geoGebraTarget ? "culminate in the final construction insight" : "culminate in the final conclusion";
 
         if (problemMode) {
-            if (!safeRootDescription.isEmpty()) {
+            if (!safeTerminalDescription.isEmpty()) {
                 return String.format(
                         "Explain and solve the math problem \"%s\" through a coherent %s. The"
                                 + " goal is not only to reach the answer, but to help the viewer"
                                 + " understand why it works. The %s should %s \"%s\": %s",
-                        safeTarget, mediumNoun, mediumObject, culminationVerb, safeRootConcept, safeRootDescription);
+                        safeTarget, mediumNoun, mediumObject, culminationVerb, safeTerminalConcept, safeTerminalDescription);
             }
             return String.format(
-                    "Explain and solve the math problem \"%s\" through a coherent %s that leads"
+                    "Explain and solve the math problem \"%s\" through a coherent %s that leads from the opening hook"
                             + " to \"%s\" while helping the viewer understand the reasoning.",
-                    safeTarget, mediumNoun, safeRootConcept);
+                    safeTarget, mediumNoun, safeTerminalConcept);
         }
 
-        if (!safeRootDescription.isEmpty()) {
-            return safeRootDescription;
+        if (!safeTerminalDescription.isEmpty()) {
+            return safeTerminalDescription;
         }
         return String.format(
-                "Explain the concept \"%s\" through a coherent %s built from the necessary"
-                        + " prerequisites up to the final idea.",
-                safeTarget, mediumNoun);
+                "Explain the concept \"%s\" through a coherent %s that progresses from the first teaching beat"
+                        + " to \"%s\".",
+                safeTarget, mediumNoun, safeTerminalConcept);
     }
 
     /**

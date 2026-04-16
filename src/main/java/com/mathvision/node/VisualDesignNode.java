@@ -31,9 +31,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Stage 1b: Visual Design - adds visual specifications to each node.
  *
- * Depth levels are processed foundation-first (deepest steps to depth 0):
- * - Foundational steps establish reusable motifs before later steps are designed.
- * - Nodes at the same depth run concurrently because they only depend on deeper,
+ * Depth levels are processed start-first (depth 0 to later beats):
+ * - Earlier steps establish reusable motifs before later steps are designed.
+ * - Nodes at the same depth run concurrently because they only depend on shallower,
  *   already-finalized prerequisite specs plus the shared global style guide.
  */
 public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeGraph, String> {
@@ -225,7 +225,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
             return prerequisites;
         }
 
-        int expectedDepth = node.getMinDepth() + 1;
+        int expectedDepth = Math.max(0, node.getMinDepth() - 1);
         List<KnowledgeNode> nearest = new ArrayList<>();
         for (KnowledgeNode prerequisite : prerequisites) {
             if (prerequisite.getMinDepth() == expectedDepth) {

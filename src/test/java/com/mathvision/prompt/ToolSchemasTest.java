@@ -77,15 +77,16 @@ class ToolSchemasTest {
     @Test
     void conceptGraphTool_hasRequiredFields() {
         assertTrue(ToolSchemas.CONCEPT_GRAPH.contains("write_concept_graph"));
-        assertTrue(ToolSchemas.CONCEPT_GRAPH.contains("root_id"));
+        assertTrue(ToolSchemas.CONCEPT_GRAPH.contains("start_id"));
         assertTrue(ToolSchemas.CONCEPT_GRAPH.contains("nodes"));
-        assertTrue(ToolSchemas.CONCEPT_GRAPH.contains("prerequisite_edges"));
+        assertTrue(ToolSchemas.CONCEPT_GRAPH.contains("next_edges"));
         assertTrue(ToolSchemas.CONCEPT_GRAPH.contains("concept"));
         assertTrue(ToolSchemas.CONCEPT_GRAPH.contains("observation"));
         assertTrue(ToolSchemas.CONCEPT_GRAPH.contains("construction"));
         assertTrue(ToolSchemas.CONCEPT_GRAPH.contains("derivation"));
         assertTrue(ToolSchemas.CONCEPT_GRAPH.contains("conclusion"));
         assertTrue(ToolSchemas.CONCEPT_GRAPH.contains("is_foundation"));
+        assertFalse(ToolSchemas.CONCEPT_GRAPH.contains("prerequisite_edges"));
     }
 
     @Test

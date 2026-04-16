@@ -80,7 +80,7 @@ Important details:
 - `auto` mode first tries LLM classification, then falls back to heuristics
 - Both modes now use one-shot graph planning rather than recursive prerequisite expansion
 - Graph edge direction is:
-  `node -> direct dependencies required before it`
+  `node -> direct next teaching beats that should follow it`
 
 ### Stage 1a. Math Enrichment
 
@@ -113,7 +113,7 @@ Adds `visual_spec` to each node:
 - `color_palette`
 
 Important details:
-- Processes nodes from deepest prerequisites toward the conclusion
+- Processes nodes from the start beat toward later beats
 - Same-depth nodes may run in parallel
 - Reuses prerequisite visual specs as context
 - This is the first strong `manim` vs `geogebra` divergence point

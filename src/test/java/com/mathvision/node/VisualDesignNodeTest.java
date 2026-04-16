@@ -10,7 +10,9 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -24,20 +26,40 @@ class VisualDesignNodeTest {
     void visualDesignPromptUsesCompactKnowledgeGraphFields() {
         CapturingAiClient aiClient = new CapturingAiClient(validVisualDesignResponse());
 
-        KnowledgeNode problem = new KnowledgeNode("problem", "Show the reflected point A'", 0, false);
+        KnowledgeNode problem = new KnowledgeNode("problem", "State the reflection problem", 0, false);
         problem.setNodeType(KnowledgeNode.NODE_TYPE_PROBLEM);
-        problem.setReason("Reflection creates an equal-length path.");
+        problem.setReason("Frame the opening beat.");
         problem.setEquations(java.util.List.of("AP = A'P"));
         problem.setDefinitions(Map.of("A'", "reflection of A across l"));
 
+        KnowledgeNode currentStep = new KnowledgeNode("reflect", "Show the reflected point A'", 1, false);
+        currentStep.setNodeType(KnowledgeNode.NODE_TYPE_CONSTRUCTION);
+        currentStep.setReason("Reflection creates an equal-length path.");
+        currentStep.setEquations(java.util.List.of("AP = A'P"));
+        currentStep.setDefinitions(Map.of("A'", "reflection of A across l"));
+
+        KnowledgeNode conclusion = new KnowledgeNode("answer", "Conclude the reflected route is shortest", 2, false);
+        conclusion.setNodeType(KnowledgeNode.NODE_TYPE_CONCLUSION);
+        conclusion.setReason("Close the explanation.");
+
+        Map<String, Object> prerequisiteVisualSpec = new LinkedHashMap<>();
+        prerequisiteVisualSpec.put("layout", "Keep l centered before introducing the mirror point.");
+        prerequisiteVisualSpec.put("motion_plan", "Show the base problem setup.");
+        problem.setVisualSpec(prerequisiteVisualSpec);
+
         Map<String, KnowledgeNode> nodes = new LinkedHashMap<>();
         nodes.put(problem.getId(), problem);
+        nodes.put(currentStep.getId(), currentStep);
+        nodes.put(conclusion.getId(), conclusion);
 
         KnowledgeGraph graph = new KnowledgeGraph(
                 problem.getId(),
                 "Given a point A and line l, construct the reflected point",
                 nodes,
-                Map.of()
+                Map.of(
+                        problem.getId(), List.of(currentStep.getId()),
+                        currentStep.getId(), List.of(conclusion.getId())
+                )
         );
 
         Map<String, Object> ctx = new LinkedHashMap<>();
@@ -46,18 +68,20 @@ class VisualDesignNodeTest {
 
         new VisualDesignNode().run(ctx);
 
-        assertNotNull(aiClient.lastUserMessage);
-        assertTrue(aiClient.lastUserMessage.contains("- Step: Show the reflected point A'"));
-        assertTrue(aiClient.lastUserMessage.contains("Equations:"));
-        assertTrue(aiClient.lastUserMessage.contains("Definitions:"));
-        assertTrue(aiClient.lastUserMessage.contains("AP = A'P"));
-        assertTrue(aiClient.lastUserMessage.contains("A': reflection of A across l"));
-        assertTrue(aiClient.lastUserMessage.contains("Global visual context:"));
-        assertFalse(aiClient.lastUserMessage.contains("- Node type:"));
-        assertFalse(aiClient.lastUserMessage.contains("- Depth:"));
-        assertFalse(aiClient.lastUserMessage.contains("- Reason from Stage 0:"));
-        assertFalse(aiClient.lastUserMessage.contains("gradually increase abstraction"));
-        assertFalse(aiClient.lastUserMessage.contains("backend-neutral where possible"));
+        String currentPrompt = aiClient.findUserMessageContaining("- Step: Show the reflected point A'");
+        assertNotNull(currentPrompt);
+        assertTrue(currentPrompt.contains("Equations:"));
+        assertTrue(currentPrompt.contains("Definitions:"));
+        assertTrue(currentPrompt.contains("AP = A'P"));
+        assertTrue(currentPrompt.contains("A': reflection of A across l"));
+        assertTrue(currentPrompt.contains("Global visual context:"));
+        assertTrue(currentPrompt.contains("Direct downstream steps:\n- Conclude the reflected route is shortest"));
+        assertTrue(currentPrompt.contains("Prerequisite visual specs already chosen:\n- State the reflection problem"));
+        assertFalse(currentPrompt.contains("- Node type:"));
+        assertFalse(currentPrompt.contains("- Depth:"));
+        assertFalse(currentPrompt.contains("- Reason from Stage 0:"));
+        assertFalse(currentPrompt.contains("gradually increase abstraction"));
+        assertFalse(currentPrompt.contains("backend-neutral where possible"));
 
         assertNotNull(aiClient.lastSystemPrompt);
         assertFalse(aiClient.lastSystemPrompt.contains("Reflection creates an equal-length path."));
@@ -81,6 +105,7 @@ class VisualDesignNodeTest {
 
     private static final class CapturingAiClient implements AiClient {
         private final JsonNode rawResponse;
+        private final List<String> userMessages = new ArrayList<>();
         private String lastUserMessage;
         private String lastSystemPrompt;
 
@@ -90,6 +115,7 @@ class VisualDesignNodeTest {
 
         @Override
         public String chat(String userMessage, String systemPrompt) {
+            userMessages.add(userMessage);
             lastUserMessage = userMessage;
             lastSystemPrompt = systemPrompt;
             return "{\"layout\":\"fallback\",\"motion_plan\":\"fallback\",\"color_scheme\":\"fallback\"}";
@@ -99,9 +125,19 @@ class VisualDesignNodeTest {
         public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
                                                                  String systemPrompt,
                                                                  String toolsJson) {
+            userMessages.add(userMessage);
             lastUserMessage = userMessage;
             lastSystemPrompt = systemPrompt;
             return CompletableFuture.completedFuture(rawResponse);
+        }
+
+        private String findUserMessageContaining(String snippet) {
+            for (String userMessage : userMessages) {
+                if (userMessage != null && userMessage.contains(snippet)) {
+                    return userMessage;
+                }
+            }
+            return null;
         }
 
         @Override
