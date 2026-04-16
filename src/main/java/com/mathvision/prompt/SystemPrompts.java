@@ -14,9 +14,7 @@ public final class SystemPrompts {
 
     private static final String MANIM_SYNTAX_MANUAL_RESOURCE = "llm/manim_syntax_manual.md";
     private static final String MANIM_STYLE_REFERENCE_RESOURCE = "llm/manim_style_reference.md";
-    private static final String MANIM_CONSTRAINT_MATRIX_RESOURCE =
-            "llm/manim_constraint_matrix.md";
-    private static final String GEOGEBRA_SYNTAX_MANUAL_RESOURCE = "llm/geogebra_syntax_manual.md";
+        private static final String GEOGEBRA_SYNTAX_MANUAL_RESOURCE = "llm/geogebra_syntax_manual.md";
     private static final String GEOGEBRA_STYLE_REFERENCE_RESOURCE = "llm/geogebra_style_reference.md";
 
     // ========================================================================
@@ -406,10 +404,7 @@ public final class SystemPrompts {
         private static final String VALUE = loadPromptResource(MANIM_STYLE_REFERENCE_RESOURCE);
     }
 
-    private static final class ManimConstraintMatrixHolder {
-        private static final String VALUE = loadPromptResource(MANIM_CONSTRAINT_MATRIX_RESOURCE);
-    }
-
+    
     private static final class GeoGebraSyntaxManualHolder {
         private static final String VALUE = loadPromptResource(GEOGEBRA_SYNTAX_MANUAL_RESOURCE);
     }
@@ -508,15 +503,8 @@ public final class SystemPrompts {
                 + ManimStyleReferenceHolder.VALUE;
     }
 
-    public static String manimCoverageNote() {
-        return "Manim source-of-truth is tracked in the internal constraint matrix resource.\n"
-                + "Use the shared Manim prompt fragments as the executable form of that matrix.\n";
-    }
-
-    public static String getManimConstraintMatrix() {
-        return ManimConstraintMatrixHolder.VALUE;
-    }
-
+    
+    
     public static String ensureGeoGebraSyntaxManual(String prompt) {
         String base = prompt == null ? "" : prompt;
         if (base.contains(GeoGebraSyntaxManualHolder.VALUE)) {

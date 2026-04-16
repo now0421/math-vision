@@ -22,7 +22,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -42,8 +41,6 @@ class ExplorationNodeTest {
         assertEquals(1, aiClient.toolCallCount);
         assertEquals(0, aiClient.chatCallCount);
         assertEquals(List.of(ToolSchemas.CONCEPT_GRAPH), aiClient.requestedTools);
-        assertFalse(aiClient.requestedTools.contains(ToolSchemas.PREREQUISITES));
-        assertFalse(aiClient.requestedTools.contains(ToolSchemas.FOUNDATION_CHECK));
         assertEquals(1, ctx.get(WorkflowKeys.EXPLORATION_API_CALLS));
     }
 

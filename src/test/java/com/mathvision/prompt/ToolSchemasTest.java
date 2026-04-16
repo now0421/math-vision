@@ -10,22 +10,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class ToolSchemasTest {
 
     @Test
-    void prerequisitesTool_isValidJson() {
-        assertDoesNotThrow(() -> {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            mapper.readTree(ToolSchemas.PREREQUISITES);
-        });
-    }
-
-    @Test
-    void foundationCheckTool_isValidJson() {
-        assertDoesNotThrow(() -> {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            mapper.readTree(ToolSchemas.FOUNDATION_CHECK);
-        });
-    }
-
-    @Test
     void inputModeTool_isValidJson() {
         assertDoesNotThrow(() -> {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -89,14 +73,7 @@ class ToolSchemasTest {
         });
     }
 
-    @Test
-    void prerequisitesTool_hasRequiredFields() {
-        assertTrue(ToolSchemas.PREREQUISITES.contains("write_prerequisites"));
-        assertTrue(ToolSchemas.PREREQUISITES.contains("prerequisites"));
-        assertTrue(ToolSchemas.PREREQUISITES.contains("step"));
-        assertTrue(ToolSchemas.PREREQUISITES.contains("reason"));
-    }
-
+    
     @Test
     void conceptGraphTool_hasRequiredFields() {
         assertTrue(ToolSchemas.CONCEPT_GRAPH.contains("write_concept_graph"));
