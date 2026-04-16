@@ -113,9 +113,8 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             if (fixedCode == null || fixedCode.isBlank()) {
                 result.setFailureReason("Code fix returned no parseable "
                         + (NodeSupport.isGeoGebraTarget(workflowConfig) ? "GeoGebra code" : "Python code"));
-            } else if (CodeValidationSupport.normalizeForComparison(fixedCode)
-                    .equals(CodeValidationSupport.normalizeForComparison(request.getGeneratedCode()))) {
-                result.setFailureReason("Code fix produced no meaningful code change");
+            } else if (!CodeValidationSupport.hasCodeChanged(request.getGeneratedCode(), fixedCode)) {
+                result.setFailureReason("Code fix returned code identical to source code");
             } else {
                 result.setApplied(true);
                 result.setFixedGeneratedCode(fixedCode);

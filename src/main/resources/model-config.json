@@ -27,7 +27,7 @@
       "reasoning_content_fallback": true,
       "temperature": 0.6,
       "max_output_tokens": 32000,
-      "max_input_tokens": 131072
+      "max_input_tokens": 262144
     },
     "kimi-k2.5": {
       "model": "kimi-k2.5",
@@ -35,7 +35,7 @@
       "reasoning_content_fallback": true,
       "temperature": 1,
       "max_output_tokens": 32768,
-      "max_input_tokens": 131072
+      "max_input_tokens": 262144
     },
     "GLM-5": {
       "model": "GLM-5",

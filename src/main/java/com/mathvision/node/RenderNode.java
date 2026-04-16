@@ -170,7 +170,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         codeResult.setSceneName(sceneName);
 
         if (input.previousFixResult() != null && !input.previousFixResult().isApplied()) {
-            log.warn("Previous shared code-fix pass produced no meaningful change, stopping render retries");
+            log.warn("Previous shared code-fix pass returned code identical to the source, stopping render retries");
             return failureResult(
                     currentCode,
                     sceneName,
@@ -314,7 +314,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         codeResult.setSceneName(sceneName);
 
         if (input.previousFixResult() != null && !input.previousFixResult().isApplied()) {
-            log.warn("Previous shared code-fix pass produced no meaningful GeoGebra change, stopping render retries");
+            log.warn("Previous shared code-fix pass returned GeoGebra code identical to the source, stopping render retries");
             return failureResult(
                     preparedCode,
                     sceneName,
@@ -586,4 +586,3 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         }
     }
 }
-

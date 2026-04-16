@@ -11,7 +11,11 @@ public final class CodeValidationSupport {
     private CodeValidationSupport() {}
 
     public static String normalizeForComparison(String generatedCode) {
-        return generatedCode == null ? "" : generatedCode.trim().replace("\r\n", "\n");
+        return generatedCode == null ? "" : generatedCode.replace("\r\n", "\n");
+    }
+
+    public static boolean hasCodeChanged(String sourceCode, String revisedCode) {
+        return !normalizeForComparison(sourceCode).equals(normalizeForComparison(revisedCode));
     }
 
     public static String findFirstMatchEvidence(String generatedCode, Pattern pattern) {

@@ -25,13 +25,13 @@ public final class SystemPrompts {
     public static final String LAYOUT_FRAME_RULES =
             "Keep important content within x[-7,7] and y[-4,4].\n"
                     + "Leave about 1 unit of edge margin.\n"
-                    + "Usually keep each step to 6 to 8 main visual elements.\n";
+                    + "Usually keep each step to about 7 to 10 main visual elements unless several are quiet carry-over context.\n";
 
     /** Manim-specific layout and readability budget derived from production planning rules. */
     public static final String MANIM_LAYOUT_FRAME_RULES =
             "Keep important content within x[-6.5,6.5] and y[-3.5,3.5] whenever possible.\n"
                     + "Reserve a readable top title band and a bottom note band instead of packing the whole frame.\n"
-                    + "Keep simultaneously active foreground elements around 5 to 6 unless the scene is explicitly comparison-heavy.\n"
+                    + "Keep simultaneously active foreground elements around 6 to 8; brief bursts up to about 10 are acceptable when staging and hierarchy stay clear.\n"
                     + "Leave a meaningful empty zone for overlays, captions, or upcoming reveals.\n";
 
     /** Storyboard field interpretation guide — core fields for code generation and evaluation stages. */

@@ -64,6 +64,12 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     private static final int MAX_CLUTTER_RISK = 4;
     private static final int MAX_OFFSCREEN_RISK = 4;
     private static final int MAX_REVISION_ATTEMPTS = 2;
+    private static final int SCENE_OBJECT_OVERLOAD_WARN_THRESHOLD = 11;
+    private static final int SCENE_OBJECT_OVERLOAD_FAIL_THRESHOLD = 14;
+    private static final int VISIBLE_OBJECT_OVERLOAD_WARN_THRESHOLD = 16;
+    private static final int VISIBLE_OBJECT_OVERLOAD_FAIL_THRESHOLD = 20;
+    private static final int TEXT_STACK_CLUTTER_WARN_THRESHOLD = 6;
+    private static final int TEXT_STACK_CLUTTER_FAIL_THRESHOLD = 8;
 
     private static final Pattern TO_EDGE_PATTERN = Pattern.compile("\\.to_edge\\(");
     private static final Pattern SHIFT_PATTERN = Pattern.compile("\\.shift\\(");
@@ -208,7 +214,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
             log.warn("Code evaluation flagged scene {}, routing to shared CodeFixNode (attempt {}/{})",
                     sceneName, fixState.getAttempts(), MAX_REVISION_ATTEMPTS);
         } else if (!approved && input.previousFixResult() != null && !input.previousFixResult().isApplied()) {
-            log.warn("Code evaluation re-run received no meaningful code change from CodeFixNode");
+            log.warn("Code evaluation re-run received code identical to the source from CodeFixNode");
         }
 
         result.setApprovedForRender(approved);
@@ -521,15 +527,21 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         if (review == null) {
             return false;
         }
+        if (review.getContinuityScore() < MIN_CONTINUITY_SCORE
+                || review.getPacingScore() < MIN_PACING_SCORE) {
+            return false;
+        }
         return review.getLayoutScore() >= MIN_LAYOUT_SCORE
-                && review.getContinuityScore() >= MIN_CONTINUITY_SCORE
-                && review.getPacingScore() >= MIN_PACING_SCORE;
+                || qualifiesForDensityHeuristicPass(review, analysis);
     }
 
     private String buildGateReason(boolean approved,
                                    StaticAnalysis analysis,
                                    ReviewSnapshot review) {
         if (approved) {
+            if (qualifiesForDensityHeuristicPass(review, analysis)) {
+                return "Advisory review passed; moderate storyboard density heuristics are deferred to Stage 5 scene evaluation.";
+            }
             return "Advisory review passed";
         }
 
@@ -678,6 +690,49 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         String trimmed = scene.getNarration().trim();
         int wordCount = trimmed.isEmpty() ? 0 : trimmed.split("\\s+").length;
         return wordCount / (double) duration;
+    }
+
+    /**
+     * Stage 3 should not force a rewrite when the only issue is a moderate
+     * storyboard object-count heuristic. Actual overlap/offscreen validation is
+     * handled later by Stage 5 on sampled rendered frames.
+     */
+    private boolean qualifiesForDensityHeuristicPass(ReviewSnapshot review, StaticAnalysis analysis) {
+        if (review == null || analysis == null) {
+            return false;
+        }
+        if (review.getLikelyOffscreenRisk() > MAX_OFFSCREEN_RISK) {
+            return false;
+        }
+        if (analysis.getFindings() == null || analysis.getFindings().isEmpty()) {
+            return false;
+        }
+
+        boolean sawDensityFinding = false;
+        for (StaticFinding finding : analysis.getFindings()) {
+            if (finding == null
+                    || finding.getRuleId() == null
+                    || finding.getRuleId().isBlank()
+                    || finding.getSeverity() == null
+                    || finding.getSeverity().isBlank()) {
+                continue;
+            }
+            if (!"fail".equalsIgnoreCase(finding.getSeverity())
+                    && !"warn".equalsIgnoreCase(finding.getSeverity())) {
+                continue;
+            }
+            if (!isDensityHeuristicRule(finding.getRuleId())) {
+                return false;
+            }
+            sawDensityFinding = true;
+        }
+        return sawDensityFinding;
+    }
+
+    private boolean isDensityHeuristicRule(String ruleId) {
+        return "scene_object_overload".equalsIgnoreCase(ruleId)
+                || "visible_object_overload".equalsIgnoreCase(ruleId)
+                || "text_stack_clutter".equalsIgnoreCase(ruleId);
     }
 
     private void addFinding(StaticAnalysis analysis,
@@ -1029,31 +1084,31 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     }
 
     private void addStoryboardDrivenFindings(StaticAnalysis analysis, Storyboard storyboard) {
-        if (analysis.getMaxEnteringObjects() >= 10) {
+        if (analysis.getMaxEnteringObjects() >= SCENE_OBJECT_OVERLOAD_FAIL_THRESHOLD) {
             addFinding(analysis, "scene_object_overload", "fail",
                     "A storyboard scene introduces too many new objects at once.",
                     "max_entering_objects=" + analysis.getMaxEnteringObjects());
-        } else if (analysis.getMaxEnteringObjects() >= 8) {
+        } else if (analysis.getMaxEnteringObjects() >= SCENE_OBJECT_OVERLOAD_WARN_THRESHOLD) {
             addFinding(analysis, "scene_object_overload", "warn",
                     "A storyboard scene may introduce more objects than the frame can comfortably absorb.",
                     "max_entering_objects=" + analysis.getMaxEnteringObjects());
         }
 
-        if (analysis.getMaxVisibleObjects() >= 12) {
+        if (analysis.getMaxVisibleObjects() >= VISIBLE_OBJECT_OVERLOAD_FAIL_THRESHOLD) {
             addFinding(analysis, "visible_object_overload", "fail",
                     "The storyboard likely keeps too many simultaneous elements on screen.",
                     "max_visible_objects=" + analysis.getMaxVisibleObjects());
-        } else if (analysis.getMaxVisibleObjects() >= 9) {
+        } else if (analysis.getMaxVisibleObjects() >= VISIBLE_OBJECT_OVERLOAD_WARN_THRESHOLD) {
             addFinding(analysis, "visible_object_overload", "warn",
                     "The storyboard approaches a cluttered simultaneous-object count.",
                     "max_visible_objects=" + analysis.getMaxVisibleObjects());
         }
 
-        if (analysis.getMaxVisibleTextualObjects() >= 6) {
+        if (analysis.getMaxVisibleTextualObjects() >= TEXT_STACK_CLUTTER_FAIL_THRESHOLD) {
             addFinding(analysis, "text_stack_clutter", "fail",
                     "The storyboard likely stacks too many textual or formula objects at once.",
                     "max_visible_textual_objects=" + analysis.getMaxVisibleTextualObjects());
-        } else if (analysis.getMaxVisibleTextualObjects() >= 5) {
+        } else if (analysis.getMaxVisibleTextualObjects() >= TEXT_STACK_CLUTTER_WARN_THRESHOLD) {
             addFinding(analysis, "text_stack_clutter", "warn",
                     "The storyboard may show too many text/formula objects at the same time.",
                     "max_visible_textual_objects=" + analysis.getMaxVisibleTextualObjects());
