@@ -19,7 +19,7 @@ class PromptModulesTest {
 
     @Test
     void conceptGraphPromptFramesCompactTypedTeachingDag() {
-        String prompt = ExplorationPrompts.conceptGraphSystemPrompt("Circle theorem", "Demo");
+        String prompt = ExplorationPrompts.conceptGraphSystemPrompt("Circle theorem", "Demo", 4, 1);
 
         assertTrue(prompt.contains("compact teaching DAG"));
         assertTrue(prompt.contains("5 to 9 strong beats"));

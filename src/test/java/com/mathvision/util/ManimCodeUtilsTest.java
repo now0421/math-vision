@@ -126,4 +126,54 @@ class ManimCodeUtilsTest {
         assertFalse(ManimCodeUtils.hasMainSceneClass("class OtherScene(Scene):"));
         assertFalse(ManimCodeUtils.hasMainSceneClass(null));
     }
+
+    @Test
+    void validateManimRules_detectsUndocumentedSetPoints() {
+        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
+                + "        path = VMobject()\n"
+                + "        path.set_points([A.get_center(), P.get_center()])";
+        List<String> violations = ManimCodeUtils.validateManimRules(code);
+        assertTrue(violations.stream().anyMatch(v -> v.contains("Rule 4 violation")
+                && v.contains("set_points")));
+    }
+
+    @Test
+    void validateManimRules_allowsDocumentedSetPointsAsCornersAndSmoothly() {
+        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
+                + "        path = VMobject()\n"
+                + "        path.set_points_as_corners([LEFT, UP, RIGHT])\n"
+                + "        path.set_points_smoothly([LEFT, UP, RIGHT])";
+        List<String> violations = ManimCodeUtils.validateManimRules(code);
+        assertTrue(violations.stream().noneMatch(v -> v.contains("Rule 4 violation")));
+    }
+
+    @Test
+    void validateManimRules_allowsDocumentedMethods() {
+        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
+                + "        dot = Dot()\n"
+                + "        dot.move_to(UP)\n"
+                + "        dot.set_color(RED)\n"
+                + "        dot.next_to(other, RIGHT)\n"
+                + "        dot.add_updater(lambda m: m.move_to(UP))";
+        List<String> violations = ManimCodeUtils.validateManimRules(code);
+        assertTrue(violations.stream().noneMatch(v -> v.contains("Rule 4 violation")));
+    }
+
+    @Test
+    void validateManimRules_detectsOtherUndocumentedMethods() {
+        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
+                + "        mob.apply_over_attr_arrays(func)";
+        List<String> violations = ManimCodeUtils.validateManimRules(code);
+        assertTrue(violations.stream().anyMatch(v -> v.contains("Rule 4 violation")
+                && v.contains("apply_over_attr_arrays")));
+    }
+
+    @Test
+    void validateManimRules_skipsCommentLines() {
+        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
+                + "        # path.set_points([LEFT, RIGHT])  <- wrong\n"
+                + "        path.set_points_as_corners([LEFT, RIGHT])";
+        List<String> violations = ManimCodeUtils.validateManimRules(code);
+        assertTrue(violations.stream().noneMatch(v -> v.contains("Rule 4 violation")));
+    }
 }

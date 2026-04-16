@@ -911,6 +911,10 @@ self.play(TransformMatchingTex(eq1, eq2, key_map={"+": "-"}))
 obj.save_state()
 self.play(obj.animate.shift(UP).set_opacity(0.3))
 self.play(Restore(obj))
+
+obj.generate_target()
+obj.target.shift(RIGHT * 2).scale(1.5)
+self.play(MoveToTarget(obj))
 ```
 
 #### Advanced Transform and Function-Based Animation

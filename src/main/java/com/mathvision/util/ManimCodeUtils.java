@@ -2,6 +2,7 @@ package com.mathvision.util;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -28,6 +29,23 @@ public final class ManimCodeUtils {
 
     private static final Pattern RULE3_VIOLATION = Pattern.compile(
             "\\w+\\[\\d+\\]\\[\\d+:\\d+\\]");
+
+    /**
+     * Matches {@code .method_name(} where the method name is snake_case
+     * (contains at least one underscore). Used to detect undocumented Manim
+     * instance method calls.
+     */
+    private static final Pattern SNAKE_CASE_METHOD_CALL = Pattern.compile(
+            "\\.(([a-z][a-z0-9]*_[a-z0-9_]*))\\s*\\(");
+
+    /** Python / NumPy builtins with underscores that are not Manim methods. */
+    private static final Set<String> PYTHON_BUILTIN_SNAKE_METHODS = Set.of(
+            "is_integer", "as_integer_ratio", "from_bytes", "to_bytes",
+            "read_text", "write_text", "join_path",
+            "set_default", "from_iterable",
+            "named_children", "named_parameters",
+            "start_with", "ends_with"
+    );
 
     public static String extractCode(String response) {
         if (response == null || response.isBlank()) {
@@ -103,6 +121,13 @@ public final class ManimCodeUtils {
                     + " (" + rule3Evidence + ")");
         }
 
+        // Rule 4: undocumented Manim instance method calls
+        String rule4Evidence = findUndocumentedMethodCall(manimCode);
+        if (rule4Evidence != null) {
+            violations.add("Rule 4 violation: undocumented Manim API call"
+                    + " (" + rule4Evidence + ")");
+        }
+
         return violations;
     }
 
@@ -119,5 +144,31 @@ public final class ManimCodeUtils {
 
     public static int countLines(String manimCode) {
         return CodeValidationSupport.countLines(manimCode);
+    }
+
+    /**
+     * Scans code for snake_case method calls not in the documented whitelist.
+     * Returns evidence string for the first violation, or null if clean.
+     */
+    static String findUndocumentedMethodCall(String manimCode) {
+        Set<String> documented = ManimValidationSupport.documentedInstanceMethodNames();
+        String[] lines = manimCode.split("\\R");
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].trim();
+            // Skip comments and string-only lines
+            if (line.startsWith("#")) {
+                continue;
+            }
+            Matcher matcher = SNAKE_CASE_METHOD_CALL.matcher(line);
+            while (matcher.find()) {
+                String methodName = matcher.group(1);
+                if (!documented.contains(methodName)
+                        && !PYTHON_BUILTIN_SNAKE_METHODS.contains(methodName)) {
+                    String fragment = line.length() > 80 ? line.substring(0, 80) + "..." : line;
+                    return "line " + (i + 1) + ": ." + methodName + "() — " + fragment;
+                }
+            }
+        }
+        return null;
     }
 }

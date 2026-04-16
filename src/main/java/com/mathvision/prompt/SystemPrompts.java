@@ -1,6 +1,7 @@
 package com.mathvision.prompt;
 
 import com.mathvision.util.GeoGebraValidationSupport;
+import com.mathvision.util.ManimValidationSupport;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -236,7 +237,8 @@ public final class SystemPrompts {
                     + "- Avoid long-lived `always_redraw(...)` branches like `if cond else VMobject()` when that object may later be animated directly.\n"
                     + "- Prefer stable base mobjects with visibility/style control (`set_opacity`, `set_stroke`, `become`) over swapping to empty placeholders.\n"
                     + "- Before cleanup animations, freeze or remove related updaters and confirm targets are non-empty and still attached to intended geometry.\n"
-                    + "- Ensure animation targets are present in scene and have geometric points before transform/fade operations.\n";
+                    + "- Ensure animation targets are present in scene and have geometric points before transform/fade operations.\n"
+                    + "- Never call `VMobject.set_points()`; use `set_points_as_corners()` or `set_points_smoothly()` instead. Raw `set_points` bypasses bezier alignment and causes crashes during animation.\n";
 
     /** Angle marker best practices for Manim. */
     public static final String ANGLE_MARKER_RULES =
@@ -421,7 +423,10 @@ public final class SystemPrompts {
                 + "Use only classes, functions, methods, arguments, scene patterns, and code forms documented there.\n"
                 + "Never invent Manim APIs, guessed helper methods, unsupported keyword arguments, or private/internal shortcuts.\n"
                 + "If the current code uses an undocumented or unstable API, replace it with a documented stable equivalent while preserving the scene intent.\n"
-                + "If a desired effect is not covered by the manual, simplify it with documented Manim constructs rather than guessing syntax.\n";
+                + "If a desired effect is not covered by the manual, simplify it with documented Manim constructs rather than guessing syntax.\n"
+                + "Documented instance methods (snake_case): `"
+                + String.join("`, `", ManimValidationSupport.documentedInstanceMethodNames())
+                + "`.\n";
     }
 
     private static String buildGeoGebraManualOnlyRules() {

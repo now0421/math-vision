@@ -78,6 +78,87 @@ class RenderNodeCodeGateTest {
     }
 
     @Test
+    void timeoutWithUnderlyingPythonErrorRoutesToFix() {
+        WorkflowConfig config = new WorkflowConfig();
+        config.setRenderEnabled(true);
+        config.setRenderMaxRetries(2);
+
+        CodeResult codeResult = new CodeResult(
+                String.join("\n",
+                        "from manim import *",
+                        "",
+                        "class DemoScene(Scene):",
+                        "    def construct(self):",
+                        "        pass"),
+                "DemoScene",
+                "demo",
+                "Demo concept",
+                "Demo description");
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.CONFIG, config);
+        ctx.put(WorkflowKeys.CODE_RESULT, codeResult);
+        ctx.put(WorkflowKeys.OUTPUT_DIR, tempDir);
+
+        String stderrWithError = "Traceback (most recent call last):\n"
+                + "  File \"scene_render.py\", line 37\n"
+                + "ValueError: zip() argument 2 is shorter than argument 1\n"
+                + "Render timed out after 10 minutes";
+
+        ManimRendererService renderer = new ManimRendererService() {
+            @Override
+            public RenderAttemptResult render(String code, String sceneName, String quality, java.nio.file.Path outputDir) {
+                return new RenderAttemptResult(false, "", stderrWithError, null, null, true);
+            }
+        };
+
+        RenderNode renderNode = new RenderNode(renderer);
+        renderNode.run(ctx);
+
+        // Should request fix because there's a fixable error behind the timeout
+        assertTrue(ctx.containsKey(WorkflowKeys.CODE_FIX_REQUEST),
+                "Timeout with underlying Python error should route to code fix");
+    }
+
+    @Test
+    void pureTimeoutWithNoUnderlyingErrorStopsRetries() {
+        WorkflowConfig config = new WorkflowConfig();
+        config.setRenderEnabled(true);
+        config.setRenderMaxRetries(2);
+
+        CodeResult codeResult = new CodeResult(
+                String.join("\n",
+                        "from manim import *",
+                        "",
+                        "class DemoScene(Scene):",
+                        "    def construct(self):",
+                        "        pass"),
+                "DemoScene",
+                "demo",
+                "Demo concept",
+                "Demo description");
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.CONFIG, config);
+        ctx.put(WorkflowKeys.CODE_RESULT, codeResult);
+        ctx.put(WorkflowKeys.OUTPUT_DIR, tempDir);
+
+        ManimRendererService renderer = new ManimRendererService() {
+            @Override
+            public RenderAttemptResult render(String code, String sceneName, String quality, java.nio.file.Path outputDir) {
+                return new RenderAttemptResult(false, "", "Render timed out after 10 minutes", null, null, true);
+            }
+        };
+
+        RenderNode renderNode = new RenderNode(renderer);
+        renderNode.run(ctx);
+
+        // Should NOT request fix — pure timeout with no underlying error
+        assertFalse(ctx.containsKey(WorkflowKeys.CODE_FIX_REQUEST),
+                "Pure timeout without underlying Python error should stop retries");
+    }
+
+    @Test
     void geogebraTargetExportsPreviewHtml() throws Exception {
         WorkflowConfig config = new WorkflowConfig();
         config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);

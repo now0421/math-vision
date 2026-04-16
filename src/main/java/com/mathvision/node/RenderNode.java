@@ -214,14 +214,33 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         String lastError = ErrorSummarizer.combineErrorStreams(renderAttempt.stdout(), renderAttempt.stderr());
         log.warn("  Render failed (attempt {}): {}", attemptNumber, abbreviateError(lastError));
 
-        String normalizedLastError = lastError == null
-                ? ""
-                : lastError.toLowerCase(java.util.Locale.ROOT);
-        if (normalizedLastError.contains("timeouterror")
-                || normalizedLastError.contains("timeout")
-                || normalizedLastError.contains("timed out")
-                || normalizedLastError.contains("did not become ready within")) {
-            log.warn("  Render failure is a timeout, stopping retries");
+        if (renderAttempt.timedOut()) {
+            String stderr = renderAttempt.stderr() != null ? renderAttempt.stderr() : "";
+            boolean hasPythonTraceback = stderr.contains("Traceback (most recent call last)");
+
+            if (hasPythonTraceback && attemptNumber < maxRetries + 1) {
+                String focusedError = ErrorSummarizer.extractFocusedError(
+                        renderAttempt.stdout(), renderAttempt.stderr());
+                if (!ErrorSummarizer.isEnvironmentError(focusedError)) {
+                    String signature = ErrorSummarizer.summarizeSignature(focusedError);
+                    log.warn("  Render timed out but stderr contains a fixable error: {}", signature);
+                    retryState.setRequestFix(true);
+                    retryState.pendingFocusedError = focusedError;
+                    return failureResult(
+                            currentCode,
+                            sceneName,
+                            attemptNumber,
+                            lastError,
+                            null,
+                            geometryPath,
+                            retryState.getFixToolCalls(),
+                            start,
+                            false
+                    );
+                }
+            }
+
+            log.warn("  Render failure is a timeout with no fixable error, stopping retries");
             return failureResult(
                     currentCode,
                     sceneName,

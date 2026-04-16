@@ -31,7 +31,7 @@ class ManimConstraintCoverageTest {
 
     @Test
     void manimPromptStagesExposeTeachingConstraints() {
-        String exploration = ExplorationPrompts.problemGraphSystemPrompt("Target", "Demo");
+        String exploration = ExplorationPrompts.problemGraphSystemPrompt("Target", "Demo", 4, 1);
         String enrichment = EnrichmentPrompts.systemPrompt("Target", "Demo");
         String visual = VisualDesignPrompts.systemPrompt("Target", "Demo", "manim");
         String narrative = NarrativePrompts.systemPrompt("Target", "Demo", "manim");

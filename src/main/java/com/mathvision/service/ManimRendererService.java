@@ -43,14 +43,21 @@ public class ManimRendererService {
         private final String stderr;
         private final String videoPath;
         private final String geometryPath;
+        private final boolean timedOut;
 
         public RenderAttemptResult(boolean success, String stdout, String stderr,
                                    String videoPath, String geometryPath) {
+            this(success, stdout, stderr, videoPath, geometryPath, false);
+        }
+
+        public RenderAttemptResult(boolean success, String stdout, String stderr,
+                                   String videoPath, String geometryPath, boolean timedOut) {
             this.success = success;
             this.stdout = stdout;
             this.stderr = stderr;
             this.videoPath = videoPath;
             this.geometryPath = geometryPath;
+            this.timedOut = timedOut;
         }
 
         public boolean success() { return success; }
@@ -58,6 +65,7 @@ public class ManimRendererService {
         public String stderr() { return stderr; }
         public String videoPath() { return videoPath; }
         public String geometryPath() { return geometryPath; }
+        public boolean timedOut() { return timedOut; }
     }
 
     /**
@@ -130,7 +138,8 @@ public class ManimRendererService {
                         stdout,
                         appendMessage(stderr, "Render timed out after " + RENDER_TIMEOUT_MINUTES + " minutes"),
                         null,
-                        geometryPath
+                        geometryPath,
+                        true
                 );
             }
 
