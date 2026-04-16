@@ -95,7 +95,7 @@ class PromptModulesTest {
         String geogebraNarrative = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
         String geogebraVisual = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra");
 
-        assertTrue(manimNarrative.contains("Manim teaching philosophy"));
+        assertTrue(manimNarrative.contains("Manim-specific storyboard rules"));
         assertFalse(geogebraNarrative.contains("Manim teaching philosophy"));
         assertFalse(geogebraNarrative.contains("create a separate label object"));
         assertFalse(geogebraVisual.contains("always_redraw"));
@@ -162,6 +162,18 @@ class PromptModulesTest {
         assertTrue(narrativePrompt.contains("yellow on white"));
         assertTrue(geogebraCodegenPrompt.contains("visually distinct from their background"));
         assertTrue(manimCodegenPrompt.contains("yellow on white"));
+    }
+
+    @Test
+    void narrativePromptEnforcesStrictJsonLexicalRulesAcrossFields() {
+        String narrativePrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "manim");
+
+        assertTrue(narrativePrompt.contains("JSON lexical contract is strict"));
+        assertTrue(narrativePrompt.contains("Do not output markdown fences"));
+        assertTrue(narrativePrompt.contains("Do not output bare identifiers as JSON values"));
+        assertTrue(narrativePrompt.contains("Invalid: \"type\": create"));
+        assertTrue(narrativePrompt.contains("Valid: \"type\": \"create\""));
+        assertTrue(narrativePrompt.contains("Allowed unquoted literals are only numbers, true, false, and null"));
     }
 
     @Test

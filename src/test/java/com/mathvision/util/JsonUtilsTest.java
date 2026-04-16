@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JsonUtilsTest {
@@ -93,5 +94,38 @@ class JsonUtilsTest {
         assertTrue(extracted.startsWith("from manim import *"));
         assertTrue(extracted.contains("def construct(self):"));
         assertEquals(-1, extracted.indexOf("```"));
+    }
+
+    @Test
+    void extractJsonObjectRepairsBareIdentifiersAcrossFields() {
+        String malformed = "{\"scene_mode\":2d,\"behavior\":static,\"type\":create,\"kind\":text,"
+                + "\"style\":[{\"role\":text,\"type\":plain_text,\"properties\":{\"color\":YELLOW}}]}";
+
+        String extracted = JsonUtils.extractJsonObject(malformed);
+
+        assertNotNull(extracted);
+        JsonNode node = JsonUtils.parseTree(extracted);
+        assertEquals("2d", node.get("scene_mode").asText());
+        assertEquals("static", node.get("behavior").asText());
+        assertEquals("create", node.get("type").asText());
+        assertEquals("text", node.get("kind").asText());
+        assertEquals("YELLOW", node.get("style").get(0).get("properties").get("color").asText());
+    }
+
+    @Test
+    void parseTreeBestEffortRepairsSingleQuotesAndTrailingCommas() {
+        String malformed = "{'scenes':[{'scene_id':'scene_1', 'title':'Intro',}], 'scene_mode':2d,}";
+
+        JsonNode parsed = JsonUtils.parseTreeBestEffort(malformed);
+
+        assertNotNull(parsed);
+        assertEquals("scene_1", parsed.get("scenes").get(0).get("scene_id").asText());
+        assertEquals("2d", parsed.get("scene_mode").asText());
+    }
+
+    @Test
+    void parseTreeBestEffortReturnsNullForIrreparablePayload() {
+        JsonNode parsed = JsonUtils.parseTreeBestEffort("{\"scenes\": [ this is not json ]");
+        assertNull(parsed);
     }
 }

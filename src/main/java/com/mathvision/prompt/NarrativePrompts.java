@@ -46,6 +46,9 @@ public final class NarrativePrompts {
                     + "- Do not use a free-text `instructions` field inside style entries. Encode visual intent directly in `properties` using concrete keys and values.\n"
                     + "- For text cards, formulas with badges, boxed labels, counters, or callouts, encode separate text and background layers as separate entries inside `style`.\n"
                     + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n"
+                    + "- JSON lexical contract is strict: use double quotes for all JSON keys and all string values, including categorical fields such as kind, behavior, scene_mode, action type, style role/type, color names, and label content.\n"
+                    + "- Do not output markdown fences, comments, trailing commas, or single-quoted strings.\n"
+                    + "- Do not output bare identifiers as JSON values. Invalid: \"type\": create. Valid: \"type\": \"create\".\n"
                     + "- When a temporary element has served its purpose, include it in `exiting_objects` of the current or next scene\n"
                     + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES + "\n";
 
@@ -74,6 +77,11 @@ public final class NarrativePrompts {
 
     private static final String OUTPUT_FORMAT =
             "Output format:\n"
+                    + "Strict JSON syntax requirements:\n"
+                    + "- Return one JSON object only. No markdown fence and no prose before or after it.\n"
+                    + "- Use double quotes for all keys and all string values.\n"
+                    + "- Categorical/string fields must be quoted everywhere, including style properties and action metadata.\n"
+                    + "- Allowed unquoted literals are only numbers, true, false, and null.\n"
                     + "Return a JSON object with this shape:\n"
                     + "{\n"
                     + "  \"hook\": \"string, opening hook that creates curiosity and frames the visualization\",\n"
@@ -142,6 +150,14 @@ public final class NarrativePrompts {
 
     private static final String EXAMPLE_OUTPUT =
             "Example output:\n"
+                    + "Invalid examples to avoid:\n"
+                    + "- {\"type\": create}\n"
+                    + "- {\"behavior\": static}\n"
+                    + "- {\"properties\": {\"color\": YELLOW}}\n"
+                    + "Valid equivalents:\n"
+                    + "- {\"type\": \"create\"}\n"
+                    + "- {\"behavior\": \"static\"}\n"
+                    + "- {\"properties\": {\"color\": \"YELLOW\"}}\n"
                     + "{\n"
                     + "  \"hook\": \"Start with a concrete question or visual hook that makes the viewer want the next step.\",\n"
                     + "  \"summary\": \"Briefly describe the teaching arc from setup to conclusion.\",\n"

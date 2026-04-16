@@ -140,4 +140,20 @@ class ToolSchemasTest {
         assertTrue(ToolSchemas.STORYBOARD.contains("learner-visible beat"));
         assertTrue(ToolSchemas.STORYBOARD.contains("what the learner should notice"));
     }
+
+    @Test
+    void storyboardSchemaUsesStrictObjectContractsAndEnums() {
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"additionalProperties\": false"));
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"enum\": [\"static\", \"follows_anchor\", \"derived\", \"fixed_overlay\"]"));
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"enum\": [\"create\", \"write\", \"transform\", \"highlight\", \"move\", \"fade_out\", \"camera\", \"restyle\"]"));
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"enum\": [\"math_text\", \"plain_text\", \"background_box\", \"border_box\", \"highlight_ring\"]"));
+    }
+
+    @Test
+    void storyboardSchemaAddsTypedStylePropertiesGuardrails() {
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"patternProperties\""));
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"^.*_color$\""));
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"font_size\": { \"type\": \"number\" }"));
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"label_visible\": { \"type\": \"boolean\" }"));
+    }
 }

@@ -96,6 +96,35 @@ class NarrativeNodeTest {
     }
 
     @Test
+    void repairsMalformedStoryboardFromAssistantTextFallback() {
+        SequentialAiClient aiClient = new SequentialAiClient(List.of(malformedStoryboardTextResponse()));
+        Map<String, Object> ctx = buildContext(aiClient);
+
+        new NarrativeNode().run(ctx);
+
+        Narrative narrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
+        assertNotNull(narrative);
+        assertTrue(narrative.hasStoryboard());
+        assertEquals(1, narrative.getSceneCount());
+        assertEquals("2d", narrative.getStoryboard().getScenes().get(0).getSceneMode());
+        assertEquals("static", narrative.getStoryboard().getScenes().get(0)
+                .getEnteringObjects().get(0).getBehavior());
+    }
+
+    @Test
+    void repairsMalformedToolArgumentStringPayload() {
+        SequentialAiClient aiClient = new SequentialAiClient(List.of(malformedToolArgumentsResponse()));
+        Map<String, Object> ctx = buildContext(aiClient);
+
+        new NarrativeNode().run(ctx);
+
+        Narrative narrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
+        assertNotNull(narrative);
+        assertTrue(narrative.hasStoryboard());
+        assertEquals("create", narrative.getStoryboard().getScenes().get(0).getActions().get(0).getType());
+    }
+
+    @Test
     void storyboardCodegenPromptDropsLegacyStyleInstructionsAndKeepsProperties() {
         SequentialAiClient aiClient = new SequentialAiClient(List.of(validStoryboardResponse()));
         Map<String, Object> ctx = buildContext(aiClient);
@@ -276,6 +305,31 @@ class NarrativeNodeTest {
         arguments.put("scene_count", 1);
         arguments.put("estimated_duration", 8);
         function.set("arguments", arguments);
+        return response;
+    }
+
+    private static JsonNode malformedStoryboardTextResponse() {
+        String textPayload = "{'storyboard':{'hook':'Hook','summary':'Summary','continuity_plan':'Stable layout',"
+                + "'global_visual_rules':['Keep focus'],"
+                + "'scenes':[{'scene_id':'scene_1','title':'Overview','goal':'Introduce',"
+                + "'narration':'Narrate','scene_mode':2d,'layout_goal':'Center',"
+                + "'safe_area_plan':'Inside frame','entering_objects':[{'id':'main','kind':visual,'content':'diagram',"
+                + "'placement':'center','behavior':static,}],"
+                + "'persistent_objects':[],'exiting_objects':[],'actions':[{'order':1,'type':create,'description':'Draw main'}],}],}}";
+        return wrapTextResponse(textPayload);
+    }
+
+    private static JsonNode malformedToolArgumentsResponse() {
+        ObjectNode response = JsonUtils.mapper().createObjectNode();
+        ArrayNode choices = response.putArray("choices");
+        ObjectNode message = choices.addObject().putObject("message");
+        ArrayNode toolCalls = message.putArray("tool_calls");
+        ObjectNode function = toolCalls.addObject().putObject("function");
+        function.put("name", "write_storyboard");
+        function.put("arguments", "{'storyboard':{'hook':'H','summary':'S','continuity_plan':'C','global_visual_rules':['G'],"
+                + "'scenes':[{'scene_id':'scene_1','title':'T','goal':'G','narration':'N','scene_mode':2d,"
+                + "'layout_goal':'L','safe_area_plan':'S','entering_objects':[{'id':'obj1','kind':visual,'content':'c','placement':'center'}],"
+                + "'persistent_objects':[],'exiting_objects':[],'actions':[{'order':1,'type':create,'description':'d'}]}]}}" );
         return response;
     }
 

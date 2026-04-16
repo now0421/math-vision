@@ -247,14 +247,32 @@ public class NarrativeNode extends PocketFlow.Node<KnowledgeGraph, Narrative, St
         try {
             String candidate = JsonUtils.extractJsonObject(rawText);
             if (candidate == null || candidate.isBlank()) {
+                log.warn("Storyboard fallback extraction returned empty candidate. excerpt={}",
+                        sanitizeExcerpt(rawText));
                 return null;
             }
-            JsonNode textNode = JsonUtils.parseTree(candidate);
+            JsonNode textNode = JsonUtils.parseTreeBestEffort(candidate);
+            if (textNode == null) {
+                log.warn("Storyboard fallback parse returned null after best-effort repair. excerpt={}",
+                        sanitizeExcerpt(candidate));
+                return null;
+            }
             return parseStoryboardNode(textNode);
         } catch (RuntimeException e) {
-            log.debug("Failed to parse storyboard JSON from text response: {}", e.getMessage());
+            log.warn("Failed to parse storyboard JSON from text response: {}. excerpt={}",
+                    e.getMessage(), sanitizeExcerpt(rawText));
             return null;
         }
+    }
+
+    private String sanitizeExcerpt(String text) {
+        if (text == null || text.isBlank()) {
+            return "<empty>";
+        }
+
+        String compact = text.replaceAll("\\s+", " ").trim();
+        int maxLen = 180;
+        return compact.length() <= maxLen ? compact : compact.substring(0, maxLen) + "...";
     }
 
     private Storyboard parseStoryboardNode(JsonNode rootNode) {
