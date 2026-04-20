@@ -4,8 +4,11 @@ import com.mathvision.model.Narrative.Storyboard;
 import com.mathvision.model.Narrative.StoryboardScene;
 import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.Narrative.StoryboardAction;
+import com.mathvision.model.Narrative.StoryboardPlacement;
+import com.mathvision.model.Narrative.StoryboardPlacementAxis;
 import com.mathvision.model.Narrative.StoryboardStyle;
 import com.mathvision.util.JsonUtils;
+import com.mathvision.util.StoryboardPatchResolver;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
@@ -54,22 +57,29 @@ public final class StoryboardJsonBuilder {
             root.putArray("scenes");
             return JsonUtils.toPrettyJson(root);
         }
+        Storyboard mergedStoryboard = StoryboardPatchResolver.buildMergedStoryboard(storyboard);
+        Storyboard source = mergedStoryboard != null ? mergedStoryboard : storyboard;
 
         if (options.includeNarrativeFields) {
-            putNonBlank(root, "hook", storyboard.getHook());
-            putNonBlank(root, "summary", storyboard.getSummary());
+            putNonBlank(root, "hook", source.getHook());
+            putNonBlank(root, "summary", source.getSummary());
         }
-        putNonBlank(root, "continuity_plan", storyboard.getContinuityPlan());
-        putTrimmedStringArray(root, "global_visual_rules", storyboard.getGlobalVisualRules());
+        putNonBlank(root, "continuity_plan", source.getContinuityPlan());
+        putTrimmedStringArray(root, "global_visual_rules", source.getGlobalVisualRules());
 
         ArrayNode scenesArray = root.putArray("scenes");
-        if (storyboard.getScenes() != null) {
-            for (StoryboardScene scene : storyboard.getScenes()) {
+        if (source.getScenes() != null) {
+            for (StoryboardScene scene : source.getScenes()) {
                 if (scene == null) {
                     continue;
                 }
                 addSceneNode(scenesArray, scene, options);
             }
+        }
+
+        // Serialize object registry if present
+        if (source.getObjectRegistry() != null && !source.getObjectRegistry().isEmpty()) {
+            addObjectArray(root, "object_registry", source.getObjectRegistry());
         }
 
         return JsonUtils.toPrettyJson(root);
@@ -100,15 +110,15 @@ public final class StoryboardJsonBuilder {
         putTrimmedStringArray(sceneNode, "geometry_constraints", scene.getGeometryConstraints());
         putTrimmedStringArray(sceneNode, "step_refs", scene.getStepRefs());
 
-        addEnteringObjects(sceneNode, scene.getEnteringObjects());
-        putTrimmedStringArray(sceneNode, "persistent_objects", scene.getPersistentObjects());
-        putTrimmedStringArray(sceneNode, "exiting_objects", scene.getExitingObjects());
+        addObjectArray(sceneNode, "entering_objects", scene.getEnteringObjects());
+        addObjectArray(sceneNode, "persistent_objects", scene.getPersistentObjects());
+        addObjectArray(sceneNode, "exiting_objects", scene.getExitingObjects());
         addActions(sceneNode, scene.getActions());
         putTrimmedStringArray(sceneNode, "notes_for_codegen", scene.getNotesForCodegen());
     }
 
-    private static void addEnteringObjects(ObjectNode sceneNode, List<StoryboardObject> objects) {
-        ArrayNode enteringObjects = sceneNode.putArray("entering_objects");
+    private static void addObjectArray(ObjectNode parent, String fieldName, List<StoryboardObject> objects) {
+        ArrayNode arrayNode = parent.putArray(fieldName);
         if (objects == null) {
             return;
         }
@@ -117,18 +127,52 @@ public final class StoryboardJsonBuilder {
             if (object == null) {
                 continue;
             }
-            ObjectNode objectNode = enteringObjects.addObject();
+            ObjectNode objectNode = arrayNode.addObject();
             putNonBlank(objectNode, "id", object.getId());
             putNonBlank(objectNode, "kind", object.getKind());
             putNonBlank(objectNode, "content", object.getContent());
-            putNonBlank(objectNode, "placement", object.getPlacement());
+            addPlacement(objectNode, object.getPlacement());
             addStyles(objectNode, object.getStyle());
             putNonBlank(objectNode, "source_node", object.getSourceNode());
             putNonBlank(objectNode, "behavior", object.getBehavior());
             putNonBlank(objectNode, "anchor_id", object.getAnchorId());
             putNonBlank(objectNode, "dependency_note", object.getDependencyNote());
             putNonBlank(objectNode, "constraint_note", object.getConstraintNote());
+            removeIfEmpty(arrayNode, objectNode);
         }
+    }
+
+    private static void addPlacement(ObjectNode objectNode, StoryboardPlacement placement) {
+        if (placement == null || !placement.hasData()) {
+            return;
+        }
+
+        ObjectNode placementNode = objectNode.putObject("placement");
+        putNonBlank(placementNode, "coordinate_space", placement.getCoordinateSpace());
+        addPlacementAxis(placementNode, "x", placement.getX());
+        addPlacementAxis(placementNode, "y", placement.getY());
+        addPlacementAxis(placementNode, "z", placement.getZ());
+        removeIfEmpty(objectNode, placementNode, "placement");
+    }
+
+    private static void addPlacementAxis(ObjectNode parentNode,
+                                         String fieldName,
+                                         StoryboardPlacementAxis axis) {
+        if (axis == null || !axis.hasData()) {
+            return;
+        }
+
+        ObjectNode axisNode = parentNode.putObject(fieldName);
+        if (axis.getValue() != null) {
+            axisNode.put("value", axis.getValue());
+        }
+        if (axis.getMin() != null) {
+            axisNode.put("min", axis.getMin());
+        }
+        if (axis.getMax() != null) {
+            axisNode.put("max", axis.getMax());
+        }
+        removeIfEmpty(parentNode, axisNode, fieldName);
     }
 
     private static void addStyles(ObjectNode objectNode, List<StoryboardStyle> styles) {

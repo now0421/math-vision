@@ -128,7 +128,6 @@ public class FileOutputService {
 
     public static void saveNarrative(Path outputDir, Narrative narrative) {
         writeJson(outputDir.resolve("3_narrative.json"), narrative, "narrative (JSON)");
-        writeText(outputDir.resolve("3_narrative_prompt.txt"), narrative.getVerbosePrompt(), "narrative prompt");
     }
 
     public static void saveCodeResult(Path outputDir, CodeResult codeResult) {
@@ -365,4 +364,3 @@ public class FileOutputService {
                 : WorkflowConfig.OUTPUT_TARGET_MANIM;
     }
 }
-

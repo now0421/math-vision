@@ -30,13 +30,11 @@ class PromptModulesTest {
     @Test
     void codeReviewAndRevisionPromptsMentionPlacementCorrectness() {
         String reviewPrompt = CodeEvaluationPrompts.reviewUserPrompt(
-                "Triangle Angles",
                 "DemoScene",
                 "{\"scenes\":[]}",
                 "{}",
                 "from manim import *");
         String revisionPrompt = CodeEvaluationPrompts.revisionUserPrompt(
-                "Triangle Angles",
                 "DemoScene",
                 "{\"scenes\":[]}",
                 "{}",
@@ -50,7 +48,7 @@ class PromptModulesTest {
 
     @Test
     void promptsMentionThreeDPlanningAndOverlayRules() {
-        String visualPrompt = VisualDesignPrompts.systemPrompt("Vector Field", "3D demo", "manim");
+        String visualPrompt = VisualDesignPrompts.systemPrompt("Vector Field", "3D demo", "manim", null);
         String narrativePrompt = NarrativePrompts.systemPrompt("Vector Field", "3D demo", "manim");
         String codegenPrompt = CodeGenerationPrompts.systemPrompt("Vector Field", "3D demo", "manim");
         String reviewPrompt = CodeEvaluationPrompts.reviewSystemPrompt("Vector Field", "3D demo");
@@ -93,7 +91,7 @@ class PromptModulesTest {
     void geogebraPromptsStayFreeOfManimOnlyNarrativeContracts() {
         String manimNarrative = NarrativePrompts.systemPrompt("Triangle", "Demo", "manim");
         String geogebraNarrative = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
-        String geogebraVisual = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra");
+        String geogebraVisual = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra", null);
 
         assertTrue(manimNarrative.contains("Manim-specific storyboard rules"));
         assertFalse(geogebraNarrative.contains("Manim teaching philosophy"));
@@ -123,7 +121,6 @@ class PromptModulesTest {
         String systemPrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
         String codegenSystemPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "geogebra");
         String codegenPrompt = NarrativePrompts.storyboardCodegenPrompt(
-                "Triangle",
                 "{\"scenes\":[{\"entering_objects\":[{\"id\":\"angle_in\",\"kind\":\"angle\",\"content\":\"angle between AP and l at P\"}]}]}",
                 "geogebra");
 
@@ -138,7 +135,6 @@ class PromptModulesTest {
         String systemPrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
         String codegenSystemPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "geogebra");
         String codegenPrompt = NarrativePrompts.storyboardCodegenPrompt(
-                "Triangle",
                 "{\"scenes\":[{\"entering_objects\":[{\"id\":\"aLabel\",\"kind\":\"label\",\"content\":\"A\"}]}]}",
                 "geogebra");
 
@@ -151,7 +147,7 @@ class PromptModulesTest {
 
     @Test
     void promptsRequireHighContrastColorChoices() {
-        String visualPrompt = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra");
+        String visualPrompt = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra", null);
         String narrativePrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
         String geogebraCodegenPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "geogebra");
         String manimCodegenPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "manim");
@@ -179,7 +175,6 @@ class PromptModulesTest {
     @Test
     void geogebraCodegenPromptsAvoidManimInstructionsAndAsciiConflict() {
         String storyboardPrompt = NarrativePrompts.storyboardCodegenPrompt(
-                "Triangle",
                 "{\"scenes\":[{\"entering_objects\":[{\"id\":\"B'\",\"kind\":\"point\",\"content\":\"reflected point\"}]}]}",
                 "geogebra");
         String codegenPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "GeoGebra demo", "geogebra");

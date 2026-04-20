@@ -6,6 +6,9 @@ import com.mathvision.model.CodeFixResult;
 import com.mathvision.model.CodeFixSource;
 import com.mathvision.model.CodeResult;
 import com.mathvision.model.Narrative;
+import com.mathvision.model.Narrative.Storyboard;
+import com.mathvision.model.Narrative.StoryboardScene;
+import com.mathvision.model.SceneCodeEntry;
 import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.node.support.FixRetryState;
@@ -23,6 +26,7 @@ import com.mathvision.util.JsonUtils;
 import com.mathvision.util.TimeUtils;
 import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
@@ -31,6 +35,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -38,7 +43,7 @@ import java.util.concurrent.CompletionException;
 
 /**
  * Stage 2: Code Generation - generates backend-specific code
- * from the narrative storyboard prompt.
+ * from the narrative storyboard.
  */
 public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeGenerationInput, CodeResult, String> {
 
@@ -142,9 +147,22 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
 
         String generatedCode;
         String artifactName = defaultArtifactName();
+        CodeResult sceneResult = null;
         if (input.previousFixResult() != null) {
             log.info("  Re-validating code returned from shared CodeFixNode");
             generatedCode = extractRetriedCode(input);
+        } else if (narrative != null && narrative.hasStoryboard()
+                && narrative.getStoryboard().getScenes() != null
+                && narrative.getStoryboard().getScenes().size() > 1) {
+            // Per-scene generation for both Manim and GeoGebra
+            try {
+                sceneResult = generatePerScene(narrative, artifactName);
+                generatedCode = sceneResult.getGeneratedCode();
+            } catch (CompletionException e) {
+                Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
+                log.error("  Per-scene code generation failed: {}", cause.getMessage());
+                generatedCode = "";
+            }
         } else {
             String userPrompt = buildGenerationPrompt(narrative, artifactName);
             if (userPrompt.isBlank()) {
@@ -209,6 +227,10 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                 targetConcept,
                 targetDescription
         );
+        if (sceneResult != null) {
+            result.setHeaderCode(sceneResult.getHeaderCode());
+            result.setSceneEntries(sceneResult.getSceneEntries());
+        }
         result.setOutputTarget(NodeSupport.resolveOutputTarget(workflowConfig));
         result.setArtifactFormat(resolveArtifactFormat());
         result.setToolCalls(toolCalls + fixState.totalToolCalls());
@@ -233,6 +255,92 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                 .thenApply(payload -> toCodeDraft(payload, expectedArtifactName));
     }
 
+    private CodeResult generatePerScene(Narrative narrative, String artifactName) {
+        boolean isGeoGebra = NodeSupport.isGeoGebraTarget(workflowConfig);
+        Storyboard storyboard = narrative.getStoryboard();
+        Storyboard mergedStoryboard = StoryboardPatchResolver.buildMergedStoryboard(storyboard);
+        List<StoryboardScene> scenes = mergedStoryboard != null && mergedStoryboard.getScenes() != null
+                ? mergedStoryboard.getScenes()
+                : storyboard.getScenes();
+        String storyboardJson = StoryboardJsonBuilder.buildForCodegen(storyboard);
+
+        // Build scene identifiers
+        List<String> sceneNames = new ArrayList<>();
+        for (int i = 0; i < scenes.size(); i++) {
+            StoryboardScene scene = scenes.get(i);
+            if (isGeoGebra) {
+                String title = scene.getTitle() != null ? scene.getTitle() : "scene_" + (i + 1);
+                sceneNames.add("Scene " + (i + 1) + ": " + title);
+            } else {
+                sceneNames.add(ManimCodeUtils.buildSceneMethodName(scene.getSceneId(), scene.getTitle(), i));
+            }
+        }
+
+        log.info("  Per-scene generation ({}): {} scenes, names={}", isGeoGebra ? "geogebra" : "manim",
+                scenes.size(), sceneNames);
+
+        // 1. Generate skeleton
+        String skeletonPrompt = isGeoGebra
+                ? CodeGenerationPrompts.geoGebraSkeletonUserPrompt(storyboardJson, sceneNames)
+                : CodeGenerationPrompts.skeletonUserPrompt(storyboardJson, sceneNames);
+        JsonNode skeletonPayload = AiRequestUtils.requestJsonObjectAsync(
+                aiClient, log, "skeleton", conversationContext,
+                skeletonPrompt, ToolSchemas.CODE_SKELETON, () -> toolCalls++
+        ).join();
+
+        String headerCode = "";
+        if (skeletonPayload != null && skeletonPayload.has("headerCode")) {
+            headerCode = skeletonPayload.get("headerCode").asText("");
+        }
+        log.info("  Skeleton generated: {} lines", headerCode.lines().count());
+
+        // 2. Generate each scene sequentially
+        List<SceneCodeEntry> entries = new ArrayList<>();
+        for (int i = 0; i < scenes.size(); i++) {
+            StoryboardScene scene = scenes.get(i);
+            String sceneName = sceneNames.get(i);
+            String sceneJson;
+            try {
+                sceneJson = JsonUtils.mapper().writeValueAsString(scene);
+            } catch (Exception e) {
+                sceneJson = "{}";
+            }
+
+            String scenePrompt = isGeoGebra
+                    ? CodeGenerationPrompts.geoGebraSceneCodeUserPrompt(sceneJson, sceneName, i, scenes.size())
+                    : CodeGenerationPrompts.sceneCodeUserPrompt(sceneJson, sceneName, i, scenes.size());
+            JsonNode scenePayload = AiRequestUtils.requestJsonObjectAsync(
+                    aiClient, log, sceneName, conversationContext,
+                    scenePrompt, ToolSchemas.SCENE_CODE, () -> toolCalls++
+            ).join();
+
+            String sceneCode = "";
+            if (scenePayload != null) {
+                if (scenePayload.has("sceneCode")) {
+                    sceneCode = scenePayload.get("sceneCode").asText("");
+                }
+                if (!isGeoGebra && scenePayload.has("sceneMethodName")) {
+                    String returnedName = scenePayload.get("sceneMethodName").asText("");
+                    if (!returnedName.isBlank()) {
+                        sceneName = returnedName;
+                    }
+                }
+            }
+
+            entries.add(new SceneCodeEntry(i, scene.getSceneId(), sceneName, sceneCode, false));
+            log.debug("  Scene {} ({}) generated: {} lines", i + 1, sceneName, sceneCode.lines().count());
+        }
+
+        // 3. Assemble
+        CodeResult result = new CodeResult();
+        result.setHeaderCode(headerCode);
+        result.setSceneEntries(entries);
+        result.rebuildGeneratedCode();
+
+        log.info("  Per-scene assembly complete: {} total lines", result.codeLineCount());
+        return result;
+    }
+
     @Override
     public String post(Map<String, Object> ctx, CodeGenerationInput input, CodeResult codeResult) {
         ctx.put(WorkflowKeys.CODE_RESULT, codeResult);
@@ -253,15 +361,13 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     }
 
     private String buildGenerationPrompt(Narrative narrative, String expectedSceneName) {
-        String basePrompt;
-        if (narrative.hasStoryboard()) {
-            basePrompt = NarrativePrompts.storyboardCodegenPrompt(
-                    narrative.getTargetConcept(),
-                    narrative.getStoryboard(),
-                    NodeSupport.resolveOutputTarget(workflowConfig));
-        } else {
-            basePrompt = narrative.getVerbosePrompt();
+        if (narrative == null || !narrative.hasStoryboard()) {
+            return "";
         }
+
+        String basePrompt = NarrativePrompts.storyboardCodegenPrompt(
+                narrative.getStoryboard(),
+                NodeSupport.resolveOutputTarget(workflowConfig));
 
         if (basePrompt == null || basePrompt.isBlank()) {
             return "";

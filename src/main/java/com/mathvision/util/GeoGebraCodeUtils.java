@@ -328,16 +328,8 @@ public final class GeoGebraCodeUtils {
                     allObjectIds.add(object.getId().trim());
                 }
             }
-            for (String persistent : scene.getPersistentObjects()) {
-                if (persistent != null && !persistent.isBlank()) {
-                    allObjectIds.add(persistent.trim());
-                }
-            }
-            for (String exiting : scene.getExitingObjects()) {
-                if (exiting != null && !exiting.isBlank()) {
-                    allObjectIds.add(exiting.trim());
-                }
-            }
+            allObjectIds.addAll(StoryboardPatchResolver.idsOf(scene.getPersistentObjects()));
+            allObjectIds.addAll(StoryboardPatchResolver.idsOf(scene.getExitingObjects()));
         }
 
         int fallbackIndex = 1;
@@ -347,21 +339,13 @@ public final class GeoGebraCodeUtils {
                 continue;
             }
             LinkedHashSet<String> visible = new LinkedHashSet<>();
-            for (String persistent : scene.getPersistentObjects()) {
-                if (persistent != null && !persistent.isBlank()) {
-                    visible.add(persistent.trim());
-                }
-            }
+            visible.addAll(StoryboardPatchResolver.idsOf(scene.getPersistentObjects()));
             for (Narrative.StoryboardObject object : scene.getEnteringObjects()) {
                 if (object != null && object.getId() != null && !object.getId().isBlank()) {
                     visible.add(object.getId().trim());
                 }
             }
-            for (String exiting : scene.getExitingObjects()) {
-                if (exiting != null && !exiting.isBlank()) {
-                    visible.remove(exiting.trim());
-                }
-            }
+            visible.removeAll(StoryboardPatchResolver.idsOf(scene.getExitingObjects()));
             if (visible.isEmpty()) {
                 fallbackIndex++;
                 continue;

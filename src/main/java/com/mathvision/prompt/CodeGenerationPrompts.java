@@ -43,8 +43,8 @@ public final class CodeGenerationPrompts {
                     + "Additional storyboard field rules:\n"
                     + "- `continuity_plan` and `global_visual_rules` define global constraints that should shape the whole file.\n"
                     + "- `entering_objects[].id` is a stable visual identity. Reuse the same mobject variable for that id whenever the object persists or is transformed later.\n"
-                    + "- `persistent_objects` means those object ids should stay on screen from earlier beats; do not recreate them unless replacement is unavoidable.\n"
-                    + "- `exiting_objects` means those object ids should explicitly leave the scene with a clear removal animation when appropriate.\n"
+                    + "- `persistent_objects` entries describe objects that stay on screen from earlier beats; reuse the same mobject unless replacement is unavoidable.\n"
+                    + "- `exiting_objects` entries are id-only removals; make those objects leave the scene clearly when appropriate.\n"
                     + "- `actions` are the main execution plan. Respect their order, targets, and visible intent when deciding the animation sequence and beat timing.\n"
                     + "- `entering_objects[].content` tells you what must be shown.\n"
                     + "- When `content`, `dependency_note`, or related fields mention another object, treat those mentions as object ids only rather than as repeated type declarations.\n"
@@ -58,7 +58,7 @@ public final class CodeGenerationPrompts {
                     + "- When an action targets an existing id, animate that existing object instead of silently creating a duplicate.\n"
                     + "- Use clean exits for temporary annotations, comparisons, and overlays rather than leaving them to accumulate.\n\n"
                     + "Layout and camera rules:\n"
-                    + "- Convert `placement`, `camera_anchor`, `camera_plan`, `safe_area_plan`, and `screen_overlay_plan` into concrete Manim layout and camera code.\n"
+                    + "- Convert structured `placement`, `camera_anchor`, `camera_plan`, `safe_area_plan`, and `screen_overlay_plan` into concrete Manim layout and camera code.\n"
                     + "- Choose readable absolute coordinates that preserve continuity and keep important content inside the safe frame with at least 0.5 units of clearance from every edge.\n"
                     + "- Prefer `Group`/`VGroup`, `arrange`, `next_to`, alignment helpers, and anchored groups over brittle hardcoded coordinates everywhere.\n"
                     + "- If a scene is marked `3d`, use `ThreeDScene`, apply the camera plan explicitly, and keep fixed overlays readable in screen space.\n\n"
@@ -113,7 +113,7 @@ public final class CodeGenerationPrompts {
                     + "- If a point is described as moving or draggable while constrained, preserve both facts at once: keep the dependency and allow the motion within that dependency.\n"
                     + "- If the storyboard implies a bounded range, encode the bound in the construction itself with a segment, ray, restricted path, or slider domain rather than leaving the object unconstrained.\n"
                     + "- Do not invent unsupported convenience syntax such as `Point(line, x, y)` or similar guessed overloads.\n"
-                    + "- When initial placement is requested for a constrained point, choose a dependency-safe construction that starts near that location; never break the constraint just to match the initial coordinates.\n"
+                    + "- When initial structured placement is requested for a constrained point, choose a dependency-safe construction that starts near that location or inside the requested range; never break the constraint just to match the coordinates.\n"
                     + "- Ignore timing-only details such as scene duration, but preserve the same teaching order and object-state progression.\n"
                     + "- Use style and visibility commands sparingly and semantically, and apply scripting commands after construction commands.\n"
                     + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES
@@ -227,5 +227,83 @@ public final class CodeGenerationPrompts {
                         + "Use English GeoGebra command names and preserve the figure naming intent around `%s`.\n"
                         + "Return ONLY the full GeoGebra code block.",
                 storyboardBlock, figureName, geoGebraCode, problemList, figureName);
+    }
+
+    /**
+     * Builds the user prompt for generating the code skeleton
+     * (imports, class, construct() that calls scene methods, shared helpers).
+     */
+    public static String skeletonUserPrompt(String storyboardJson,
+                                            java.util.List<String> sceneMethodNames) {
+        String methodList = String.join(", ", sceneMethodNames);
+        return String.format(
+                "Compact storyboard JSON:\n```json\n%s\n```\n\n"
+                        + "Generate ONLY the code skeleton for a single-file Manim animation:\n"
+                        + "- `from manim import *` and any other needed imports\n"
+                        + "- Constants and shared helper functions if needed\n"
+                        + "- `class MainScene(Scene):` (or ThreeDScene if any scene uses 3d)\n"
+                        + "- `def construct(self):` that calls these scene methods in order: %s\n"
+                        + "- Empty method stubs `def %s(self): pass` for each scene method\n\n"
+                        + "Do NOT implement the scene methods yet — just provide the skeleton with `pass` stubs.\n"
+                        + "Return the skeleton code via the write_code_skeleton tool.",
+                storyboardJson, methodList,
+                sceneMethodNames.get(0) + "`, `def " + sceneMethodNames.get(sceneMethodNames.size() - 1));
+    }
+
+    /**
+     * Builds the user prompt for generating a single scene method body.
+     */
+    public static String sceneCodeUserPrompt(String sceneJson,
+                                             String methodName,
+                                             int sceneIndex,
+                                             int totalScenes) {
+        return String.format(
+                "Now implement scene method `%s` (scene %d of %d).\n\n"
+                        + "Scene specification:\n```json\n%s\n```\n\n"
+                        + "Generate the COMPLETE method body for `def %s(self):`.\n"
+                        + "- Include the full `def %s(self):` signature and all code inside.\n"
+                        + "- Use variables and objects established in earlier scene methods via `self` if needed.\n"
+                        + "- Follow the storyboard actions, entering/persistent/exiting objects exactly.\n"
+                        + "- Return the method code via the write_scene_code tool.",
+                methodName, sceneIndex + 1, totalScenes,
+                sceneJson, methodName, methodName);
+    }
+
+    /**
+     * Builds the user prompt for generating the GeoGebra code skeleton
+     * (global setup commands, shared definitions, coordinate system).
+     */
+    public static String geoGebraSkeletonUserPrompt(String storyboardJson,
+                                                     List<String> sceneSectionNames) {
+        String sectionList = String.join(", ", sceneSectionNames);
+        return String.format(
+                "Compact storyboard JSON:\n```json\n%s\n```\n\n"
+                        + "Generate ONLY the GeoGebra code skeleton (setup section):\n"
+                        + "- Global coordinate and view settings if needed\n"
+                        + "- Shared base objects that persist across multiple scenes\n"
+                        + "- A section comment header for each scene: %s\n\n"
+                        + "Do NOT implement the scene-specific objects yet — just provide the global setup.\n"
+                        + "Return the skeleton code via the write_code_skeleton tool.",
+                storyboardJson, sectionList);
+    }
+
+    /**
+     * Builds the user prompt for generating a single GeoGebra scene section.
+     */
+    public static String geoGebraSceneCodeUserPrompt(String sceneJson,
+                                                      String sceneSectionName,
+                                                      int sceneIndex,
+                                                      int totalScenes) {
+        return String.format(
+                "Now implement scene section \"%s\" (scene %d of %d).\n\n"
+                        + "Scene specification:\n```json\n%s\n```\n\n"
+                        + "Generate the COMPLETE GeoGebra command block for this scene:\n"
+                        + "- Start with a comment line: # %s\n"
+                        + "- Create all entering objects for this scene\n"
+                        + "- Apply styles and visibility settings\n"
+                        + "- Reference shared objects from the skeleton by their established names\n"
+                        + "- Return the scene code via the write_scene_code tool.",
+                sceneSectionName, sceneIndex + 1, totalScenes,
+                sceneJson, sceneSectionName);
     }
 }

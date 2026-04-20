@@ -10,8 +10,7 @@ import java.util.Map;
 
 /**
  * Narrative composition result from the enrichment stage.
- * Contains the verbose prompt (2000+ word animation script)
- * and metadata used by the code generation stage.
+ * Contains storyboard metadata used by the code generation stage.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Narrative {
@@ -21,9 +20,6 @@ public class Narrative {
 
     @JsonProperty("target_description")
     private String targetDescription;
-
-    @JsonProperty("verbose_prompt")
-    private String verbosePrompt;
 
     @JsonProperty("storyboard")
     private Storyboard storyboard;
@@ -39,31 +35,20 @@ public class Narrative {
 
     public Narrative() {}
 
-    public Narrative(String targetConcept, String verbosePrompt,
+    public Narrative(String targetConcept, Storyboard storyboard,
                      List<String> stepOrder, int totalDuration, int sceneCount) {
-        this(targetConcept, "", verbosePrompt, null, stepOrder, totalDuration, sceneCount);
+        this(targetConcept, "", storyboard, stepOrder, totalDuration, sceneCount);
     }
 
-    public Narrative(String targetConcept, String verbosePrompt, Storyboard storyboard,
-                     List<String> stepOrder, int totalDuration, int sceneCount) {
-        this(targetConcept, "", verbosePrompt, storyboard, stepOrder, totalDuration, sceneCount);
-    }
-
-    public Narrative(String targetConcept, String targetDescription, String verbosePrompt,
+    public Narrative(String targetConcept, String targetDescription,
                      Storyboard storyboard, List<String> stepOrder,
                      int totalDuration, int sceneCount) {
         this.targetConcept = targetConcept;
         this.targetDescription = targetDescription;
-        this.verbosePrompt = verbosePrompt;
         this.storyboard = storyboard;
         this.stepOrder = stepOrder;
         this.totalDuration = totalDuration;
         this.sceneCount = sceneCount;
-    }
-
-    public int wordCount() {
-        if (verbosePrompt == null || verbosePrompt.isBlank()) return 0;
-        return verbosePrompt.split("\\s+").length;
     }
 
     // ---- Getters / Setters ----
@@ -73,9 +58,6 @@ public class Narrative {
 
     public String getTargetDescription() { return targetDescription; }
     public void setTargetDescription(String targetDescription) { this.targetDescription = targetDescription; }
-
-    public String getVerbosePrompt() { return verbosePrompt; }
-    public void setVerbosePrompt(String verbosePrompt) { this.verbosePrompt = verbosePrompt; }
 
     public Storyboard getStoryboard() { return storyboard; }
     public void setStoryboard(Storyboard storyboard) { this.storyboard = storyboard; }
@@ -110,10 +92,18 @@ public class Narrative {
         @JsonProperty("global_visual_rules")
         private List<String> globalVisualRules = new ArrayList<>();
 
+        @JsonProperty("object_registry")
+        private List<StoryboardObject> objectRegistry = new ArrayList<>();
+
         @JsonProperty("scenes")
         private List<StoryboardScene> scenes = new ArrayList<>();
 
         public Storyboard() {}
+
+        public List<StoryboardObject> getObjectRegistry() { return objectRegistry; }
+        public void setObjectRegistry(List<StoryboardObject> objectRegistry) {
+            this.objectRegistry = objectRegistry != null ? objectRegistry : new ArrayList<>();
+        }
 
         public String getHook() { return hook; }
         public void setHook(String hook) { this.hook = hook; }
@@ -179,10 +169,10 @@ public class Narrative {
         private List<StoryboardObject> enteringObjects = new ArrayList<>();
 
         @JsonProperty("persistent_objects")
-        private List<String> persistentObjects = new ArrayList<>();
+        private List<StoryboardObject> persistentObjects = new ArrayList<>();
 
         @JsonProperty("exiting_objects")
-        private List<String> exitingObjects = new ArrayList<>();
+        private List<StoryboardObject> exitingObjects = new ArrayList<>();
 
         @JsonProperty("actions")
         private List<StoryboardAction> actions = new ArrayList<>();
@@ -240,13 +230,15 @@ public class Narrative {
             this.enteringObjects = enteringObjects;
         }
 
-        public List<String> getPersistentObjects() { return persistentObjects; }
-        public void setPersistentObjects(List<String> persistentObjects) {
-            this.persistentObjects = persistentObjects;
+        public List<StoryboardObject> getPersistentObjects() { return persistentObjects; }
+        public void setPersistentObjects(List<StoryboardObject> persistentObjects) {
+            this.persistentObjects = persistentObjects != null ? persistentObjects : new ArrayList<>();
         }
 
-        public List<String> getExitingObjects() { return exitingObjects; }
-        public void setExitingObjects(List<String> exitingObjects) { this.exitingObjects = exitingObjects; }
+        public List<StoryboardObject> getExitingObjects() { return exitingObjects; }
+        public void setExitingObjects(List<StoryboardObject> exitingObjects) {
+            this.exitingObjects = exitingObjects != null ? exitingObjects : new ArrayList<>();
+        }
 
         public List<StoryboardAction> getActions() { return actions; }
         public void setActions(List<StoryboardAction> actions) { this.actions = actions; }
@@ -275,7 +267,7 @@ public class Narrative {
         private String content;
 
         @JsonProperty("placement")
-        private String placement;
+        private StoryboardPlacement placement;
 
         private List<StoryboardStyle> style = new ArrayList<>();
 
@@ -305,8 +297,8 @@ public class Narrative {
         public String getContent() { return content; }
         public void setContent(String content) { this.content = content; }
 
-        public String getPlacement() { return placement; }
-        public void setPlacement(String placement) { this.placement = placement; }
+        public StoryboardPlacement getPlacement() { return placement; }
+        public void setPlacement(StoryboardPlacement placement) { this.placement = placement; }
 
         @JsonProperty("style")
         public List<StoryboardStyle> getStyle() { return style; }
@@ -329,6 +321,75 @@ public class Narrative {
 
         public String getConstraintNote() { return constraintNote; }
         public void setConstraintNote(String constraintNote) { this.constraintNote = constraintNote; }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class StoryboardPlacement {
+
+        public static final String COORDINATE_SPACE_WORLD = "world";
+        public static final String COORDINATE_SPACE_SCREEN = "screen";
+        public static final String COORDINATE_SPACE_ANCHOR = "anchor";
+
+        @JsonProperty("coordinate_space")
+        private String coordinateSpace;
+
+        @JsonProperty("x")
+        private StoryboardPlacementAxis x;
+
+        @JsonProperty("y")
+        private StoryboardPlacementAxis y;
+
+        @JsonProperty("z")
+        private StoryboardPlacementAxis z;
+
+        public StoryboardPlacement() {}
+
+        public String getCoordinateSpace() { return coordinateSpace; }
+        public void setCoordinateSpace(String coordinateSpace) { this.coordinateSpace = coordinateSpace; }
+
+        public StoryboardPlacementAxis getX() { return x; }
+        public void setX(StoryboardPlacementAxis x) { this.x = x; }
+
+        public StoryboardPlacementAxis getY() { return y; }
+        public void setY(StoryboardPlacementAxis y) { this.y = y; }
+
+        public StoryboardPlacementAxis getZ() { return z; }
+        public void setZ(StoryboardPlacementAxis z) { this.z = z; }
+
+        public boolean hasData() {
+            return (coordinateSpace != null && !coordinateSpace.isBlank())
+                    || (x != null && x.hasData())
+                    || (y != null && y.hasData())
+                    || (z != null && z.hasData());
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class StoryboardPlacementAxis {
+
+        @JsonProperty("value")
+        private Double value;
+
+        @JsonProperty("min")
+        private Double min;
+
+        @JsonProperty("max")
+        private Double max;
+
+        public StoryboardPlacementAxis() {}
+
+        public Double getValue() { return value; }
+        public void setValue(Double value) { this.value = value; }
+
+        public Double getMin() { return min; }
+        public void setMin(Double min) { this.min = min; }
+
+        public Double getMax() { return max; }
+        public void setMax(Double max) { this.max = max; }
+
+        public boolean hasData() {
+            return value != null || min != null || max != null;
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

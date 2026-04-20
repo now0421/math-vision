@@ -4,9 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonPropertyOrder({
@@ -20,8 +19,7 @@ import java.util.List;
         "definitions",
         "interpretation",
         "examples",
-        "enriched",
-        "visual_spec"
+        "enriched"
 })
 public class KnowledgeNode {
 
@@ -53,9 +51,6 @@ public class KnowledgeNode {
     private String interpretation;
     private List<String> examples;
 
-    @JsonProperty("visual_spec")
-    private Map<String, Object> visualSpec;
-
     public KnowledgeNode() {}
 
     public KnowledgeNode(String id, String step, int minDepth, boolean foundation) {
@@ -73,10 +68,6 @@ public class KnowledgeNode {
 
     public boolean isEnriched() {
         return equations != null && definitions != null;
-    }
-
-    public boolean hasVisualSpec() {
-        return visualSpec != null && !visualSpec.isEmpty();
     }
 
     public String getId() { return id; }
@@ -110,9 +101,6 @@ public class KnowledgeNode {
 
     public List<String> getExamples() { return examples; }
     public void setExamples(List<String> examples) { this.examples = examples; }
-
-    public Map<String, Object> getVisualSpec() { return visualSpec; }
-    public void setVisualSpec(Map<String, Object> visualSpec) { this.visualSpec = visualSpec; }
 
     @Override
     public String toString() {

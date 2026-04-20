@@ -253,7 +253,7 @@ class CodeGenerationNodeRoutingTest {
         Narrative narrative = new Narrative();
         narrative.setTargetConcept("Demo concept");
         narrative.setTargetDescription("Demo description");
-        narrative.setVerbosePrompt("Generate a minimal demo scene.");
+        narrative.setStoryboard(buildStoryboard());
         return narrative;
     }
 
@@ -290,7 +290,12 @@ class CodeGenerationNodeRoutingTest {
         title.setId("title_main");
         title.setKind("text");
         title.setContent("Demo title");
-        title.setPlacement("top-center, y = 3.0");
+        Narrative.StoryboardPlacement titlePlacement = new Narrative.StoryboardPlacement();
+        titlePlacement.setCoordinateSpace("screen");
+        Narrative.StoryboardPlacementAxis yAxis = new Narrative.StoryboardPlacementAxis();
+        yAxis.setValue(3.0);
+        titlePlacement.setY(yAxis);
+        title.setPlacement(titlePlacement);
         Narrative.StoryboardStyle titleStyle = new Narrative.StoryboardStyle();
         titleStyle.setRole("emphasis");
         titleStyle.setType("text");
@@ -301,7 +306,9 @@ class CodeGenerationNodeRoutingTest {
         title.setStyle(List.of(titleStyle));
         title.setSourceNode("problem");
         scene.setEnteringObjects(List.of(title));
-        scene.setPersistentObjects(List.of("title_main"));
+        Narrative.StoryboardObject persistentTitle = new Narrative.StoryboardObject();
+        persistentTitle.setId("title_main");
+        scene.setPersistentObjects(List.of(persistentTitle));
         scene.setExitingObjects(new ArrayList<>());
 
         StoryboardAction action = new StoryboardAction();

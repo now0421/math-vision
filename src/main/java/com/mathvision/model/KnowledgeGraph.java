@@ -2,6 +2,8 @@ package com.mathvision.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,6 +19,8 @@ import java.util.TreeMap;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class KnowledgeGraph {
 
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeGraph.class);
+
     @JsonProperty("start_node_id")
     private String startNodeId;
 
@@ -28,16 +32,21 @@ public class KnowledgeGraph {
     @JsonProperty("next_edges")
     private Map<String, List<String>> nextEdges = new LinkedHashMap<>();
 
+    @JsonProperty("teaching_order")
+    private List<String> teachingOrder = new ArrayList<>();
+
     public KnowledgeGraph() {}
 
     public KnowledgeGraph(String startNodeId,
                           String targetConcept,
                           Map<String, KnowledgeNode> nodes,
-                          Map<String, List<String>> nextEdges) {
+                          Map<String, List<String>> nextEdges,
+                          List<String> teachingOrder) {
         this.startNodeId = startNodeId;
         this.targetConcept = targetConcept;
         this.nodes = new LinkedHashMap<>(nodes);
         this.nextEdges = new LinkedHashMap<>(nextEdges);
+        this.teachingOrder = teachingOrder != null ? new ArrayList<>(teachingOrder) : new ArrayList<>();
     }
 
     public KnowledgeNode getStartNode() {
@@ -128,6 +137,101 @@ public class KnowledgeGraph {
             levelNodes.sort(Comparator.comparing(KnowledgeNode::getStep, String.CASE_INSENSITIVE_ORDER));
         }
         return groups;
+    }
+
+    public List<List<KnowledgeNode>> executionBatches() {
+        List<List<KnowledgeNode>> batches = new ArrayList<>();
+        if (nodes.isEmpty()) {
+            return batches;
+        }
+
+        Map<String, Integer> remainingPrerequisites = new LinkedHashMap<>();
+        for (String nodeId : nodes.keySet()) {
+            remainingPrerequisites.put(nodeId, 0);
+        }
+
+        for (Map.Entry<String, List<String>> entry : nextEdges.entrySet()) {
+            if (!nodes.containsKey(entry.getKey())) {
+                continue;
+            }
+            for (String nextNodeId : entry.getValue()) {
+                if (!nodes.containsKey(nextNodeId) || nextNodeId.equals(entry.getKey())) {
+                    continue;
+                }
+                remainingPrerequisites.computeIfPresent(nextNodeId, (ignored, count) -> count + 1);
+            }
+        }
+
+        Comparator<String> executionComparator = buildTeachingExecutionComparator();
+        List<String> readyNodeIds = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : remainingPrerequisites.entrySet()) {
+            if (entry.getValue() == 0) {
+                readyNodeIds.add(entry.getKey());
+            }
+        }
+        readyNodeIds.sort(executionComparator);
+
+        java.util.Set<String> processedNodeIds = new java.util.LinkedHashSet<>();
+        while (!readyNodeIds.isEmpty()) {
+            List<String> currentBatchNodeIds = new ArrayList<>(readyNodeIds);
+            readyNodeIds = new ArrayList<>();
+
+            List<KnowledgeNode> batch = new ArrayList<>();
+            for (String nodeId : currentBatchNodeIds) {
+                if (!processedNodeIds.add(nodeId)) {
+                    continue;
+                }
+
+                KnowledgeNode node = nodes.get(nodeId);
+                if (node != null) {
+                    batch.add(node);
+                }
+
+                List<String> dependentIds = new ArrayList<>(nextEdges.getOrDefault(nodeId, Collections.emptyList()));
+                dependentIds.sort(executionComparator);
+                for (String dependentId : dependentIds) {
+                    if (!remainingPrerequisites.containsKey(dependentId)) {
+                        continue;
+                    }
+                    int updated = remainingPrerequisites.computeIfPresent(dependentId, (ignored, count) -> count - 1);
+                    if (updated == 0) {
+                        readyNodeIds.add(dependentId);
+                    }
+                }
+            }
+
+            if (!batch.isEmpty()) {
+                batch.sort(Comparator.comparing(KnowledgeNode::getId, executionComparator));
+                batches.add(batch);
+            }
+            readyNodeIds.sort(executionComparator);
+        }
+
+        if (processedNodeIds.size() == nodes.size()) {
+            return batches;
+        }
+
+        List<KnowledgeNode> fallbackBatch = new ArrayList<>();
+        for (KnowledgeNode node : teachingOrderNodes()) {
+            if (!processedNodeIds.contains(node.getId())) {
+                fallbackBatch.add(node);
+            }
+        }
+        for (KnowledgeNode node : nodes.values()) {
+            if (!processedNodeIds.contains(node.getId()) && !fallbackBatch.contains(node)) {
+                fallbackBatch.add(node);
+            }
+        }
+
+        if (!fallbackBatch.isEmpty()) {
+            fallbackBatch.sort(Comparator.comparing(KnowledgeNode::getId, executionComparator));
+            log.warn("Execution batches fallback engaged: processed {} of {} nodes before exhaustion. "
+                            + "Appending {} remaining nodes in teaching order.",
+                    processedNodeIds.size(), nodes.size(), fallbackBatch.size());
+            batches.add(fallbackBatch);
+        }
+
+        return batches;
     }
 
     public List<KnowledgeNode> topologicalOrder() {
@@ -228,7 +332,7 @@ public class KnowledgeGraph {
                 .append(", Max depth: ").append(getMaxDepth())
                 .append("\n\n");
 
-        for (KnowledgeNode node : topologicalOrder()) {
+        for (KnowledgeNode node : teachingOrderNodes()) {
             sb.append("- ").append(node.getStep())
                     .append(" [id=").append(node.getId())
                     .append(", depth=").append(node.getMinDepth());
@@ -328,6 +432,22 @@ public class KnowledgeGraph {
         return buildDepthAscendingComparator();
     }
 
+    private Comparator<String> buildTeachingExecutionComparator() {
+        Map<String, Integer> teachingIndex = new HashMap<>();
+        if (teachingOrder != null) {
+            for (int i = 0; i < teachingOrder.size(); i++) {
+                teachingIndex.putIfAbsent(teachingOrder.get(i), i);
+            }
+        }
+        return Comparator
+                .comparingInt((String id) -> teachingIndex.getOrDefault(id, Integer.MAX_VALUE))
+                .thenComparing(id -> {
+                    KnowledgeNode node = nodes.get(id);
+                    return node != null ? node.getStep() : id;
+                }, String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(String.CASE_INSENSITIVE_ORDER);
+    }
+
     private Comparator<String> buildPrerequisiteComparator(String nodeId) {
         KnowledgeNode node = nodes.get(nodeId);
         Comparator<String> comparator = buildDepthDescendingComparator();
@@ -378,6 +498,35 @@ public class KnowledgeGraph {
     public Map<String, List<String>> getNextEdges() { return nextEdges; }
     public void setNextEdges(Map<String, List<String>> nextEdges) {
         this.nextEdges = nextEdges;
+    }
+
+    public List<String> getTeachingOrder() { return teachingOrder; }
+    public void setTeachingOrder(List<String> teachingOrder) {
+        this.teachingOrder = teachingOrder != null ? teachingOrder : new ArrayList<>();
+    }
+
+    /**
+     * Returns nodes in teaching order (LLM-determined).
+     * Falls back to topological order if teaching_order is not set.
+     */
+    public List<KnowledgeNode> teachingOrderNodes() {
+        if (teachingOrder != null && !teachingOrder.isEmpty()) {
+            List<KnowledgeNode> ordered = new ArrayList<>();
+            for (String nodeId : teachingOrder) {
+                KnowledgeNode node = nodes.get(nodeId);
+                if (node != null) {
+                    ordered.add(node);
+                }
+            }
+            // Append any nodes not in the teaching order
+            for (KnowledgeNode node : nodes.values()) {
+                if (!teachingOrder.contains(node.getId())) {
+                    ordered.add(node);
+                }
+            }
+            return ordered;
+        }
+        return topologicalOrder();
     }
 
     public boolean isProblemMode() {

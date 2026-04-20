@@ -124,11 +124,17 @@ class GeoGebraCodeUtilsTest {
         Narrative.StoryboardScene scene2 = new Narrative.StoryboardScene();
         scene2.setSceneId("scene_2");
         scene2.setTitle("Reveal");
-        scene2.setPersistentObjects(List.of("point_A", "point_B"));
+        Narrative.StoryboardObject persistA = new Narrative.StoryboardObject();
+        persistA.setId("point_A");
+        Narrative.StoryboardObject persistB = new Narrative.StoryboardObject();
+        persistB.setId("point_B");
+        scene2.setPersistentObjects(List.of(persistA, persistB));
         Narrative.StoryboardObject helper = new Narrative.StoryboardObject();
         helper.setId("helper_line");
         scene2.setEnteringObjects(List.of(helper));
-        scene2.setExitingObjects(List.of("point_B"));
+        Narrative.StoryboardObject exitB = new Narrative.StoryboardObject();
+        exitB.setId("point_B");
+        scene2.setExitingObjects(List.of(exitB));
 
         storyboard.setScenes(List.of(scene1, scene2));
 

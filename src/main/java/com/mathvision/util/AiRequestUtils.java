@@ -105,6 +105,143 @@ public final class AiRequestUtils {
     public static CompletableFuture<JsonNode> requestJsonObjectAsync(AiClient aiClient,
                                                                      Logger log,
                                                                      String subject,
+                                                                     java.util.List<NodeConversationContext.Message> snapshot,
+                                                                     int maxInputTokens,
+                                                                     String userPrompt,
+                                                                     String toolsJson,
+                                                                     Runnable onApiCall) {
+        return requestJsonObjectAsync(
+                aiClient,
+                log,
+                subject,
+                snapshot,
+                maxInputTokens,
+                userPrompt,
+                toolsJson,
+                onApiCall,
+                AiRequestUtils::parsePlainTextJsonObject,
+                AiRequestUtils::isUsablePayload
+        );
+    }
+
+    public static CompletableFuture<JsonNode> requestJsonObjectAsync(AiClient aiClient,
+                                                                     Logger log,
+                                                                     String subject,
+                                                                     java.util.List<NodeConversationContext.Message> snapshot,
+                                                                     int maxInputTokens,
+                                                                     String userPrompt,
+                                                                     String toolsJson,
+                                                                     Runnable onApiCall,
+                                                                     Function<String, JsonNode> plainTextParser) {
+        return requestJsonObjectAsync(
+                aiClient,
+                log,
+                subject,
+                snapshot,
+                maxInputTokens,
+                userPrompt,
+                toolsJson,
+                onApiCall,
+                plainTextParser,
+                AiRequestUtils::isUsablePayload
+        );
+    }
+
+    public static CompletableFuture<JsonNode> requestJsonObjectAsync(AiClient aiClient,
+                                                                     Logger log,
+                                                                     String subject,
+                                                                     java.util.List<NodeConversationContext.Message> snapshot,
+                                                                     int maxInputTokens,
+                                                                     String userPrompt,
+                                                                     String toolsJson,
+                                                                     Runnable onApiCall,
+                                                                     Function<String, JsonNode> plainTextParser,
+                                                                     Predicate<JsonNode> payloadValidator) {
+        return requestJsonObjectResultAsync(
+                aiClient,
+                log,
+                subject,
+                snapshot,
+                maxInputTokens,
+                userPrompt,
+                toolsJson,
+                onApiCall,
+                plainTextParser,
+                payloadValidator
+        ).thenApply(JsonObjectResult::getPayload);
+    }
+
+    public static CompletableFuture<JsonObjectResult> requestJsonObjectResultAsync(AiClient aiClient,
+                                                                                   Logger log,
+                                                                                   String subject,
+                                                                                   java.util.List<NodeConversationContext.Message> snapshot,
+                                                                                   int maxInputTokens,
+                                                                                   String userPrompt,
+                                                                                   String toolsJson,
+                                                                                   Runnable onApiCall) {
+        return requestJsonObjectResultAsync(
+                aiClient,
+                log,
+                subject,
+                snapshot,
+                maxInputTokens,
+                userPrompt,
+                toolsJson,
+                onApiCall,
+                AiRequestUtils::parsePlainTextJsonObject,
+                AiRequestUtils::isUsablePayload
+        );
+    }
+
+    public static CompletableFuture<JsonObjectResult> requestJsonObjectResultAsync(AiClient aiClient,
+                                                                                   Logger log,
+                                                                                   String subject,
+                                                                                   java.util.List<NodeConversationContext.Message> snapshot,
+                                                                                   int maxInputTokens,
+                                                                                   String userPrompt,
+                                                                                   String toolsJson,
+                                                                                   Runnable onApiCall,
+                                                                                   Function<String, JsonNode> plainTextParser,
+                                                                                   Predicate<JsonNode> payloadValidator) {
+        Predicate<JsonNode> validator = payloadValidator != null
+                ? payloadValidator
+                : AiRequestUtils::isUsablePayload;
+        java.util.List<NodeConversationContext.Message> requestSnapshot =
+                snapshotWithUserMessage(snapshot, userPrompt, maxInputTokens);
+
+        return aiClient.chatWithToolsRawAsync(requestSnapshot, toolsJson)
+                .thenApply(rawResponse -> {
+                    onApiCall.run();
+                    JsonNode data = extractJsonObject(rawResponse, plainTextParser, validator);
+                    if (data == null) {
+                        return null;
+                    }
+                    return new JsonObjectResult(data, buildToolAssistantTranscript(rawResponse, data));
+                })
+                .exceptionally(error -> {
+                    Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
+                    log.debug("  Tool calling failed for '{}', falling back to plain chat: {}",
+                            subject, cause.getMessage());
+                    return null;
+                })
+                .thenCompose(result -> {
+                    if (result != null) {
+                        return CompletableFuture.completedFuture(result);
+                    }
+
+                    return aiClient.chatAsync(requestSnapshot)
+                            .thenApply(response -> {
+                                onApiCall.run();
+                                JsonNode parsed = parsePlainTextResponse(response, plainTextParser);
+                                JsonNode payload = validator.test(parsed) ? parsed : null;
+                                return new JsonObjectResult(payload, response);
+                            });
+                });
+    }
+
+    public static CompletableFuture<JsonNode> requestJsonObjectAsync(AiClient aiClient,
+                                                                     Logger log,
+                                                                     String subject,
                                                                      NodeConversationContext context,
                                                                      String userPrompt,
                                                                      String toolsJson,
@@ -259,6 +396,45 @@ public final class AiRequestUtils {
             return JsonUtils.parseTree(candidate);
         } catch (RuntimeException ignored) {
             return null;
+        }
+    }
+
+    private static java.util.List<NodeConversationContext.Message> snapshotWithUserMessage(
+            java.util.List<NodeConversationContext.Message> snapshot,
+            String userPrompt,
+            int maxInputTokens) {
+        java.util.List<NodeConversationContext.Message> requestSnapshot = new java.util.ArrayList<>();
+        if (snapshot != null && !snapshot.isEmpty()) {
+            requestSnapshot.addAll(snapshot);
+        }
+        requestSnapshot.add(new NodeConversationContext.Message("user", userPrompt));
+        NodeConversationContext.trimSnapshotToFitBudget(requestSnapshot, maxInputTokens);
+        return requestSnapshot;
+    }
+
+    private static String buildToolAssistantTranscript(JsonNode rawResponse, JsonNode payload) {
+        String assistantText = JsonUtils.buildToolCallTranscript(rawResponse);
+        if (assistantText == null || assistantText.isBlank()) {
+            return payload != null ? payload.toPrettyString() : "";
+        }
+        return assistantText;
+    }
+
+    public static final class JsonObjectResult {
+        private final JsonNode payload;
+        private final String assistantTranscript;
+
+        public JsonObjectResult(JsonNode payload, String assistantTranscript) {
+            this.payload = payload;
+            this.assistantTranscript = assistantTranscript == null ? "" : assistantTranscript;
+        }
+
+        public JsonNode getPayload() {
+            return payload;
+        }
+
+        public String getAssistantTranscript() {
+            return assistantTranscript;
         }
     }
 }

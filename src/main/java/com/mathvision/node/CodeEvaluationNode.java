@@ -30,6 +30,7 @@ import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TargetDescriptionBuilder;
 import com.mathvision.util.TimeUtils;
 import io.github.the_pocket.PocketFlow;
@@ -300,7 +301,9 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         analysis.setFixedInFrameCount(countMatches(generatedCode, FIXED_IN_FRAME_PATTERN));
         analysis.setFixedOrientationCount(countMatches(generatedCode, FIXED_ORIENTATION_PATTERN));
 
-        Storyboard storyboard = narrative != null ? narrative.getStoryboard() : null;
+        Storyboard storyboard = narrative != null
+                ? StoryboardPatchResolver.buildMergedStoryboard(narrative.getStoryboard())
+                : null;
         if (storyboard != null && storyboard.getScenes() != null) {
             analysis.setSceneCount(storyboard.getScenes().size());
             analysis.setThreeDStoryboardSceneCount(countThreeDStoryboardScenes(storyboard));
@@ -317,15 +320,12 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                                              String sceneName,
                                              String generatedCode,
                                              StaticAnalysis analysis) {
-        String targetConcept = codeResult.getTargetConcept() != null
-                ? codeResult.getTargetConcept()
-                : sceneName;
         String storyboardJson = narrative != null && narrative.hasStoryboard()
                 ? StoryboardJsonBuilder.buildForCodegen(narrative.getStoryboard())
                 : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON;
         String staticAnalysisJson = JsonUtils.toPrettyJson(analysis);
         String userPrompt = CodeEvaluationPrompts.reviewUserPrompt(
-                targetConcept, sceneName, storyboardJson, staticAnalysisJson, generatedCode, NodeSupport.resolveOutputTarget(workflowConfig));
+                sceneName, storyboardJson, staticAnalysisJson, generatedCode, NodeSupport.resolveOutputTarget(workflowConfig));
 
         try {
             JsonNode payload = AiRequestUtils.requestJsonObjectAsync(
@@ -1032,6 +1032,15 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         double maxWps = 0.0;
         boolean sawNarration = false;
 
+        if (storyboard.getObjectRegistry() != null) {
+            for (StoryboardObject object : storyboard.getObjectRegistry()) {
+                String id = StoryboardPatchResolver.objectId(object);
+                if (id != null) {
+                    objectRegistry.put(id, object);
+                }
+            }
+        }
+
         for (StoryboardScene scene : storyboard.getScenes()) {
             if (scene == null) {
                 continue;
@@ -1043,17 +1052,14 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
             analysis.setMaxEnteringObjects(Math.max(analysis.getMaxEnteringObjects(), enteringObjects.size()));
 
             for (StoryboardObject object : enteringObjects) {
-                if (object != null && object.getId() != null && !object.getId().isBlank()) {
-                    objectRegistry.put(object.getId(), object);
+                String id = StoryboardPatchResolver.objectId(object);
+                if (id != null) {
+                    objectRegistry.put(id, object);
                 }
             }
 
             Set<String> currentVisible = new LinkedHashSet<>(carryOver);
-            for (StoryboardObject object : enteringObjects) {
-                if (object != null && object.getId() != null && !object.getId().isBlank()) {
-                    currentVisible.add(object.getId());
-                }
-            }
+            currentVisible.addAll(StoryboardPatchResolver.idsOf(enteringObjects));
 
             analysis.setMaxVisibleObjects(Math.max(analysis.getMaxVisibleObjects(), currentVisible.size()));
             analysis.setMaxVisibleTextualObjects(Math.max(
@@ -1069,12 +1075,12 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
 
             Set<String> nextCarryOver = new LinkedHashSet<>();
             if (scene.getPersistentObjects() != null && !scene.getPersistentObjects().isEmpty()) {
-                nextCarryOver.addAll(scene.getPersistentObjects());
+                nextCarryOver.addAll(StoryboardPatchResolver.idsOf(scene.getPersistentObjects()));
             } else {
                 nextCarryOver.addAll(currentVisible);
             }
             if (scene.getExitingObjects() != null && !scene.getExitingObjects().isEmpty()) {
-                nextCarryOver.removeAll(scene.getExitingObjects());
+                nextCarryOver.removeAll(StoryboardPatchResolver.idsOf(scene.getExitingObjects()));
             }
             carryOver = nextCarryOver;
         }

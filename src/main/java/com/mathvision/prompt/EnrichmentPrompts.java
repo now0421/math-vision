@@ -14,7 +14,9 @@ public final class EnrichmentPrompts {
                     + "Write with narration-first teaching intent: the math here should support what a learner will hear and see later.\n"
                     + "Explain why before how when both cannot fit comfortably.\n"
                     + "Let equations feel earned by intuition rather than appearing as isolated symbols.\n"
-                    + "Keep only formulas, definitions, and examples that materially support a later visual explanation.\n\n"
+                    + "Keep only formulas, definitions, and examples that materially support a later visual explanation.\n"
+                    + "When the current step merges multiple prerequisite branches, integrate those branch conclusions into one continuation.\n"
+                    + "For merge steps, preserve established naming and avoid restarting the explanation from scratch.\n\n"
                     + "LaTeX rules:\n"
                     + "- Use raw LaTeX strings without dollar signs.\n"
                     + "- Escape backslashes as needed.\n"
@@ -34,13 +36,18 @@ public final class EnrichmentPrompts {
 
     private EnrichmentPrompts() {}
 
-    public static String systemPrompt(String targetConcept, String targetDescription) {
-        return SystemPrompts.buildWorkflowPrefix(
+    public static String systemPrompt(String targetConcept, String targetDescription,
+                                       String solutionChain) {
+        String base = SystemPrompts.buildWorkflowPrefix(
                 "Stage 1a / Mathematical Enrichment",
                 "Mathematical content enrichment",
                 targetConcept,
                 targetDescription,
                 (String) null
         ) + SYSTEM;
+        if (solutionChain != null && !solutionChain.isBlank()) {
+            base += "\n\n" + solutionChain;
+        }
+        return base;
     }
 }

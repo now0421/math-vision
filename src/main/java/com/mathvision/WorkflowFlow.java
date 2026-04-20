@@ -4,7 +4,7 @@ import com.mathvision.node.CodeGenerationNode;
 import com.mathvision.node.CodeFixNode;
 import com.mathvision.node.ExplorationNode;
 import com.mathvision.node.MathEnrichmentNode;
-import com.mathvision.node.NarrativeNode;
+import com.mathvision.node.StoryboardValidationNode;
 import com.mathvision.node.RenderNode;
 import com.mathvision.node.SceneEvaluationNode;
 import com.mathvision.node.VisualDesignNode;
@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
  * Assembles the workflow with a shared routed code-fix node:
  *
  *   ExplorationNode -> MathEnrichmentNode -> VisualDesignNode
- *       -> NarrativeNode -> CodeGenerationNode -> CodeEvaluationNode -> RenderNode
+ *       -> StoryboardValidationNode -> CodeGenerationNode -> CodeEvaluationNode -> RenderNode
  *                          ^                ^                   ^
  *                          |                |                   |
  *                          +------ CodeFixNode <---------------+
@@ -36,7 +36,7 @@ public class WorkflowFlow {
         ExplorationNode exploration = new ExplorationNode();
         MathEnrichmentNode mathEnrich = new MathEnrichmentNode();
         VisualDesignNode visualDesign = new VisualDesignNode();
-        NarrativeNode narrative = new NarrativeNode();
+        StoryboardValidationNode storyboardValidation = new StoryboardValidationNode();
         CodeGenerationNode codeGen = new CodeGenerationNode();
         CodeEvaluationNode codeEvaluation = new CodeEvaluationNode();
         CodeFixNode codeFix = new CodeFixNode();
@@ -45,8 +45,8 @@ public class WorkflowFlow {
 
         exploration.next(mathEnrich);
         mathEnrich.next(visualDesign);
-        visualDesign.next(narrative);
-        narrative.next(codeGen);
+        visualDesign.next(storyboardValidation);
+        storyboardValidation.next(codeGen);
         codeGen.next(codeEvaluation);
         codeGen.next(codeFix, WorkflowActions.FIX_CODE);
         codeEvaluation.next(render);
@@ -61,7 +61,7 @@ public class WorkflowFlow {
 
         PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(exploration);
 
-        log.info("Workflow assembled: Exploration -> MathEnrichment -> VisualDesign -> Narrative -> CodeGeneration -> CodeEvaluation -> Render -> SceneEvaluation with routed CodeFixNode");
+        log.info("Workflow assembled: Exploration -> MathEnrichment -> VisualDesign -> StoryboardValidation -> CodeGeneration -> CodeEvaluation -> Render -> SceneEvaluation with routed CodeFixNode");
         return flow;
     }
 
@@ -72,15 +72,15 @@ public class WorkflowFlow {
         ExplorationNode exploration = new ExplorationNode();
         MathEnrichmentNode mathEnrich = new MathEnrichmentNode();
         VisualDesignNode visualDesign = new VisualDesignNode();
-        NarrativeNode narrative = new NarrativeNode();
+        StoryboardValidationNode storyboardValidation = new StoryboardValidationNode();
         CodeGenerationNode codeGen = new CodeGenerationNode();
         CodeEvaluationNode codeEvaluation = new CodeEvaluationNode();
         CodeFixNode codeFix = new CodeFixNode();
 
         exploration.next(mathEnrich);
         mathEnrich.next(visualDesign);
-        visualDesign.next(narrative);
-        narrative.next(codeGen);
+        visualDesign.next(storyboardValidation);
+        storyboardValidation.next(codeGen);
         codeGen.next(codeEvaluation);
         codeGen.next(codeFix, WorkflowActions.FIX_CODE);
         codeEvaluation.next(codeFix, WorkflowActions.FIX_CODE);
@@ -90,7 +90,7 @@ public class WorkflowFlow {
 
         PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(exploration);
 
-        log.info("Workflow assembled (no render): Exploration -> MathEnrichment -> VisualDesign -> Narrative -> CodeGeneration -> CodeEvaluation with routed CodeFixNode");
+        log.info("Workflow assembled (no render): Exploration -> MathEnrichment -> VisualDesign -> StoryboardValidation -> CodeGeneration -> CodeEvaluation with routed CodeFixNode");
         return flow;
     }
 
@@ -101,7 +101,7 @@ public class WorkflowFlow {
     public static PocketFlow.Flow<?> createFromGraph() {
         MathEnrichmentNode mathEnrich = new MathEnrichmentNode();
         VisualDesignNode visualDesign = new VisualDesignNode();
-        NarrativeNode narrative = new NarrativeNode();
+        StoryboardValidationNode storyboardValidation = new StoryboardValidationNode();
         CodeGenerationNode codeGen = new CodeGenerationNode();
         CodeEvaluationNode codeEvaluation = new CodeEvaluationNode();
         CodeFixNode codeFix = new CodeFixNode();
@@ -109,8 +109,8 @@ public class WorkflowFlow {
         SceneEvaluationNode sceneEvaluation = new SceneEvaluationNode();
 
         mathEnrich.next(visualDesign);
-        visualDesign.next(narrative);
-        narrative.next(codeGen);
+        visualDesign.next(storyboardValidation);
+        storyboardValidation.next(codeGen);
         codeGen.next(codeEvaluation);
         codeGen.next(codeFix, WorkflowActions.FIX_CODE);
         codeEvaluation.next(render);
@@ -125,7 +125,7 @@ public class WorkflowFlow {
 
         PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(mathEnrich);
 
-        log.info("Workflow assembled (from graph): MathEnrichment -> VisualDesign -> Narrative -> CodeGeneration -> CodeEvaluation -> Render -> SceneEvaluation with routed CodeFixNode");
+        log.info("Workflow assembled (from graph): MathEnrichment -> VisualDesign -> StoryboardValidation -> CodeGeneration -> CodeEvaluation -> Render -> SceneEvaluation with routed CodeFixNode");
         return flow;
     }
 
@@ -136,14 +136,14 @@ public class WorkflowFlow {
     public static PocketFlow.Flow<?> createFromGraphWithoutRender() {
         MathEnrichmentNode mathEnrich = new MathEnrichmentNode();
         VisualDesignNode visualDesign = new VisualDesignNode();
-        NarrativeNode narrative = new NarrativeNode();
+        StoryboardValidationNode storyboardValidation = new StoryboardValidationNode();
         CodeGenerationNode codeGen = new CodeGenerationNode();
         CodeEvaluationNode codeEvaluation = new CodeEvaluationNode();
         CodeFixNode codeFix = new CodeFixNode();
 
         mathEnrich.next(visualDesign);
-        visualDesign.next(narrative);
-        narrative.next(codeGen);
+        visualDesign.next(storyboardValidation);
+        storyboardValidation.next(codeGen);
         codeGen.next(codeEvaluation);
         codeGen.next(codeFix, WorkflowActions.FIX_CODE);
         codeEvaluation.next(codeFix, WorkflowActions.FIX_CODE);
@@ -153,7 +153,7 @@ public class WorkflowFlow {
 
         PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(mathEnrich);
 
-        log.info("Workflow assembled (from graph, no render): MathEnrichment -> VisualDesign -> Narrative -> CodeGeneration -> CodeEvaluation with routed CodeFixNode");
+        log.info("Workflow assembled (from graph, no render): MathEnrichment -> VisualDesign -> StoryboardValidation -> CodeGeneration -> CodeEvaluation with routed CodeFixNode");
         return flow;
     }
 

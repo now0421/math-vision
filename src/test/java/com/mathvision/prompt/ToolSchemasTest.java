@@ -42,14 +42,6 @@ class ToolSchemasTest {
     }
 
     @Test
-    void visualDesignTool_isValidJson() {
-        assertDoesNotThrow(() -> {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            mapper.readTree(ToolSchemas.VISUAL_DESIGN);
-        });
-    }
-
-    @Test
     void storyboardTool_isValidJson() {
         assertDoesNotThrow(() -> {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -119,8 +111,6 @@ class ToolSchemasTest {
 
     @Test
     void sharedSchemasUseBackendNeutralContinuityLanguage() {
-        assertFalse(ToolSchemas.VISUAL_DESIGN.contains("Manim color names"));
-        assertTrue(ToolSchemas.VISUAL_DESIGN.contains("Backend-compatible color names"));
         assertFalse(ToolSchemas.STORYBOARD.contains("reuse mobjects safely"));
         assertFalse(ToolSchemas.STORYBOARD.contains("Ordered animation operations"));
         assertTrue(ToolSchemas.STORYBOARD.contains("same logical objects safely"));
@@ -135,8 +125,6 @@ class ToolSchemasTest {
 
     @Test
     void schemasCaptureBeatMappingAndExplicitObjectContracts() {
-        assertTrue(ToolSchemas.VISUAL_DESIGN.contains("empty breathing room"));
-        assertTrue(ToolSchemas.VISUAL_DESIGN.contains("animate-vs-static intent"));
         assertTrue(ToolSchemas.STORYBOARD.contains("learner-visible object"));
         assertTrue(ToolSchemas.STORYBOARD.contains("learner-visible beat"));
         assertTrue(ToolSchemas.STORYBOARD.contains("what the learner should notice"));

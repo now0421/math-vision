@@ -231,7 +231,6 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
                     request.getExpectedSceneName(),
                     NodeSupport.isGeoGebraTarget(workflowConfig) ? GeoGebraCodeUtils.EXPECTED_FIGURE_NAME : "MainScene");
             return CodeEvaluationPrompts.revisionUserPrompt(
-                    TextUtils.firstNonBlank(request.getTargetConcept(), request.getSceneName(), "Unknown target"),
                     artifactName,
                     TextUtils.defaultIfBlank(request.getStoryboardJson(), StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON),
                     TextUtils.defaultIfBlank(request.getStaticAnalysisJson(), "{}"),

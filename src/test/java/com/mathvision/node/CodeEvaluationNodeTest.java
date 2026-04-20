@@ -233,8 +233,8 @@ class CodeEvaluationNodeTest {
         scene1.setDurationSeconds(8);
         scene1.getEnteringObjects().add(object("title", "text", "title"));
         scene1.getEnteringObjects().add(object("eq_main", "formula", "main equation"));
-        scene1.getPersistentObjects().add("title");
-        scene1.getPersistentObjects().add("eq_main");
+        scene1.getPersistentObjects().add(idOnly("title"));
+        scene1.getPersistentObjects().add(idOnly("eq_main"));
 
         Narrative.StoryboardScene scene2 = new Narrative.StoryboardScene();
         scene2.setSceneId("scene_2");
@@ -242,9 +242,9 @@ class CodeEvaluationNodeTest {
         scene2.setNarration("Transform the equation into the final result.");
         scene2.setDurationSeconds(8);
         scene2.getEnteringObjects().add(object("eq_result", "formula", "result equation"));
-        scene2.getPersistentObjects().add("title");
-        scene2.getPersistentObjects().add("eq_result");
-        scene2.getExitingObjects().add("eq_main");
+        scene2.getPersistentObjects().add(idOnly("title"));
+        scene2.getPersistentObjects().add(idOnly("eq_result"));
+        scene2.getExitingObjects().add(idOnly("eq_main"));
 
         storyboard.getScenes().add(scene1);
         storyboard.getScenes().add(scene2);
@@ -308,8 +308,8 @@ class CodeEvaluationNodeTest {
         scene.setScreenOverlayPlan("Keep the title fixed in frame.");
         scene.getEnteringObjects().add(object("axes_3d", "geometry", "3D axes"));
         scene.getEnteringObjects().add(object("title", "text", "title"));
-        scene.getPersistentObjects().add("axes_3d");
-        scene.getPersistentObjects().add("title");
+        scene.getPersistentObjects().add(idOnly("axes_3d"));
+        scene.getPersistentObjects().add(idOnly("title"));
 
         Narrative.StoryboardAction action = new Narrative.StoryboardAction();
         action.setOrder(1);
@@ -332,7 +332,12 @@ class CodeEvaluationNodeTest {
         object.setId(id);
         object.setKind(kind);
         object.setContent(content);
-        object.setPlacement("center");
+        return object;
+    }
+
+    private static Narrative.StoryboardObject idOnly(String id) {
+        Narrative.StoryboardObject object = new Narrative.StoryboardObject();
+        object.setId(id);
         return object;
     }
 

@@ -178,12 +178,36 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         String startId = selectDirectGraphStart(requestedStartId, nodes, nextEdges, graphMode);
         recomputeDirectGraphDepths(startId, nodes, nextEdges);
 
+        List<String> teachingOrder = parseTeachingOrder(payload, nodes);
+
         return new KnowledgeGraph(
                 startId,
                 targetInput,
                 orderNodes(nodes),
-                orderDirectGraphNextEdges(nextEdges, nodes)
+                orderDirectGraphNextEdges(nextEdges, nodes),
+                teachingOrder
         );
+    }
+
+    private List<String> parseTeachingOrder(JsonNode payload, Map<String, KnowledgeNode> nodes) {
+        List<String> order = new ArrayList<>();
+        JsonNode orderArray = payload != null ? payload.get("teaching_order") : null;
+        if (orderArray == null || !orderArray.isArray()) {
+            return order;
+        }
+        for (JsonNode item : orderArray) {
+            String nodeId = ConceptUtils.normalizeConcept(item.asText());
+            if (!nodeId.isBlank() && nodes.containsKey(nodeId) && !order.contains(nodeId)) {
+                order.add(nodeId);
+            }
+        }
+        // Append any nodes not mentioned in teaching_order
+        for (String nodeId : nodes.keySet()) {
+            if (!order.contains(nodeId)) {
+                order.add(nodeId);
+            }
+        }
+        return order;
     }
 
     private Map<String, KnowledgeNode> parseDirectGraphNodes(JsonNode payload, DirectGraphMode graphMode) {

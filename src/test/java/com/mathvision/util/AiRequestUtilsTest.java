@@ -7,8 +7,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -87,6 +89,33 @@ class AiRequestUtilsTest {
         assertEquals(1, aiClient.chatCalls.get());
     }
 
+    @Test
+    void explicitSnapshotRequestsReuseFrozenContextAndReturnTranscript() {
+        SnapshotAwareAiClient aiClient = new SnapshotAwareAiClient(wrapToolResponse(
+                JsonUtils.parseTree("{\"equations\":[\"x=1\"],\"definitions\":{}}")
+        ));
+
+        AiRequestUtils.JsonObjectResult response = AiRequestUtils.requestJsonObjectResultAsync(
+                aiClient,
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "math enrichment",
+                List.of(
+                        new NodeConversationContext.Message("system", "system prompt"),
+                        new NodeConversationContext.Message("user", "older user"),
+                        new NodeConversationContext.Message("assistant", "older assistant")
+                ),
+                1000,
+                "current user",
+                "[]",
+                () -> { }
+        ).join();
+
+        assertEquals("x=1", response.getPayload().get("equations").get(0).asText());
+        assertTrue(response.getAssistantTranscript().contains("tool"));
+        assertEquals(List.of("system", "user", "assistant", "user"), aiClient.lastSnapshotRoles);
+        assertEquals("current user", aiClient.lastSnapshotUserContent);
+    }
+
     private static JsonNode wrapTextResponse(String text) {
         ObjectNode response = JsonUtils.mapper().createObjectNode();
         ArrayNode choices = response.putArray("choices");
@@ -132,6 +161,46 @@ class AiRequestUtilsTest {
         @Override
         public String providerName() {
             return "fake";
+        }
+    }
+
+    private static final class SnapshotAwareAiClient implements AiClient {
+        private final JsonNode snapshotRawResponse;
+        private final AtomicInteger chatCalls = new AtomicInteger(0);
+        private List<String> lastSnapshotRoles = List.of();
+        private String lastSnapshotUserContent = "";
+
+        private SnapshotAwareAiClient(JsonNode rawResponse) {
+            this.snapshotRawResponse = rawResponse;
+        }
+
+        @Override
+        public String chat(String userMessage, String systemPrompt) {
+            chatCalls.incrementAndGet();
+            return "{\"ok\":true}";
+        }
+
+        @Override
+        public CompletableFuture<JsonNode> chatWithToolsRawAsync(
+                List<NodeConversationContext.Message> snapshot,
+                String toolsJson) {
+            lastSnapshotRoles = snapshot.stream()
+                    .map(NodeConversationContext.Message::getRole)
+                    .collect(Collectors.toList());
+            lastSnapshotUserContent = snapshot.get(snapshot.size() - 1).getContent();
+            return CompletableFuture.completedFuture(snapshotRawResponse);
+        }
+
+        @Override
+        public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
+                                                                 String systemPrompt,
+                                                                 String toolsJson) {
+            return CompletableFuture.completedFuture(snapshotRawResponse);
+        }
+
+        @Override
+        public String providerName() {
+            return "snapshot-aware";
         }
     }
 }

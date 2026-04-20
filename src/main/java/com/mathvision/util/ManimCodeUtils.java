@@ -83,6 +83,24 @@ public final class ManimCodeUtils {
         return EXPECTED_SCENE_NAME;
     }
 
+    /**
+     * Builds a Python method name for a scene, e.g. "scene_1_setup_coordinates".
+     */
+    public static String buildSceneMethodName(String sceneId, String title, int index) {
+        String base = "scene_" + (index + 1);
+        String suffix = "";
+        if (title != null && !title.isBlank()) {
+            suffix = "_" + title.toLowerCase()
+                    .replaceAll("[^a-z0-9]+", "_")
+                    .replaceAll("^_|_$", "")
+                    .replaceAll("_{2,}", "_");
+            if (suffix.length() > 30) {
+                suffix = suffix.substring(0, 30).replaceAll("_$", "");
+            }
+        }
+        return base + suffix;
+    }
+
     public static List<String> validateStructure(String manimCode) {
         List<String> violations = new ArrayList<>();
         if (manimCode == null || manimCode.isBlank()) {

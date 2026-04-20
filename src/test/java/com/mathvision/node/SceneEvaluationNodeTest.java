@@ -249,8 +249,12 @@ class SceneEvaluationNodeTest {
         scene.setLayoutGoal("Keep explanatory text off the core geometry while B' stays symmetric to B.");
         scene.getGeometryConstraints().add("B' is the exact reflection of B across line l");
         scene.getEnteringObjects().add(pointBPrime);
-        scene.getPersistentObjects().add("point_B");
-        scene.getPersistentObjects().add("point_Bprime");
+        Narrative.StoryboardObject persistB = new Narrative.StoryboardObject();
+        persistB.setId("point_B");
+        Narrative.StoryboardObject persistBprime = new Narrative.StoryboardObject();
+        persistBprime.setId("point_Bprime");
+        scene.getPersistentObjects().add(persistB);
+        scene.getPersistentObjects().add(persistBprime);
         scene.getActions().add(new Narrative.StoryboardAction());
 
         Narrative.Storyboard storyboard = new Narrative.Storyboard();

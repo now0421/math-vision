@@ -5,7 +5,6 @@ import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Builds workflow target descriptions and compact node context shared across stages.
@@ -114,10 +113,9 @@ public final class TargetDescriptionBuilder {
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("Problem: ").append(graph.getTargetConcept()).append("\n\n");
         sb.append("Solution step chain:\n");
 
-        List<KnowledgeNode> ordered = graph.topologicalOrder();
+        List<KnowledgeNode> ordered = graph.teachingOrderNodes();
         int stepNumber = 1;
         int currentStepNumber = -1;
 
@@ -157,52 +155,6 @@ public final class TargetDescriptionBuilder {
         if (currentStepNumber > 0) {
             sb.append("\nCurrently processing step ").append(currentStepNumber)
                     .append(" of ").append(Math.min(ordered.size(), MAX_CHAIN_LENGTH)).append(".");
-        }
-
-        return sb.toString().trim();
-    }
-
-    /**
-     * Builds prerequisite context for a node, including enrichment and visual specs.
-     */
-    public static String buildPrerequisiteContext(KnowledgeGraph graph, KnowledgeNode node) {
-        if (graph == null || node == null) {
-            return "";
-        }
-
-        List<KnowledgeNode> prerequisites = graph.getPrerequisites(node.getId());
-        if (prerequisites.isEmpty()) {
-            return "";
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("Prerequisites for this step:\n");
-
-        for (KnowledgeNode prereq : prerequisites) {
-            sb.append("- ").append(prereq.getStep());
-            if (prereq.isFoundation()) {
-                sb.append(" [foundation]");
-            }
-            sb.append("\n");
-
-            if (prereq.getInterpretation() != null && !prereq.getInterpretation().isBlank()) {
-                String interp = prereq.getInterpretation().trim();
-                if (interp.length() > 150) {
-                    interp = interp.substring(0, 150) + "...";
-                }
-                sb.append("  Interpretation: ").append(interp).append("\n");
-            }
-
-            if (prereq.hasVisualSpec()) {
-                Map<String, Object> spec = prereq.getVisualSpec();
-                if (spec.containsKey("layout")) {
-                    String desc = String.valueOf(spec.get("layout")).trim();
-                    if (desc.length() > 150) {
-                        desc = desc.substring(0, 150) + "...";
-                    }
-                    sb.append("  Visual: ").append(desc).append("\n");
-                }
-            }
         }
 
         return sb.toString().trim();

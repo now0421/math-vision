@@ -3,6 +3,9 @@ package com.mathvision.model;
 import com.mathvision.config.WorkflowConfig;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Result from the code generation stage (Stage 2).
  * Carries the generated backend code/artifact text and metadata.
@@ -11,6 +14,8 @@ public class CodeResult {
 
     @JsonProperty("generatedCode")
     private String generatedCode;
+    private String headerCode;
+    private List<SceneCodeEntry> sceneEntries = new ArrayList<>();
     private String sceneName;
     private String description;
     private String targetConcept;
@@ -72,6 +77,39 @@ public class CodeResult {
 
     public double getExecutionTimeSeconds() { return executionTimeSeconds; }
     public void setExecutionTimeSeconds(double executionTimeSeconds) { this.executionTimeSeconds = executionTimeSeconds; }
+
+    public String getHeaderCode() { return headerCode; }
+    public void setHeaderCode(String headerCode) { this.headerCode = headerCode; }
+
+    public List<SceneCodeEntry> getSceneEntries() { return sceneEntries; }
+    public void setSceneEntries(List<SceneCodeEntry> sceneEntries) {
+        this.sceneEntries = sceneEntries != null ? sceneEntries : new ArrayList<>();
+    }
+
+    public void appendSceneEntry(SceneCodeEntry entry) {
+        this.sceneEntries.add(entry);
+        rebuildGeneratedCode();
+    }
+
+    public void replaceSceneCode(int index, String newCode) {
+        if (index >= 0 && index < sceneEntries.size()) {
+            sceneEntries.get(index).setSceneCode(newCode);
+            rebuildGeneratedCode();
+        }
+    }
+
+    public void rebuildGeneratedCode() {
+        if (headerCode == null || headerCode.isBlank()) {
+            return;
+        }
+        StringBuilder sb = new StringBuilder(headerCode);
+        for (SceneCodeEntry entry : sceneEntries) {
+            if (entry.getSceneCode() != null && !entry.getSceneCode().isBlank()) {
+                sb.append("\n\n").append(entry.getSceneCode());
+            }
+        }
+        this.generatedCode = sb.toString();
+    }
 
     public boolean isGeoGebraTarget() {
         return WorkflowConfig.OUTPUT_TARGET_GEOGEBRA.equalsIgnoreCase(outputTarget);

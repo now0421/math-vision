@@ -41,16 +41,16 @@ public final class SystemPrompts {
                     + "- `constraint_note`: object-level hard geometry that must be preserved.\n"
                     + "- `dependency_note`: attachment or update logic describing what source objects define this object.\n"
                     + "- `geometry_constraints`: scene-level invariants such as reflections, symmetry, collinearity, intersections, equal lengths.\n"
-                    + "- `placement`: initial layout intent, not the full geometric definition.\n"
+                    + "- `placement`: structured scene-level placement patch with `coordinate_space` plus optional x/y/z `value` or `min/max`; use it for coordinates or allowed ranges, not the full geometric definition.\n"
                     + "- `anchor_id`: id of the object this one should stay attached to.\n";
 
     /** Storyboard field interpretation guide — extended fields for object lifecycle and actions. */
     public static final String STORYBOARD_FIELD_GUIDE_EXTENDED =
-            "- `entering_objects`: objects that must exist for the teaching beat; `id` is a stable visual identity.\n"
-                    + "- `persistent_objects`: object ids that should stay on screen from earlier beats; do not recreate them.\n"
-                    + "- `exiting_objects`: object ids that should explicitly leave the scene.\n"
+            "- `entering_objects`: scene patches for newly entering objects; raw storyboard entries should contain `id` plus optional `placement`/`style` only.\n"
+                    + "- `persistent_objects`: scene patches for carried objects; raw storyboard entries should contain `id` plus optional changed `placement`/`style` only.\n"
+                    + "- `exiting_objects`: id-only entries for objects that should explicitly leave the scene.\n"
                     + "- `actions`: the main execution plan; respect their order, targets, and visible intent.\n"
-                    + "- `content`: what must be shown by the object.\n"
+                    + "- `object_registry`: canonical global object definitions; keep stable identity, content, dependency, and behavior here, not scene-specific placement.\n"
                     + "- `notes_for_codegen`: implementation hints; follow unless they conflict with correctness.\n"
                     + "- `step_refs`, `title`, `narration`: teaching purpose; help choose clear animation structure.\n"
                     + "- `continuity_plan`, `global_visual_rules`: global constraints that shape the whole file.\n";
@@ -77,11 +77,11 @@ public final class SystemPrompts {
     /** Storyboard field guide for GeoGebra code generation. */
     public static final String STORYBOARD_FIELD_GUIDE_GEOGEBRA =
             "How to interpret the storyboard fields:\n"
-                    + "- `entering_objects`: objects that must exist for the teaching beat.\n"
-                    + "- `persistent_objects`: earlier objects that should remain available in later steps.\n"
-                    + "- `exiting_objects`: may be translated into hidden helper objects or omitted if persistent visibility would cause clutter.\n"
+                    + "- `entering_objects`: scene patches for newly entering objects; use `id` plus optional `placement`/`style` changes.\n"
+                    + "- `persistent_objects`: scene patches for carried objects; use `id` plus optional changed `placement`/`style`.\n"
+                    + "- `exiting_objects`: id-only entries that may be translated into hidden helper objects or omitted if persistent visibility would cause clutter.\n"
                     + "- `actions`: state changes; convert into construction order, visibility changes, highlight states, or helper toggles rather than literal animation.\n"
-                    + "- `placement`, `layout_goal`, `safe_area_plan`, `screen_overlay_plan`: guide readable coordinates, label placement, and visibility choices.\n"
+                    + "- `placement`, `layout_goal`, `safe_area_plan`, `screen_overlay_plan`: guide readable coordinates, allowed ranges, label placement, and visibility choices.\n"
                     + "- `behavior = follows_anchor` or `derived`: object should be defined from its source geometry so it updates automatically.\n"
                     + "- `behavior = static`: independently defined object; can still be fixed, draggable, or moved later depending on `actions`, `geometry_constraints`, `constraint_note`, and `notes_for_codegen`.\n"
                     + "- For constrained motion, prefer explicit documented GeoGebra constructions such as `Point(path)`, `PointIn(region)`, `Intersect(...)`, `Reflect(...)`, `Midpoint(...)`, or slider-driven parameterizations with declared bounds.\n"
@@ -116,7 +116,7 @@ public final class SystemPrompts {
     /** Storyboard authoring rules for encoding geometry constraints that downstream stages must preserve. */
     public static final String GEOMETRY_CONSTRAINT_AUTHORING_RULES =
             "Storyboard geometry constraint authoring rules:\n"
-                    + "- If an object is movable but constrained, keep `behavior` for dependency semantics and encode the motion/path/range constraint explicitly in `geometry_constraints`, `constraint_note`, `dependency_note`, `placement`, or `notes_for_codegen`.\n"
+                    + "- If an object is movable but constrained, keep `behavior` for dependency semantics and encode the motion/path/range constraint explicitly in `geometry_constraints`, `constraint_note`, `dependency_note`, structured `placement`, or `notes_for_codegen`.\n"
                     + "- When an object depends on another object's position, encode that dependency explicitly with `behavior`, `anchor_id`, and `dependency_note`.\n"
                     + "- When a geometric relationship must survive later layout fixes, record it explicitly in `geometry_constraints` and in object-level `constraint_note`.\n"
                     + "- Treat geometric relationships such as symmetry, reflection, equal length, equal angle, collinearity, intersection, perpendicularity, and shared-center motion as hard constraints, not optional style notes.\n"
@@ -389,7 +389,7 @@ public final class SystemPrompts {
 
     private static final String WORKFLOW_OVERVIEW =
             "Stage 0 Exploration -> Stage 1a Mathematical Enrichment -> Stage 1b Visual Design"
-                    + " -> Stage 1c Narrative Composition -> Stage 2 Code Generation"
+                    + " -> Stage 1c Storyboard Validation -> Stage 2 Code Generation"
                     + " -> Stage 3 Code Evaluation -> Stage 4 Code Rendering"
                     + " -> Stage 5 Scene Evaluation"
                     + " (Stages 2–5 may each route to the shared Code Fix node for iterative repair)";

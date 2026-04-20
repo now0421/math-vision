@@ -45,8 +45,10 @@ public final class ExplorationPrompts {
                     + "  \"nodes\": [\n"
                     + "    {\"id\": \"string, unique node id\", \"step\": \"string, one presentation-ready teaching beat\", \"reason\": \"string, why this beat matters in the explanation flow\", \"node_type\": \"string, one of concept|observation|construction|derivation|conclusion\", \"min_depth\": \"integer, minimum distance from the start beat\", \"is_foundation\": \"boolean, metadata annotation for whether the beat is already elementary enough\"}\n"
                     + "  ],\n"
-                    + "  \"next_edges\": {\"node_id\": [\"direct_next_node_id\"]}\n"
+                    + "  \"next_edges\": {\"node_id\": [\"direct_next_node_id\"]},\n"
+                    + "  \"teaching_order\": [\"node_id_1\", \"node_id_2\", \"...\"]\n"
                     + "}\n\n"
+                    + "`teaching_order` is the intended presentation sequence. It must list every node id exactly once, respecting prerequisite dependencies (a node appears after all its prerequisites).\n"
                     + "The edge direction: node -> direct next beats that should follow it.\n"
                     + SystemPrompts.TOOL_CALL_HINT
                     + SystemPrompts.JSON_ONLY_OUTPUT;
@@ -70,8 +72,10 @@ public final class ExplorationPrompts {
                     + "  \"nodes\": [\n"
                     + "    {\"id\": \"string, unique node id\", \"step\": \"string, one presentation-ready solving beat\", \"reason\": \"string, why this beat matters in the solution flow\", \"node_type\": \"string, one of problem|observation|construction|derivation|conclusion\", \"min_depth\": \"integer, minimum distance from the start beat\", \"is_foundation\": \"boolean, whether the beat is already elementary enough without further expansion\"}\n"
                     + "  ],\n"
-                    + "  \"next_edges\": {\"node_id\": [\"direct_next_node_id\"]}\n"
+                    + "  \"next_edges\": {\"node_id\": [\"direct_next_node_id\"]},\n"
+                    + "  \"teaching_order\": [\"node_id_1\", \"node_id_2\", \"...\"]\n"
                     + "}\n\n"
+                    + "`teaching_order` is the intended presentation sequence. It must list every node id exactly once, respecting prerequisite dependencies (a node appears after all its prerequisites).\n"
                     + "The edge direction: node -> direct next beats that should follow it.\n"
                     + SystemPrompts.TOOL_CALL_HINT
                     + SystemPrompts.JSON_ONLY_OUTPUT;
@@ -111,8 +115,8 @@ public final class ExplorationPrompts {
     }
 
     private static String depthBudgetInstruction(int maxDepth, int minDepth) {
-        return "Stay within an overall depth budget of about " + Math.max(1, maxDepth)
-                + " levels when possible, and try to make the graph at least " + Math.max(0, minDepth)
+        return "Try to stay within the recommended maximum depth of " + Math.max(1, maxDepth)
+                + " levels when possible. Additionally, try to make the graph at least " + Math.max(0, minDepth)
                 + " levels deep when the teaching flow naturally supports it.\n";
     }
 }

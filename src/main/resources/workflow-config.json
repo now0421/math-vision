@@ -1,9 +1,9 @@
 {
-  "max_depth": 4,
+  "max_depth": 10,
   "min_depth": 1,
   "parallel_math_enrichment": true,
   "parallel_visual_design": true,
-  "max_concurrent": 8,
+  "max_concurrent": 16,
   "code_gen_max_retries": 2,
   "render_enabled": true,
   "render_quality": "low",

@@ -64,7 +64,7 @@ class ExplorationNodeTest {
         assertEquals(List.of("takeaway"), graph.getNextEdges().get("build"));
         assertEquals("takeaway", graph.findPrimaryTerminalNodeId());
         assertEquals(List.of("symmetry", "build", "takeaway"),
-                graph.topologicalOrder().stream().map(KnowledgeNode::getId).collect(Collectors.toList()));
+                graph.teachingOrderNodes().stream().map(KnowledgeNode::getId).collect(Collectors.toList()));
     }
 
     @Test
@@ -217,6 +217,9 @@ class ExplorationNodeTest {
         ObjectNode edges = arguments.putObject("next_edges");
         edges.putArray("symmetry").add("build");
         edges.putArray("build").add("takeaway");
+
+        ArrayNode teachingOrder = arguments.putArray("teaching_order");
+        teachingOrder.add("symmetry").add("build").add("takeaway");
         return arguments;
     }
 

@@ -144,42 +144,38 @@ public final class CodeEvaluationPrompts {
         ) + REVIEW_SYSTEM_MANIM;
     }
 
-    public static String reviewUserPrompt(String targetConcept,
-                                          String sceneName,
+    public static String reviewUserPrompt(String sceneName,
                                           String storyboardJson,
                                           String staticAnalysisJson,
                                           String generatedCode) {
-        return reviewUserPrompt(targetConcept, sceneName, storyboardJson, staticAnalysisJson, generatedCode, "manim");
+        return reviewUserPrompt(sceneName, storyboardJson, staticAnalysisJson, generatedCode, "manim");
     }
 
-    public static String reviewUserPrompt(String targetConcept,
-                                          String sceneName,
+    public static String reviewUserPrompt(String sceneName,
                                           String storyboardJson,
                                           String staticAnalysisJson,
                                           String generatedCode,
                                           String outputTarget) {
         if ("geogebra".equalsIgnoreCase(outputTarget)) {
             return String.format(
-                    "Target concept: %s\n"
-                            + "Figure name: %s\n\n"
+                    "Figure name: %s\n\n"
                             + "Compact storyboard JSON (source of truth):\n```json\n%s\n```\n\n"
                             + "Static visual analysis:\n```json\n%s\n```\n\n"
                             + "GeoGebra command script to review:\n```geogebra\n%s\n```\n\n"
                             + "Review for storyboard/code alignment problems before render.\n"
                             + "Focus on whether the actual construction, scene visibility progression, and teaching evidence match the storyboard.\n"
                             + "Return only the structured review output.",
-                    targetConcept, sceneName, storyboardJson, staticAnalysisJson, generatedCode);
+                    sceneName, storyboardJson, staticAnalysisJson, generatedCode);
         }
         return String.format(
-                "Target concept: %s\n"
-                        + "Scene class name: %s\n\n"
+                "Scene class name: %s\n\n"
                         + "Compact storyboard JSON (source of truth):\n```json\n%s\n```\n\n"
                         + "Static visual analysis:\n```json\n%s\n```\n\n"
                         + "Manim code to review:\n```python\n%s\n```\n\n"
                         + "Review for likely presentation quality problems before render.\n"
                         + "Focus on continuity, pacing versus narration, 3D readability, fixed-in-frame overlays, correct spatial relationships, text readability, and scene clutter.\n"
                         + "Return only the structured review output.",
-                targetConcept, sceneName, storyboardJson, staticAnalysisJson, generatedCode);
+                sceneName, storyboardJson, staticAnalysisJson, generatedCode);
     }
 
     public static String revisionSystemPrompt(String targetConcept, String targetDescription) {
@@ -207,14 +203,12 @@ public final class CodeEvaluationPrompts {
         ) + REVISION_SYSTEM_MANIM);
     }
 
-    public static String revisionUserPrompt(String targetConcept,
-                                            String sceneName,
+    public static String revisionUserPrompt(String sceneName,
                                             String storyboardJson,
                                             String staticAnalysisJson,
                                             String reviewJson,
                                             String generatedCode) {
         return revisionUserPrompt(
-                targetConcept,
                 sceneName,
                 storyboardJson,
                 staticAnalysisJson,
@@ -223,8 +217,7 @@ public final class CodeEvaluationPrompts {
                 "manim");
     }
 
-    public static String revisionUserPrompt(String targetConcept,
-                                            String sceneName,
+    public static String revisionUserPrompt(String sceneName,
                                             String storyboardJson,
                                             String staticAnalysisJson,
                                             String reviewJson,
@@ -232,8 +225,7 @@ public final class CodeEvaluationPrompts {
                                             String outputTarget) {
         if ("geogebra".equalsIgnoreCase(outputTarget)) {
             return String.format(
-                    "Target concept: %s\n"
-                            + "Figure name: %s\n\n"
+                    "Figure name: %s\n\n"
                             + "Compact storyboard JSON (source of truth):\n```json\n%s\n```\n\n"
                             + "Static visual analysis:\n```json\n%s\n```\n\n"
                             + "Structured code review:\n```json\n%s\n```\n\n"
@@ -242,11 +234,10 @@ public final class CodeEvaluationPrompts {
                             + "Preserve storyboard geometric invariants and the teaching goal.\n"
                             + "Use only command names and syntax forms documented in the attached GeoGebra syntax manual. Replace any undocumented command or guessed syntax with a documented equivalent.\n"
                             + "Return ONLY the full GeoGebra code block.",
-                    targetConcept, sceneName, storyboardJson, staticAnalysisJson, reviewJson, generatedCode);
+                    sceneName, storyboardJson, staticAnalysisJson, reviewJson, generatedCode);
         }
         return String.format(
-                "Target concept: %s\n"
-                        + "Scene class name: %s\n\n"
+                "Scene class name: %s\n\n"
                         + "Compact storyboard JSON (source of truth):\n```json\n%s\n```\n\n"
                         + "Static visual analysis:\n```json\n%s\n```\n\n"
                         + "Structured code review:\n```json\n%s\n```\n\n"
@@ -255,6 +246,6 @@ public final class CodeEvaluationPrompts {
                         + "Preserve any storyboard geometric invariants such as symmetry, reflection, collinearity, and intersection definitions while making layout safer.\n"
                         + "Also fix nearby Python/Manim runtime mistakes. Preserve the scene class name and teaching goal.\n"
                         + "Return ONLY the full Python code block.",
-                targetConcept, sceneName, storyboardJson, staticAnalysisJson, reviewJson, generatedCode);
+                sceneName, storyboardJson, staticAnalysisJson, reviewJson, generatedCode);
     }
 }

@@ -3,7 +3,9 @@ package com.mathvision.prompt;
 import com.mathvision.model.Narrative.Storyboard;
 
 /**
- * Prompts for Stage 1c: narrative composition.
+ * Prompts for storyboard composition and codegen-prompt assembly.
+ * Used by VisualDesignNode (Stage 1b), StoryboardValidationNode (Stage 1c),
+ * and CodeGenerationNode (Stage 2).
  */
 public final class NarrativePrompts {
 
@@ -271,8 +273,8 @@ public final class NarrativePrompts {
                                       String targetDescription,
                                       String outputTarget) {
         String prompt = SystemPrompts.buildWorkflowPrefix(
-                "Stage 1c / Narrative Composition",
-                "Storyboard composition",
+                "Stage 1c / Storyboard Validation",
+                "Storyboard composition and validation",
                 targetConcept,
                 targetDescription,
                 outputTarget
@@ -296,55 +298,32 @@ public final class NarrativePrompts {
         return prompt;
     }
 
-    public static String conceptUserPrompt(String targetConcept, String stepContext) {
-        return String.format(
-                "Target concept: %s\n\nStep progression chain:\n%s\n\nProduce a continuity-safe storyboard JSON, not free text.",
-                targetConcept, stepContext);
+    public static String storyboardCodegenPrompt(Storyboard storyboard) {
+        return storyboardCodegenPrompt(storyboard, "manim");
     }
 
-    public static String problemUserPrompt(String problemStatement,
-                                           String solvingContext,
-                                           int targetSceneCount) {
-        return String.format(
-                "Math problem to solve: %s\n\nOrdered solution-step graph context:\n%s\n\n"
-                        + "Write the visualization as a structured teaching storyboard, not as a plain written solution.\n"
-                        + "Start by establishing the problem situation, then move through the key observation, insight, and solution beats in order.\n"
-                        + "Target about %d scenes total, but merge nodes whenever that improves focus and continuity.\n"
-                        + "Return storyboard JSON only.",
-                problemStatement, solvingContext, targetSceneCount);
-    }
-
-    public static String storyboardCodegenPrompt(String targetConcept, Storyboard storyboard) {
-        return storyboardCodegenPrompt(targetConcept, storyboard, "manim");
-    }
-
-    public static String storyboardCodegenPrompt(String targetConcept,
-                                                 Storyboard storyboard,
+    public static String storyboardCodegenPrompt(Storyboard storyboard,
                                                  String outputTarget) {
         return storyboardCodegenPrompt(
-                targetConcept,
                 StoryboardJsonBuilder.buildForCodegen(storyboard),
                 outputTarget);
     }
 
-    public static String storyboardCodegenPrompt(String targetConcept, String storyboardJson) {
-        return storyboardCodegenPrompt(targetConcept, storyboardJson, "manim");
+    public static String storyboardCodegenPrompt(String storyboardJson) {
+        return storyboardCodegenPrompt(storyboardJson, "manim");
     }
 
-    public static String storyboardCodegenPrompt(String targetConcept,
-                                                 String storyboardJson,
+    public static String storyboardCodegenPrompt(String storyboardJson,
                                                  String outputTarget) {
         if ("geogebra".equalsIgnoreCase(outputTarget)) {
             return String.format(
-                    "Target concept: %s\n\n"
-                            + "Compact storyboard JSON:\n```json\n%s\n```\n\n"
+                    "Compact storyboard JSON:\n```json\n%s\n```\n\n"
                             + "Remember: Return ONLY the single GeoGebra code block. No explanation.",
-                    targetConcept, storyboardJson);
+                    storyboardJson);
         }
         return String.format(
-                "Target concept: %s\n\n"
-                        + "Compact storyboard JSON:\n```json\n%s\n```\n\n"
+                "Compact storyboard JSON:\n```json\n%s\n```\n\n"
                         + "Remember: Return ONLY the single Python code block. No explanation.",
-                targetConcept, storyboardJson);
+                storyboardJson);
     }
 }
