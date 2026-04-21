@@ -11,6 +11,7 @@ import com.mathvision.model.SceneEvaluationResult;
 import com.mathvision.model.StoryboardValidationReport;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
@@ -39,7 +40,8 @@ public class FileOutputService {
 
     private static final Logger log = LoggerFactory.getLogger(FileOutputService.class);
     private static final ObjectMapper mapper = new ObjectMapper()
-            .enable(SerializationFeature.INDENT_OUTPUT);
+            .enable(SerializationFeature.INDENT_OUTPUT)
+            .setSerializationInclusion(JsonInclude.Include.NON_NULL);
     private static final String CODE_METADATA_FILE = "4_code_result.json";
     private static final Pattern SCENE_CLASS_PATTERN =
             Pattern.compile("class\\s+(\\w+)\\s*\\(.*?Scene.*?\\)");

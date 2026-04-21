@@ -19,6 +19,7 @@ import com.mathvision.util.NodeConversationContext;
 import com.mathvision.util.StoryboardNormalizer;
 import com.mathvision.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +48,7 @@ import java.util.stream.Collectors;
 public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeGraph, String> {
 
     private static final Logger log = LoggerFactory.getLogger(VisualDesignNode.class);
+    private static final int MAX_SCENE_RETRIES = 3;
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
@@ -138,6 +140,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
 
     private KnowledgeGraph designGraph(KnowledgeGraph graph) {
         List<List<KnowledgeNode>> executionBatches = graph.executionBatches();
+        int expectedSceneCount = teachingOrderIndex.size();
 
         try {
             for (int batchIndex = 0; batchIndex < executionBatches.size(); batchIndex++) {
@@ -158,6 +161,11 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         } catch (CompletionException e) {
             Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
             throw new RuntimeException("Visual design failed: " + cause.getMessage(), cause);
+        }
+
+        if (collectedScenes.size() < expectedSceneCount) {
+            throw new RuntimeException("Visual design incomplete: expected " + expectedSceneCount
+                    + " scenes but only " + collectedScenes.size() + " succeeded after retries. Aborting workflow.");
         }
 
         log.info("Visual design complete: {} API calls, {} scenes, {} registry objects, palette: {}",
@@ -195,6 +203,16 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
             List<NodeConversationContext.Message> batchConversationSnapshot,
             List<StoryboardObject> batchObjectRegistrySnapshot,
             List<String> batchPaletteSnapshot) {
+        return designNodeWithRetry(node, batchConversationSnapshot,
+                batchObjectRegistrySnapshot, batchPaletteSnapshot, MAX_SCENE_RETRIES);
+    }
+
+    private CompletableFuture<SceneDesignResult> designNodeWithRetry(
+            KnowledgeNode node,
+            List<NodeConversationContext.Message> conversationSnapshot,
+            List<StoryboardObject> registrySnapshot,
+            List<String> paletteSnapshot,
+            int retriesLeft) {
         StringBuilder userPrompt = new StringBuilder();
         userPrompt.append(buildCurrentStepPrompt(node));
 
@@ -205,13 +223,13 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         }
 
         // Object registry summary
-        String registrySummary = buildObjectRegistrySummary(batchObjectRegistrySnapshot);
+        String registrySummary = buildObjectRegistrySummary(registrySnapshot);
         userPrompt.append("\n\nGlobal style guide:\n").append(globalStyleGuide);
         userPrompt.append("\n\n").append(registrySummary);
 
-        String paletteContext = batchPaletteSnapshot.isEmpty()
+        String paletteContext = paletteSnapshot.isEmpty()
                 ? "No colors have been assigned yet."
-                : "Colors already used: " + String.join(", ", batchPaletteSnapshot)
+                : "Colors already used: " + String.join(", ", paletteSnapshot)
                   + ". Prefer harmonious contrast and avoid unnecessary repetition.";
         userPrompt.append("\n").append(paletteContext);
         String userPromptText = userPrompt.toString();
@@ -220,7 +238,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                         aiClient,
                         log,
                         node.getStep(),
-                        batchConversationSnapshot,
+                        conversationSnapshot,
                         conversationContext.getMaxInputTokens(),
                         userPromptText,
                         ToolSchemas.SCENE_DESIGN,
@@ -235,12 +253,43 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                     );
                     if (designResult.scene != null) {
                         log.debug("  Scene designed for: {}", node.getStep());
+                        return designResult;
                     }
+                    // Scene parse failed — retry if attempts remain
+                    if (retriesLeft > 0) {
+                        log.warn("  Scene parse failed for '{}', retrying ({} left)",
+                                node.getStep(), retriesLeft);
+                        return null; // signal retry needed
+                    }
+                    log.error("  Scene design for '{}' failed after {} retries",
+                            node.getStep(), MAX_SCENE_RETRIES);
                     return designResult;
+                })
+                .thenCompose(designResult -> {
+                    if (designResult != null) {
+                        return CompletableFuture.completedFuture(designResult);
+                    }
+                    // Take fresh snapshots for retry (registry/palette may have changed)
+                    return designNodeWithRetry(node,
+                            conversationContext.getMessages(),
+                            snapshotObjectRegistry(),
+                            snapshotPalette(),
+                            retriesLeft - 1);
                 })
                 .exceptionally(error -> {
                     Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
-                    log.warn("  Visual design failed for '{}': {}", node.getStep(), cause.getMessage());
+                    if (retriesLeft > 0) {
+                        log.warn("  Visual design API error for '{}', retrying ({} left): {}",
+                                node.getStep(), retriesLeft, cause.getMessage());
+                        // Block on retry since we're in exceptionally handler
+                        return designNodeWithRetry(node,
+                                conversationContext.getMessages(),
+                                snapshotObjectRegistry(),
+                                snapshotPalette(),
+                                retriesLeft - 1).join();
+                    }
+                    log.error("  Visual design for '{}' failed after {} retries: {}",
+                            node.getStep(), MAX_SCENE_RETRIES, cause.getMessage());
                     return SceneDesignResult.failed(node, userPromptText);
                 });
     }
@@ -256,7 +305,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         JsonNode sceneNode = data.has("scene") ? data.get("scene") : data;
         StoryboardScene scene;
         try {
-            scene = JsonUtils.mapper().treeToValue(sceneNode, StoryboardScene.class);
+            scene = JsonUtils.mapper().treeToValue(sanitizeLoosePlacementFields(sceneNode), StoryboardScene.class);
         } catch (Exception e) {
             log.warn("  Failed to parse scene for '{}': {}", node.getStep(), e.getMessage());
             return new SceneDesignResult(node, userPrompt, assistantTranscript, null, List.of(), List.of());
@@ -269,11 +318,25 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         }
         StoryboardNormalizer.normalizeScene(scene, index);
 
+        // Diagnostic: detect prompt-schema mismatch where entering_objects still
+        // carry full definitions instead of patch-only {id, placement, style}
+        if (scene.getEnteringObjects() != null) {
+            for (var obj : scene.getEnteringObjects()) {
+                if (obj.getId() != null && obj.getKind() != null && !obj.getKind().isBlank()) {
+                    log.warn("  Scene '{}' entering_objects item '{}' has kind='{}' — "
+                            + "this field should be in new_objects only, not entering_objects. "
+                            + "This suggests a prompt-schema mismatch.",
+                            scene.getSceneId(), obj.getId(), obj.getKind());
+                }
+            }
+        }
+
         List<StoryboardObject> newObjects = new ArrayList<>();
         if (data.has("new_objects") && data.get("new_objects").isArray()) {
             for (JsonNode objNode : data.get("new_objects")) {
                 try {
-                    StoryboardObject obj = JsonUtils.mapper().treeToValue(objNode, StoryboardObject.class);
+                    StoryboardObject obj = JsonUtils.mapper().treeToValue(
+                            sanitizeLoosePlacementFields(objNode), StoryboardObject.class);
                     if (obj != null && obj.getId() != null && !obj.getId().isBlank()) {
                         obj.setSourceNode(node.getStep());
                         obj.setPlacement(null);
@@ -304,6 +367,39 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         return new SceneDesignResult(node, userPrompt, assistantTranscript, scene, newObjects, paletteColors);
     }
 
+    private JsonNode sanitizeLoosePlacementFields(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return node;
+        }
+        JsonNode copy = node.deepCopy();
+        sanitizeLoosePlacementFieldsInPlace(copy);
+        return copy;
+    }
+
+    private void sanitizeLoosePlacementFieldsInPlace(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return;
+        }
+        if (node.isArray()) {
+            for (JsonNode item : node) {
+                sanitizeLoosePlacementFieldsInPlace(item);
+            }
+            return;
+        }
+        if (!node.isObject()) {
+            return;
+        }
+
+        ObjectNode objectNode = (ObjectNode) node;
+        JsonNode placement = objectNode.get("placement");
+        if (placement != null && placement.isValueNode() && !placement.isNull()) {
+            objectNode.remove("placement");
+        }
+
+        objectNode.fields().forEachRemaining(entry ->
+                sanitizeLoosePlacementFieldsInPlace(entry.getValue()));
+    }
+
     private void commitBatchResults(List<SceneDesignResult> results) {
         for (SceneDesignResult result : results) {
             if (result == null) {
@@ -318,7 +414,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
             if (!result.paletteColors.isEmpty()) {
                 globalColorPalette.addAll(result.paletteColors);
             }
-            if (result.assistantTranscript != null && !result.assistantTranscript.isBlank()) {
+            if (result.scene != null && result.assistantTranscript != null && !result.assistantTranscript.isBlank()) {
                 conversationContext.appendTurn(result.userPrompt, result.assistantTranscript);
             }
             // Back-propagate style/placement from scene objects to registry
@@ -551,6 +647,9 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         sb.append("- Step: ").append(node.getStep()).append("\n");
         sb.append("- Node type: ").append(node.getNodeType()).append("\n");
         sb.append("- Depth: ").append(node.getMinDepth()).append("\n");
+        if (objectRegistry.isEmpty()) {
+            sb.append("- This is the first scene. All objects must be in entering_objects; persistent_objects and exiting_objects must be empty.\n");
+        }
         if (node.getReason() != null && !node.getReason().isBlank()) {
             sb.append("- Reason: ").append(node.getReason()).append("\n");
         }

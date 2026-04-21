@@ -9,7 +9,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
@@ -28,12 +27,10 @@ import java.util.function.Function;
 public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
 
     protected static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final Logger traceLog = LoggerFactory.getLogger("com.mathvision.ai.trace");
     private static final int EMPTY_RESPONSE_RETRIES = 2;
     private static final int TRANSIENT_FAILURE_RETRIES = 2;
     private static final long RETRY_BASE_DELAY_MILLIS = 1_000L;
     private static final long RETRY_MAX_DELAY_MILLIS = 4_000L;
-    private static final int MAX_LOG_CHARS = 12000;
 
     private final Logger log;
     private final String clientName;
@@ -431,33 +428,27 @@ public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
     private void logRequest(ObjectNode body, String url, int attempt) {
         JsonNode messages = body.get("messages");
         JsonNode tools = body.get("tools");
-        int messageCount = messages != null && messages.isArray() ? messages.size() : 0;
-        int toolCount = tools != null && tools.isArray() ? tools.size() : 0;
+        int messageCount = AiTraceLogger.arraySize(messages);
+        int toolCount = AiTraceLogger.arraySize(tools);
         if (attempt == 0) {
-            log.debug("{} request: model={}, messages={}, tools={}, url={}",
-                    clientName, modelConfig.getModel(), messageCount, toolCount, url);
-            traceLog.debug("{} request body:\n{}", clientName, abbreviateForLog(body.toPrettyString()));
+            AiTraceLogger.logRequestSummary(
+                    clientName, modelConfig.getModel(), messageCount, toolCount, url, log);
+            AiTraceLogger.logRequestBody(clientName, body.toPrettyString());
             return;
         }
 
-        traceLog.debug("{} retry request: attempt={}, model={}, messages={}, tools={}, url={}",
-                clientName, attempt + 1, modelConfig.getModel(), messageCount, toolCount, url);
+        AiTraceLogger.logRetryRequest(
+                clientName,
+                attempt + 1,
+                modelConfig.getModel(),
+                messageCount,
+                toolCount,
+                url,
+                body.toPrettyString());
     }
 
     private void logResponse(HttpResponse<String> response) {
-        traceLog.debug("{} raw response: http={}, body=\n{}",
-                clientName, response.statusCode(), abbreviateForLog(response.body()));
-    }
-
-    private String abbreviateForLog(String text) {
-        if (text == null) {
-            return "";
-        }
-        if (text.length() <= MAX_LOG_CHARS) {
-            return text;
-        }
-        return text.substring(0, MAX_LOG_CHARS)
-                + "\n... [truncated " + (text.length() - MAX_LOG_CHARS) + " chars]";
+        AiTraceLogger.logResponse(clientName, response);
     }
 
 }

@@ -220,7 +220,9 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             fixState.clearPending();
         } else if (shouldRouteValidationFix()
                 && !violations.isEmpty()
-                && fixState.getAttempts() < MAX_VALIDATION_FIX_ATTEMPTS) {
+                && fixState.getAttempts() < MAX_VALIDATION_FIX_ATTEMPTS
+                && generatedCode != null
+                && !generatedCode.isBlank()) {
             log.warn("  Code validation found {} violations, routing to shared CodeFixNode",
                     violations.size());
             fixState.recordFixRequest(generatedCode, violations);
@@ -247,7 +249,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     }
 
     private CompletableFuture<CodeDraft> requestCodeAsync(String userPrompt, String expectedArtifactName) {
-        return AiRequestUtils.requestJsonObjectAsync(
+        return AiRequestUtils.requestExtractedTextResultAsync(
                         aiClient,
                         log,
                         expectedArtifactName,
@@ -255,10 +257,14 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                         userPrompt,
                         resolveToolSchema(),
                         () -> toolCalls++,
-                        this::parseCodeTextResponse,
-                        this::hasCodePayload
+                        List.of(resolveGeneratedCodeFieldName()),
+                        this::extractCodeFromText,
+                        text -> text != null && !text.isBlank()
                 )
-                .thenApply(payload -> toCodeDraft(payload, expectedArtifactName));
+                .thenApply(result -> toCodeDraft(
+                        result != null ? result.getPayload() : null,
+                        result != null ? result.getExtractedText() : null,
+                        expectedArtifactName));
     }
 
     private CodeResult generatePerScene(Narrative narrative, String artifactName) {
@@ -293,15 +299,15 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                 ? CodeGenerationPrompts.geoGebraSkeletonUserPrompt(storyboardJson, sceneNames)
                 : CodeGenerationPrompts.skeletonUserPrompt(storyboardJson, sceneNames))
                 + skeletonRegistryBlock;
-        JsonNode skeletonPayload = AiRequestUtils.requestJsonObjectAsync(
+        AiRequestUtils.ExtractedTextResult skeletonResult = AiRequestUtils.requestExtractedTextResultAsync(
                 aiClient, log, "skeleton", conversationContext,
-                skeletonPrompt, ToolSchemas.CODE_SKELETON, () -> toolCalls++
+                skeletonPrompt, ToolSchemas.CODE_SKELETON, () -> toolCalls++,
+                List.of("headerCode"),
+                this::extractCodeFromText,
+                text -> text != null && !text.isBlank()
         ).join();
 
-        String headerCode = "";
-        if (skeletonPayload != null && skeletonPayload.has("headerCode")) {
-            headerCode = skeletonPayload.get("headerCode").asText("");
-        }
+        String headerCode = skeletonResult != null ? skeletonResult.getExtractedText() : "";
         log.info("  Skeleton generated: {} lines", headerCode.lines().count());
 
         // 2. Generate each scene sequentially
@@ -323,9 +329,12 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                     ? CodeGenerationPrompts.geoGebraSceneCodeUserPrompt(sceneJson, sceneName, i, scenes.size())
                     : CodeGenerationPrompts.sceneCodeUserPrompt(sceneJson, sceneName, i, scenes.size()))
                     + sceneRegistryBlock;
-            JsonNode scenePayload = AiRequestUtils.requestJsonObjectAsync(
+            AiRequestUtils.ExtractedTextResult sceneResult = AiRequestUtils.requestExtractedTextResultAsync(
                     aiClient, log, sceneName, conversationContext,
-                    scenePrompt, ToolSchemas.SCENE_CODE, () -> toolCalls++
+                    scenePrompt, ToolSchemas.SCENE_CODE, () -> toolCalls++,
+                    List.of("sceneCode"),
+                    this::extractCodeFromText,
+                    text -> text != null && !text.isBlank()
             ).join();
 
             // Apply this scene's patches after code generation (for next scene's context)
@@ -333,17 +342,13 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                 applyScenePatches(enrichedRegistry, scene);
             }
 
-            String sceneCode = "";
-            if (scenePayload != null) {
-                if (scenePayload.has("sceneCode")) {
-                    sceneCode = scenePayload.get("sceneCode").asText("");
-                }
-                if (!isGeoGebra && scenePayload.has("sceneMethodName")) {
+            String sceneCode = sceneResult != null ? sceneResult.getExtractedText() : "";
+            JsonNode scenePayload = sceneResult != null ? sceneResult.getPayload() : null;
+            if (scenePayload != null && !isGeoGebra && scenePayload.has("sceneMethodName")) {
                     String returnedName = scenePayload.get("sceneMethodName").asText("");
                     if (!returnedName.isBlank()) {
                         sceneName = returnedName;
                     }
-                }
             }
 
             entries.add(new SceneCodeEntry(i, scene.getSceneId(), sceneName, sceneCode, false));
@@ -436,34 +441,9 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         return "";
     }
 
-    private JsonNode parseCodeTextResponse(String response) {
-        String generatedCode = extractCodeFromText(response);
-        if (generatedCode == null || generatedCode.isBlank()) {
-            return null;
-        }
-
-        return JsonUtils.mapper().createObjectNode()
-                .put(NodeSupport.isGeoGebraTarget(workflowConfig) ? "geogebraCode" : "manimCode", generatedCode);
-    }
-
-    private boolean hasCodePayload(JsonNode payload) {
-        if (payload == null) return false;
-        if (payload.has("manimCode") && !payload.get("manimCode").asText("").isBlank()) return true;
-        if (payload.has("geogebraCode") && !payload.get("geogebraCode").asText("").isBlank()) return true;
-        return false;
-    }
-
-    private CodeDraft toCodeDraft(JsonNode payload, String expectedArtifactName) {
-        String generatedCode = null;
+    private CodeDraft toCodeDraft(JsonNode payload, String generatedCode, String expectedArtifactName) {
         String artifactName = expectedArtifactName;
 
-        if (payload != null) {
-            if (payload.has("manimCode")) {
-                generatedCode = payload.get("manimCode").asText();
-            } else if (payload.has("geogebraCode")) {
-                generatedCode = payload.get("geogebraCode").asText();
-            }
-        }
         if (payload != null && payload.has("scene_name")) {
             artifactName = payload.get("scene_name").asText(expectedArtifactName);
         } else if (payload != null && payload.has("figure_name")) {
@@ -634,6 +614,10 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         return NodeSupport.isGeoGebraTarget(workflowConfig)
                 ? ToolSchemas.GEOGEBRA_CODE
                 : ToolSchemas.MANIM_CODE;
+    }
+
+    private String resolveGeneratedCodeFieldName() {
+        return NodeSupport.isGeoGebraTarget(workflowConfig) ? "geogebraCode" : "manimCode";
     }
 
     private String extractCodeFromText(String text) {

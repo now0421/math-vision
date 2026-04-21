@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AiRequestUtilsTest {
@@ -114,6 +115,85 @@ class AiRequestUtilsTest {
         assertTrue(response.getAssistantTranscript().contains("tool"));
         assertEquals(List.of("system", "user", "assistant", "user"), aiClient.lastSnapshotRoles);
         assertEquals("current user", aiClient.lastSnapshotUserContent);
+    }
+
+    @Test
+    void extractedTextPrefersConfiguredPayloadField() {
+        ObjectNode arguments = JsonUtils.mapper().createObjectNode();
+        arguments.put("manimCode", "from manim import *\nclass MainScene(Scene):\n    pass");
+
+        AiRequestUtils.ExtractedTextResult result = AiRequestUtils.requestExtractedTextResultAsync(
+                new FakeAiClient(wrapToolResponse(arguments), "ignored"),
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "codegen",
+                "user",
+                "system",
+                "[]",
+                () -> { },
+                List.of("manimCode"),
+                text -> text == null ? null : text.trim(),
+                text -> text != null && !text.isBlank()
+        ).join();
+
+        assertEquals("from manim import *\nclass MainScene(Scene):\n    pass", result.getExtractedText());
+        assertEquals("from manim import *\nclass MainScene(Scene):\n    pass", result.getAssistantTranscript());
+        assertEquals("from manim import *\nclass MainScene(Scene):\n    pass", result.getPayload().get("manimCode").asText());
+    }
+
+    @Test
+    void extractedTextFallsBackToCodeBlockWhenPayloadFieldMissing() {
+        String responseText = "```python\nfrom manim import *\nclass MainScene(Scene):\n    pass\n```";
+
+        String extractedText = AiRequestUtils.requestExtractedTextAsync(
+                new FakeAiClient(wrapTextResponse(responseText), "ignored"),
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "codegen",
+                "user",
+                "system",
+                "[]",
+                () -> { },
+                List.of("manimCode"),
+                text -> text == null ? null : text.trim(),
+                text -> text != null && !text.isBlank()
+        ).join();
+
+        assertEquals("from manim import *\nclass MainScene(Scene):\n    pass", extractedText);
+    }
+
+    @Test
+    void extractedTextFallsBackToWholeResponseWhenNoCodeBlockExists() {
+        String extractedText = AiRequestUtils.requestExtractedTextAsync(
+                new FakeAiClient(wrapTextResponse("problem"), "ignored"),
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "classification",
+                "user",
+                "system",
+                "[]",
+                () -> { },
+                List.of("input_mode"),
+                text -> text == null ? null : text.trim(),
+                text -> text != null && !text.isBlank()
+        ).join();
+
+        assertEquals("problem", extractedText);
+    }
+
+    @Test
+    void extractedTextReturnsNullWhenNothingUsableIsFound() {
+        String extractedText = AiRequestUtils.requestExtractedTextAsync(
+                new FakeAiClient(wrapTextResponse("   "), "   "),
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "empty",
+                "user",
+                "system",
+                "[]",
+                () -> { },
+                List.of("sceneCode"),
+                text -> text == null ? null : text.trim(),
+                text -> text != null && !text.isBlank()
+        ).join();
+
+        assertNull(extractedText);
     }
 
     private static JsonNode wrapTextResponse(String text) {

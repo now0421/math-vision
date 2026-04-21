@@ -16,7 +16,6 @@ import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
 import com.mathvision.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -150,16 +149,16 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                                                String toolSchema,
                                                String failureMessage) {
         try {
-            return AiRequestUtils.requestJsonObjectAsync(
+            JsonNode payload = AiRequestUtils.requestJsonObjectAsync(
                     aiClient,
                     log,
                     subject,
                     graphContext,
                     prompt,
                     toolSchema,
-                    () -> apiCalls.incrementAndGet(),
-                    this::parseDirectGraphTextResponse
+                    () -> apiCalls.incrementAndGet()
             ).join();
+            return payload != null ? payload : JsonUtils.mapper().createObjectNode();
         } catch (CompletionException e) {
             Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
             throw new RuntimeException(failureMessage + ": " + cause.getMessage(), cause);
@@ -538,7 +537,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 + "Classify the routing mode for this workflow input.";
 
         try {
-            JsonNode data = AiRequestUtils.requestJsonObjectAsync(
+            String extractedText = AiRequestUtils.requestExtractedTextAsync(
                     aiClient,
                     log,
                     normalizedInput,
@@ -546,12 +545,12 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                     prompt,
                     ToolSchemas.INPUT_MODE,
                     () -> apiCalls.incrementAndGet(),
-                    this::parseInputModeTextResponse
+                    List.of("input_mode"),
+                    text -> text == null ? null : text.trim(),
+                    text -> text != null && !text.isBlank()
             ).join();
 
-            String normalized = data != null && data.has("input_mode")
-                    ? data.get("input_mode").asText("").trim().toLowerCase(Locale.ROOT)
-                    : "";
+            String normalized = normalizeInputModeDecision(extractedText);
             if (normalized.startsWith(WorkflowConfig.INPUT_MODE_PROBLEM)) {
                 log.info("Auto mode classified by LLM as problem");
                 return WorkflowConfig.INPUT_MODE_PROBLEM;
@@ -561,7 +560,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 return WorkflowConfig.INPUT_MODE_CONCEPT;
             }
 
-            log.warn("LLM returned unexpected input mode classification payload: {}", data);
+            log.warn("LLM returned unexpected input mode classification text: {}", extractedText);
             return "";
         } catch (CompletionException e) {
             Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
@@ -617,12 +616,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 trimmedInput, trimmedInput, "", false, outputTarget);
     }
 
-    private JsonNode parseInputModeTextResponse(String response) {
-        JsonNode existing = tryParseJsonObject(response);
-        if (existing != null && existing.has("input_mode")) {
-            return existing;
-        }
-
+    private String normalizeInputModeDecision(String response) {
         String normalized = response == null ? "" : response.trim().toLowerCase(Locale.ROOT);
         boolean mentionsProblem = normalized.startsWith(WorkflowConfig.INPUT_MODE_PROBLEM)
                 || normalized.contains("\"problem\"")
@@ -645,34 +639,13 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 || normalized.contains("it is a concept")
                 || (normalized.contains(" concept ") && !normalized.contains("not a concept"));
 
-        String inputModeValue;
         if (mentionsProblem && !mentionsConcept) {
-            inputModeValue = WorkflowConfig.INPUT_MODE_PROBLEM;
-        } else if (mentionsConcept && !mentionsProblem) {
-            inputModeValue = WorkflowConfig.INPUT_MODE_CONCEPT;
-        } else {
-            inputModeValue = classifyInputModeHeuristically(response);
+            return WorkflowConfig.INPUT_MODE_PROBLEM;
         }
-
-        ObjectNode payload = JsonUtils.mapper().createObjectNode();
-        payload.put("input_mode", inputModeValue);
-        return payload;
-    }
-
-    private JsonNode parseDirectGraphTextResponse(String response) {
-        JsonNode payload = tryParseJsonObject(response);
-        return payload != null ? payload : JsonUtils.parseTree("{}");
-    }
-
-    private JsonNode tryParseJsonObject(String response) {
-        if (response == null || !response.contains("{")) {
-            return null;
+        if (mentionsConcept && !mentionsProblem) {
+            return WorkflowConfig.INPUT_MODE_CONCEPT;
         }
-        String candidate = JsonUtils.extractJsonObject(response);
-        if (candidate == null || candidate.isBlank()) {
-            return null;
-        }
-        return JsonUtils.parseTree(candidate);
+        return classifyInputModeHeuristically(response);
     }
 
     private enum DirectGraphMode {

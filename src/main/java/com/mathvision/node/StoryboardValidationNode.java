@@ -13,6 +13,7 @@ import com.mathvision.prompt.NarrativePrompts;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
 import com.mathvision.service.FileOutputService;
+import com.mathvision.util.AiRequestUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.StoryboardNormalizer;
 import com.mathvision.util.StoryboardPatchResolver;
@@ -205,7 +206,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                         issues.add(label + ": entering_objects object '" + id
                                 + "' should only contain id plus optional placement/style");
                     }
-                    validateRawPlacement(label + ": entering_objects object '" + id + "'", obj, issues);
+                    validateRawPlacement(label + ": entering_objects object '" + id + "'", obj, true, issues);
                     introducedIds.add(id);
                 }
             }
@@ -225,7 +226,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                         issues.add(label + ": persistent_objects object '" + id
                                 + "' should only contain id plus optional placement/style");
                     }
-                    validateRawPlacement(label + ": persistent_objects object '" + id + "'", obj, issues);
+                    validateRawPlacement(label + ": persistent_objects object '" + id + "'", obj, false, issues);
                 }
             }
 
@@ -252,11 +253,11 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             validateMergedPlacementObjects(label, "entering_objects",
                     mergedScene != null ? mergedScene.getEnteringObjects() : List.of(),
                     registryById,
-                    issues);
+                    issues, true);
             validateMergedPlacementObjects(label, "persistent_objects",
                     mergedScene != null ? mergedScene.getPersistentObjects() : List.of(),
                     registryById,
-                    issues);
+                    issues, false);
             validateSceneLayout(label, mergedScene, issues);
 
             // Check required fields
@@ -287,7 +288,8 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                                                 String fieldName,
                                                 List<StoryboardObject> objects,
                                                 Map<String, StoryboardObject> registryById,
-                                                List<String> issues) {
+                                                List<String> issues,
+                                                boolean placementRequired) {
         if (objects == null) {
             return;
         }
@@ -300,7 +302,8 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             validateResolvedPlacement(sceneLabel + ": " + fieldName + " object '" + id + "'",
                     object,
                     registryObject,
-                    issues);
+                    issues,
+                    placementRequired);
         }
     }
 
@@ -710,21 +713,36 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
 
     private void validateRawPlacement(String objectLabel,
                                       StoryboardObject object,
+                                      boolean placementRequired,
                                       List<String> issues) {
-        if (object == null || object.getPlacement() == null) {
+        if (object == null) {
             return;
         }
-        validatePlacementShape(objectLabel, object.getPlacement(), issues);
+        StoryboardPlacement placement = object.getPlacement();
+        if (placement == null || !placement.hasData()) {
+            if (placementRequired) {
+                issues.add(objectLabel + ": placement is required");
+            }
+            return;
+        }
     }
 
     private void validateResolvedPlacement(String objectLabel,
                                            StoryboardObject object,
                                            StoryboardObject registryObject,
-                                           List<String> issues) {
-        if (object == null || object.getPlacement() == null) {
+                                           List<String> issues,
+                                           boolean placementRequired) {
+        if (object == null) {
             return;
         }
-        validatePlacementShape(objectLabel, object.getPlacement(), issues);
+        StoryboardPlacement placement = object.getPlacement();
+        if (placement == null || !placement.hasData()) {
+            if (placementRequired) {
+                issues.add(objectLabel + ": placement is missing on resolved object");
+            }
+            return;
+        }
+        validatePlacementShape(objectLabel, placement, issues);
         if (Narrative.StoryboardPlacement.COORDINATE_SPACE_ANCHOR
                 .equalsIgnoreCase(object.getPlacement().getCoordinateSpace())) {
             String effectiveAnchorId = firstNonBlank(
@@ -920,22 +938,15 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                     narrative.getTargetDescription(),
                     outputTarget);
 
-            JsonNode fixedData = aiClient.chatWithToolsRawAsync(
-                    fixPrompt.toString(), systemPrompt, ToolSchemas.STORYBOARD)
-                    .thenApply(raw -> {
-                        toolCalls++;
-                        JsonNode payload = JsonUtils.extractToolCallPayload(raw);
-                        if (payload == null) {
-                            String text = JsonUtils.extractBestEffortTextFromResponse(raw);
-                            if (text != null && !text.isBlank()) {
-                                String json = JsonUtils.extractJsonObject(text);
-                                if (json != null) {
-                                    return JsonUtils.parseTreeBestEffort(json);
-                                }
-                            }
-                        }
-                        return payload;
-                    }).join();
+            JsonNode fixedData = AiRequestUtils.requestJsonObjectAsync(
+                            aiClient,
+                            log,
+                            "storyboard-fix",
+                            fixPrompt.toString(),
+                            systemPrompt,
+                            ToolSchemas.STORYBOARD,
+                            () -> toolCalls++)
+                    .join();
 
             if (fixedData == null) {
                 return null;

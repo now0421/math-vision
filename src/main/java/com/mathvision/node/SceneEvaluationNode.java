@@ -1069,7 +1069,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                                                  Instant start,
                                                  String reason) {
         result.setEvaluated(false);
-        result.setApproved(true);
+        result.setApproved(false);
         result.setGateReason(reason);
         finalizeResult(result, retryState, start, true);
         return result;

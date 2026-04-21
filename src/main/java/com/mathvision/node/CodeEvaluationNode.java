@@ -335,10 +335,9 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                     reviewConversationContext,
                     userPrompt,
                     ToolSchemas.CODE_REVIEW,
-                    () -> toolCalls++,
-                    this::parseReviewTextResponse
+                    () -> toolCalls++
             ).join();
-            ReviewSnapshot parsed = parseReviewSnapshot(payload, null);
+            ReviewSnapshot parsed = parseReviewSnapshot(payload);
             if (parsed != null) {
                 return normalizeReview(parsed);
             }
@@ -860,24 +859,8 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         return Math.max(0, value);
     }
 
-    private ReviewSnapshot parseReviewSnapshot(JsonNode toolData, String rawText) {
-        ReviewSnapshot snapshot = parseReviewNode(toolData);
-        if (snapshot != null) {
-            return snapshot;
-        }
-        if (rawText == null || rawText.isBlank()) {
-            return null;
-        }
-        try {
-            String candidate = JsonUtils.extractJsonObject(rawText);
-            if (candidate == null || candidate.isBlank()) {
-                return null;
-            }
-            return parseReviewNode(JsonUtils.parseTree(candidate));
-        } catch (RuntimeException e) {
-            log.debug("Failed to parse review JSON from text response: {}", e.getMessage());
-            return null;
-        }
+    private ReviewSnapshot parseReviewSnapshot(JsonNode toolData) {
+        return parseReviewNode(toolData);
     }
 
     private ReviewSnapshot parseReviewNode(JsonNode node) {
@@ -906,26 +889,6 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
             return null;
         }
         return snapshot;
-    }
-
-    private JsonNode parseReviewTextResponse(String response) {
-        return tryParseJsonObject(response);
-    }
-
-    private JsonNode tryParseJsonObject(String response) {
-        if (response == null || !response.contains("{")) {
-            return null;
-        }
-        try {
-            String candidate = JsonUtils.extractJsonObject(response);
-            if (candidate == null || candidate.isBlank()) {
-                return null;
-            }
-            return JsonUtils.parseTree(candidate);
-        } catch (RuntimeException e) {
-            log.debug("Failed to parse code review JSON from text response: {}", e.getMessage());
-            return null;
-        }
     }
 
     private JsonNode unwrapReviewPayload(JsonNode node) {

@@ -17,10 +17,11 @@ import com.mathvision.prompt.StoryboardJsonBuilder;
 import com.mathvision.service.AiClient;
 import com.mathvision.service.FileOutputService;
 import com.mathvision.node.support.NodeSupport;
+import com.mathvision.util.AiRequestUtils;
 import com.mathvision.util.CodeValidationSupport;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.ConcurrencyUtils;
-import com.mathvision.util.JsonUtils;
+import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
 import com.mathvision.util.TextUtils;
 import com.mathvision.util.TimeUtils;
@@ -33,7 +34,6 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletionException;
 import java.util.stream.Collectors;
@@ -105,11 +105,15 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         try {
             log.info("=== Shared Code Fix: {} ===", request.getSource());
             conversationContext.addUserMessage(userPrompt);
-            String response = aiClient.chatAsync(conversationContext).join();
-            conversationContext.addAssistantMessage(response);
-            toolCalls++;
-
-            String fixedCode = extractReturnedCode(response);
+            String fixedCode = AiRequestUtils.requestExtractedTextAsync(
+                            aiClient,
+                            log,
+                            "code-fix",
+                            conversationContext,
+                            () -> toolCalls++,
+                            this::extractCodeFromText,
+                            text -> text != null && !text.isBlank())
+                    .join();
             if (fixedCode == null || fixedCode.isBlank()) {
                 result.setFailureReason("Code fix returned no parseable "
                         + (NodeSupport.isGeoGebraTarget(workflowConfig) ? "GeoGebra code" : "Python code"));
@@ -299,23 +303,10 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
                 .collect(Collectors.toList());
     }
 
-    private String extractReturnedCode(String response) {
-        if (response == null || response.isBlank()) {
-            return null;
-        }
-        String codeBlock = JsonUtils.extractCodeBlock(response);
-        if (codeBlock != null && !codeBlock.isBlank()) {
-            return codeBlock;
-        }
-        String trimmed = response.trim();
-        if (NodeSupport.isGeoGebraTarget(workflowConfig)) {
-            return GeoGebraCodeUtils.looksLikeCommandBlock(trimmed) ? trimmed : null;
-        }
-        if (trimmed.toLowerCase(Locale.ROOT).contains("from manim import")
-                || trimmed.contains("class ")) {
-            return trimmed;
-        }
-        return null;
+    private String extractCodeFromText(String text) {
+        return NodeSupport.isGeoGebraTarget(workflowConfig)
+                ? GeoGebraCodeUtils.extractCode(text)
+                : ManimCodeUtils.extractCode(text);
     }
 
 }
