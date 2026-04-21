@@ -24,31 +24,17 @@ public class Narrative {
     @JsonProperty("storyboard")
     private Storyboard storyboard;
 
-    @JsonProperty("step_order")
-    private List<String> stepOrder = new ArrayList<>();
-
-    @JsonProperty("total_duration")
-    private int totalDuration;
-
-    @JsonProperty("scene_count")
-    private int sceneCount;
-
     public Narrative() {}
 
-    public Narrative(String targetConcept, Storyboard storyboard,
-                     List<String> stepOrder, int totalDuration, int sceneCount) {
-        this(targetConcept, "", storyboard, stepOrder, totalDuration, sceneCount);
+    public Narrative(String targetConcept, Storyboard storyboard) {
+        this(targetConcept, "", storyboard);
     }
 
     public Narrative(String targetConcept, String targetDescription,
-                     Storyboard storyboard, List<String> stepOrder,
-                     int totalDuration, int sceneCount) {
+                     Storyboard storyboard) {
         this.targetConcept = targetConcept;
         this.targetDescription = targetDescription;
         this.storyboard = storyboard;
-        this.stepOrder = stepOrder;
-        this.totalDuration = totalDuration;
-        this.sceneCount = sceneCount;
     }
 
     // ---- Getters / Setters ----
@@ -62,15 +48,6 @@ public class Narrative {
     public Storyboard getStoryboard() { return storyboard; }
     public void setStoryboard(Storyboard storyboard) { this.storyboard = storyboard; }
 
-    public List<String> getStepOrder() { return stepOrder; }
-    public void setStepOrder(List<String> stepOrder) { this.stepOrder = stepOrder; }
-
-    public int getTotalDuration() { return totalDuration; }
-    public void setTotalDuration(int totalDuration) { this.totalDuration = totalDuration; }
-
-    public int getSceneCount() { return sceneCount; }
-    public void setSceneCount(int sceneCount) { this.sceneCount = sceneCount; }
-
     public boolean hasStoryboard() {
         return storyboard != null
                 && storyboard.getScenes() != null
@@ -79,12 +56,6 @@ public class Narrative {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Storyboard {
-
-        @JsonProperty("hook")
-        private String hook;
-
-        @JsonProperty("summary")
-        private String summary;
 
         @JsonProperty("continuity_plan")
         private String continuityPlan;
@@ -104,12 +75,6 @@ public class Narrative {
         public void setObjectRegistry(List<StoryboardObject> objectRegistry) {
             this.objectRegistry = objectRegistry != null ? objectRegistry : new ArrayList<>();
         }
-
-        public String getHook() { return hook; }
-        public void setHook(String hook) { this.hook = hook; }
-
-        public String getSummary() { return summary; }
-        public void setSummary(String summary) { this.summary = summary; }
 
         public String getContinuityPlan() { return continuityPlan; }
         public void setContinuityPlan(String continuityPlan) { this.continuityPlan = continuityPlan; }

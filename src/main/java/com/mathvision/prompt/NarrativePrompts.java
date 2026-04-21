@@ -3,16 +3,16 @@ package com.mathvision.prompt;
 import com.mathvision.model.Narrative.Storyboard;
 
 /**
- * Prompts for storyboard composition and codegen-prompt assembly.
- * Used by VisualDesignNode (Stage 1b), StoryboardValidationNode (Stage 1c),
- * and CodeGenerationNode (Stage 2).
+ * Prompts for storyboard validation and codegen-prompt assembly.
+ * Used by StoryboardValidationNode (Stage 1c) and CodeGenerationNode (Stage 2).
+ * Scene-level design rules live in {@link VisualDesignPrompts}.
  */
 public final class NarrativePrompts {
 
     private static final String COMMON_RULES =
-            "You are a STEM narrative designer writing a structured storyboard for a math teaching visualization.\n"
-                    + "Write a scene-by-scene storyboard that functions as a visual presentation plan rather than a written solution.\n"
-                    + "Begin with a clear hook, introduce foundations before advanced content, and keep the storyboard continuity-safe.\n\n"
+            "You are a STEM narrative designer validating and fixing a structured storyboard for a math teaching visualization.\n"
+                    + "The storyboard functions as a visual presentation plan rather than a written solution.\n"
+                    + "Introduce foundations before advanced content, and keep the storyboard continuity-safe.\n\n"
                     + SystemPrompts.NARRATIVE_PHILOSOPHY
                     + SystemPrompts.VISUAL_PLANNING_RULES
                     + SystemPrompts.COMPOSITION_RULES
@@ -31,50 +31,20 @@ public final class NarrativePrompts {
                     + "- Use `scene_mode = 3d` only when depth is genuinely needed\n"
                     + "- Include explicit `camera_plan`\n"
                     + "- Use `screen_overlay_plan` when text must stay fixed relative to the viewport rather than the main geometry\n\n"
-                    + "Narrative rules:\n"
-                    + "- Narrative must not be constrained by a fixed word count\n"
-                    + "- Use enrichment fields only when they sharpen the explanation\n"
+                    + "Storyboard-level rules:\n"
                     + "- Prefer 3 to 5 strong scenes for problem-solving unless more are truly needed\n"
-                    + "- Write narration as learner-facing beats: each sentence should correspond to something visible, highlighted, transformed, or deliberately held on screen\n"
-                    + "- Leave breathing room after key reveals; the storyboard should not imply nonstop motion with no time to read\n"
-                    + "- Plan scene transitions intentionally: choose clean break (fade all, pause), carry-forward (keep one anchor, fade rest), or transform bridge for each scene boundary. Record the chosen style in `notes_for_codegen` when the intent is non-obvious\n"
                     + "- Plan per-scene variation: vary the dominant visual focus, spatial layout pattern, and visual density across scenes. Avoid identical composition for consecutive scenes\n"
-                    + "- Duration estimation reference: title card 3–5s, concept introduction 10–20s, equation reveal 15–25s, algorithm step 5–10s, aha-moment beat 15–30s, conclusion 5–10s. Use these ranges when setting `duration_seconds`\n"
-                    + "- Keep object ids concise and non-redundant since `kind` already carries the type. Follow only the naming rules for the active backend.\n"
-                    + "- Reuse the exact same concise ids consistently in `anchor_id`, `persistent_objects`, `exiting_objects`, and `actions.targets`\n"
-                    + "- When any field inside `entering_objects` refers to another object, especially `content`, refer to that object by id only. Do not restate its kind there.\n"
-                    + "- For example, write `angle between AP and l at P`, not `angle between segment AP and line l at point P`.\n"
-                    + "- Prefer structured `style` arrays over vague prose. Each style entry should describe one visual layer or role, such as text, background, border, glow, or emphasis.\n"
-                    + "- Do not use a free-text `instructions` field inside style entries. Encode visual intent directly in `properties` using concrete keys and values.\n"
-                    + "- For text cards, formulas with badges, boxed labels, counters, or callouts, encode separate text and background layers as separate entries inside `style`.\n"
-                    + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n"
-                    + "- JSON lexical contract is strict: use double quotes for all JSON keys and all string values, including categorical fields such as kind, behavior, scene_mode, action type, style role/type, color names, and label content.\n"
-                    + "- Do not output markdown fences, comments, trailing commas, or single-quoted strings.\n"
-                    + "- Do not output bare identifiers as JSON values. Invalid: \"type\": create. Valid: \"type\": \"create\".\n"
-                    + "- When a temporary element has served its purpose, include it in `exiting_objects` of the current or next scene\n"
                     + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES + "\n";
 
     private static final String GEOGEBRA_RULES =
-            "GeoGebra-specific storyboard rules:\n"
-                    + "- Follow GeoGebra naming conventions.\n"
-                    + "- Prefer native GeoGebra labels for named geometric objects such as points, lines, segments, rays, circles, and polygons.\n"
-                    + "- If the visible text is just the object's own name or symbol, keep it as the object's native label rather than creating a separate `label` or `text` storyboard object.\n"
-                    + "- Create separate `label` or `text` objects only for overlays, formulas, counters, captions, explanatory annotations, or text that is semantically different from the object's native label. Avoid redundant pairs such as `A` plus `aLabel`, `lineL` plus `labelL`, or `circleO` plus `labelO`.\n"
+            "GeoGebra-specific storyboard validation rules:\n"
                     + SystemPrompts.GEOGEBRA_NAMING_RULES
-                    + "- Use `fixed_overlay` mainly for explanatory text, counters, captions, formulas, and similar viewport-fixed overlays. For geometric points, lines, circles, angle markers, and bullseye-style highlights that belong to the construction, prefer `static` or `derived` unless the object is truly an overlay.\n"
-                    + "- Use style changes (color, line thickness, dash style) on existing objects rather than creating visual duplicates on the same endpoints. GeoGebra objects persist globally, so every redundant object adds permanent clutter.\n"
-                    + "- Do not mention specific GeoGebra command names in storyboard notes unless they are documented in the active syntax manual; describe unsupported effects generically instead.\n";
+                    + "- Use style changes (color, line thickness, dash style) on existing objects rather than creating visual duplicates on the same endpoints. GeoGebra objects persist globally, so every redundant object adds permanent clutter.\n";
 
     private static final String MANIM_RULES =
-            "Manim-specific storyboard rules:\n"
+            "Manim-specific storyboard validation rules:\n"
                     + SystemPrompts.MANIM_MOTION_AND_PACING_RULES
-                    + SystemPrompts.MANIM_TEXT_AND_READABILITY_RULES
                     + SystemPrompts.MANIM_NAMING_RULES
-                    + "- Every learner-visible Manim object must be explicitly represented in `entering_objects` or `persistent_objects`; do not hide visible labels inside another object's prose description.\n"
-                    + "- If a point, marker, label, counter, or helper must visibly follow another object, create a separate object and describe the attachment with `behavior`, `anchor_id`, and `dependency_note`.\n"
-                    + "- For moving points or markers, create a separate label object with `behavior = follows_anchor` so the label tracks the moving object.\n"
-                    + "- Manim does not auto-label any object. For every object (points, lines, angles, arcs, etc.) whose name or value must appear on screen, explicitly declare a companion `kind: text` label in the same scene's `entering_objects`; attach it with `behavior = follows_anchor` and `anchor_id` pointing to the parent object's id. Never assume a label will appear automatically.\n"
-                    + "- Use `screen_overlay_plan` only for true viewport-fixed explanatory overlays, not as a vague place to hide layout conflicts.\n"
                     + "- Once a color is assigned to a concept, it keeps that meaning across the entire storyboard. Record color-to-concept assignments in `global_visual_rules`.\n";
 
     private static final String OUTPUT_FORMAT =
@@ -86,8 +56,6 @@ public final class NarrativePrompts {
                     + "- Allowed unquoted literals are only numbers, true, false, and null.\n"
                     + "Return a JSON object with this shape:\n"
                     + "{\n"
-                    + "  \"hook\": \"string, opening hook that creates curiosity and frames the visualization\",\n"
-                    + "  \"summary\": \"string, short overview of the full storyboard arc and teaching intent\",\n"
                     + "  \"continuity_plan\": \"string, how object identities, anchors, and layout stay stable across scenes\",\n"
                     + "  \"global_visual_rules\": [\"string, global staging rule that should hold across the whole presentation\"],\n"
                     + "  \"scenes\": [\n"
@@ -161,8 +129,6 @@ public final class NarrativePrompts {
                     + "- {\"behavior\": \"static\"}\n"
                     + "- {\"properties\": {\"color\": \"YELLOW\"}}\n"
                     + "{\n"
-                    + "  \"hook\": \"Start with a concrete question or visual hook that makes the viewer want the next step.\",\n"
-                    + "  \"summary\": \"Briefly describe the teaching arc from setup to conclusion.\",\n"
                     + "  \"continuity_plan\": \"Explain how object identities and anchors stay stable across scenes.\",\n"
                     + "  \"global_visual_rules\": [\n"
                     + "    \"Keep major content inside the safe frame.\",\n"

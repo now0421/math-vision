@@ -8,6 +8,7 @@ import com.mathvision.model.Narrative;
 import com.mathvision.model.RenderResult;
 import com.mathvision.model.CodeEvaluationResult;
 import com.mathvision.model.SceneEvaluationResult;
+import com.mathvision.model.StoryboardValidationReport;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -128,6 +129,12 @@ public class FileOutputService {
 
     public static void saveNarrative(Path outputDir, Narrative narrative) {
         writeJson(outputDir.resolve("3_narrative.json"), narrative, "narrative (JSON)");
+    }
+
+    public static void saveStoryboardValidation(Path outputDir,
+                                                StoryboardValidationReport storyboardValidationReport) {
+        writeJson(outputDir.resolve("3_storyboard_validation.json"),
+                storyboardValidationReport, "storyboard validation");
     }
 
     public static void saveCodeResult(Path outputDir, CodeResult codeResult) {

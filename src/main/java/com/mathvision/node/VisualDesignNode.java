@@ -388,10 +388,6 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         }
 
         // Build global metadata
-        if (!sorted.isEmpty()) {
-            storyboard.setHook(sorted.get(0).getGoal());
-        }
-        storyboard.setSummary("Visual storyboard for " + graph.getTargetConcept());
         storyboard.setContinuityPlan("Objects maintain stable ids across scenes via the global object registry.");
         List<String> globalRules = new ArrayList<>();
         globalRules.add("Keep major objects inside the safe frame.");
@@ -402,11 +398,6 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         storyboard.setGlobalVisualRules(globalRules);
 
         storyboard = StoryboardNormalizer.normalize(storyboard);
-
-        List<String> stepOrder = graph.teachingOrderNodes().stream()
-                .map(KnowledgeNode::getStep)
-                .collect(Collectors.toList());
-        int totalDuration = StoryboardNormalizer.calculateStoryboardDuration(storyboard, sorted.size() * 8);
 
         String targetConcept = graph.getTargetConcept();
         KnowledgeNode terminal = graph.findPrimaryTerminalNode();
@@ -419,12 +410,10 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         Narrative narrative = new Narrative(
                 targetConcept,
                 targetDescription,
-                storyboard,
-                stepOrder,
-                totalDuration,
-                sorted.size()
+                storyboard
         );
 
+        int totalDuration = StoryboardNormalizer.calculateStoryboardDuration(storyboard, sorted.size() * 8);
         List<String> sceneTitles = sorted.stream()
                 .map(StoryboardScene::getTitle)
                 .collect(Collectors.toList());

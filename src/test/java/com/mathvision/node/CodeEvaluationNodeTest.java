@@ -159,8 +159,6 @@ class CodeEvaluationNodeTest {
         assertTrue(aiClient.lastUserMessage.contains("\"safe_area_plan\""));
         assertTrue(aiClient.lastUserMessage.contains("\"goal\""));
         assertTrue(aiClient.lastUserMessage.contains("\"layout_goal\""));
-        assertFalse(aiClient.lastUserMessage.contains("\"hook\""));
-        assertFalse(aiClient.lastUserMessage.contains("\"summary\""));
     }
 
     @Test
@@ -187,8 +185,6 @@ class CodeEvaluationNodeTest {
         assertTrue(request.getStoryboardJson().contains("\"entering_objects\""));
         assertTrue(request.getStoryboardJson().contains("\"goal\""));
         assertTrue(request.getStoryboardJson().contains("\"layout_goal\""));
-        assertFalse(request.getStoryboardJson().contains("\"hook\""));
-        assertFalse(request.getStoryboardJson().contains("\"summary\""));
     }
 
     private static Map<String, Object> buildContext(AiClient aiClient, String code) {
@@ -258,8 +254,6 @@ class CodeEvaluationNodeTest {
 
     private static Narrative buildCompactReviewNarrative() {
         Narrative.Storyboard storyboard = new Narrative.Storyboard();
-        storyboard.setHook("Open with a question.");
-        storyboard.setSummary("Move from setup to conclusion.");
         storyboard.setContinuityPlan("Keep the title and equation aligned.");
         storyboard.getGlobalVisualRules().add("Keep formulas near the edge.");
 

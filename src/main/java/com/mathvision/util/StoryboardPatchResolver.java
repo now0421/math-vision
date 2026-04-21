@@ -29,8 +29,6 @@ public final class StoryboardPatchResolver {
         }
 
         Storyboard merged = new Storyboard();
-        merged.setHook(storyboard.getHook());
-        merged.setSummary(storyboard.getSummary());
         merged.setContinuityPlan(storyboard.getContinuityPlan());
         merged.setGlobalVisualRules(copyStringList(storyboard.getGlobalVisualRules()));
 

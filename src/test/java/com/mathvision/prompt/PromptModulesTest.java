@@ -93,7 +93,7 @@ class PromptModulesTest {
         String geogebraNarrative = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
         String geogebraVisual = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra", null);
 
-        assertTrue(manimNarrative.contains("Manim-specific storyboard rules"));
+        assertTrue(manimNarrative.contains("Manim-specific storyboard validation rules"));
         assertFalse(geogebraNarrative.contains("Manim teaching philosophy"));
         assertFalse(geogebraNarrative.contains("create a separate label object"));
         assertFalse(geogebraVisual.contains("always_redraw"));
@@ -118,29 +118,29 @@ class PromptModulesTest {
 
     @Test
     void narrativePromptsRequireObjectReferencesToUseIdsOnly() {
-        String systemPrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
+        String visualPrompt = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra", null);
         String codegenSystemPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "geogebra");
         String codegenPrompt = NarrativePrompts.storyboardCodegenPrompt(
                 "{\"scenes\":[{\"entering_objects\":[{\"id\":\"angle_in\",\"kind\":\"angle\",\"content\":\"angle between AP and l at P\"}]}]}",
                 "geogebra");
 
-        assertTrue(systemPrompt.contains("refer to that object by id only"));
-        assertTrue(systemPrompt.contains("angle between AP and l at P"));
+        assertTrue(visualPrompt.contains("refer to that object by id only"));
+        assertTrue(visualPrompt.contains("angle between AP and l at P"));
         assertTrue(codegenSystemPrompt.contains("treat those mentions as object ids only"));
         assertFalse(codegenPrompt.contains("treat those mentions as object ids only"));
     }
 
     @Test
     void narrativePromptsRequireConciseMathStyleIds() {
-        String systemPrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
+        String visualPrompt = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra", null);
         String codegenSystemPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "geogebra");
         String codegenPrompt = NarrativePrompts.storyboardCodegenPrompt(
                 "{\"scenes\":[{\"entering_objects\":[{\"id\":\"aLabel\",\"kind\":\"label\",\"content\":\"A\"}]}]}",
                 "geogebra");
 
-        assertTrue(systemPrompt.contains("Keep object ids concise"));
-        assertTrue(systemPrompt.contains("Follow GeoGebra naming conventions"));
-        assertTrue(systemPrompt.contains("native names like `B'`"));
+        assertTrue(visualPrompt.contains("Keep object ids concise"));
+        assertTrue(visualPrompt.contains("Follow GeoGebra naming conventions"));
+        assertTrue(visualPrompt.contains("native names like `B'`"));
         assertTrue(codegenSystemPrompt.contains("naming source"));
         assertFalse(codegenPrompt.contains("naming source"));
     }
@@ -162,14 +162,14 @@ class PromptModulesTest {
 
     @Test
     void narrativePromptEnforcesStrictJsonLexicalRulesAcrossFields() {
-        String narrativePrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "manim");
+        String visualPrompt = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "manim", null);
 
-        assertTrue(narrativePrompt.contains("JSON lexical contract is strict"));
-        assertTrue(narrativePrompt.contains("Do not output markdown fences"));
-        assertTrue(narrativePrompt.contains("Do not output bare identifiers as JSON values"));
-        assertTrue(narrativePrompt.contains("Invalid: \"type\": create"));
-        assertTrue(narrativePrompt.contains("Valid: \"type\": \"create\""));
-        assertTrue(narrativePrompt.contains("Allowed unquoted literals are only numbers, true, false, and null"));
+        assertTrue(visualPrompt.contains("JSON lexical contract"));
+        assertTrue(visualPrompt.contains("Do not output markdown fences"));
+        assertTrue(visualPrompt.contains("Do not output bare identifiers as JSON values"));
+        assertTrue(visualPrompt.contains("Invalid: \"type\": create"));
+        assertTrue(visualPrompt.contains("Valid: \"type\": \"create\""));
+        assertTrue(visualPrompt.contains("Allowed unquoted literals are only numbers, true, false, and null"));
     }
 
     @Test
@@ -190,10 +190,10 @@ class PromptModulesTest {
 
     @Test
     void geogebraNarrativePromptGuidesFixedOverlayTowardTextualOverlays() {
-        String geogebraPrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
+        String geogebraVisualPrompt = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra", null);
 
-        assertTrue(geogebraPrompt.contains("Use `fixed_overlay` mainly for explanatory text"));
-        assertTrue(geogebraPrompt.contains("bullseye-style highlights"));
+        assertTrue(geogebraVisualPrompt.contains("Use `fixed_overlay` mainly for explanatory text"));
+        assertTrue(geogebraVisualPrompt.contains("bullseye-style highlights"));
     }
 
     @Test

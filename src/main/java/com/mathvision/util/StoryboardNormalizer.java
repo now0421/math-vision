@@ -14,8 +14,7 @@ import java.util.List;
 
 /**
  * Normalizes a {@link Storyboard} by ensuring all fields have safe defaults.
- * Extracted from NarrativeNode to be reusable across VisualDesignNode and
- * StoryboardValidationNode.
+ * Used by VisualDesignNode and StoryboardValidationNode.
  */
 public final class StoryboardNormalizer {
 
@@ -35,9 +34,6 @@ public final class StoryboardNormalizer {
         if (storyboard.getContinuityPlan() == null || storyboard.getContinuityPlan().isBlank()) {
             storyboard.setContinuityPlan(
                     "Maintain one stable layout and update existing objects instead of redrawing the whole scene.");
-        }
-        if (storyboard.getSummary() == null || storyboard.getSummary().isBlank()) {
-            storyboard.setSummary("Continuity-aware storyboard for the target lesson.");
         }
 
         List<String> globalRules = new ArrayList<>(storyboard.getGlobalVisualRules());

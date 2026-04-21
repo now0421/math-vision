@@ -99,8 +99,6 @@ class CodeGenerationNodeRoutingTest {
         assertTrue(aiClient.lastUserMessage.contains("\"layout_goal\""));
         assertTrue(aiClient.lastUserMessage.contains("Scene class name: MainScene"));
 
-        assertFalse(aiClient.lastUserMessage.contains("\"hook\""));
-        assertFalse(aiClient.lastUserMessage.contains("\"summary\""));
         assertFalse(aiClient.lastUserMessage.contains("attached Manim syntax manual"));
         assertFalse(aiClient.lastUserMessage.contains("ASCII identifiers only"));
     }
@@ -267,8 +265,6 @@ class CodeGenerationNodeRoutingTest {
 
     private static Storyboard buildStoryboard() {
         Storyboard storyboard = new Storyboard();
-        storyboard.setHook("Open with a motivating question.");
-        storyboard.setSummary("Show one scene clearly.");
         storyboard.setContinuityPlan("Keep the same title object alive.");
         storyboard.setGlobalVisualRules(List.of("Keep the title in the safe area."));
 

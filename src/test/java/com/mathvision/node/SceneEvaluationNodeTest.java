@@ -120,7 +120,6 @@ class SceneEvaluationNodeTest {
         assertTrue(request.getStoryboardJson().contains("\"goal\""));
         assertTrue(request.getStoryboardJson().contains("\"layout_goal\""));
         assertTrue(request.getStoryboardJson().contains("\"constraint_note\""));
-        assertTrue(request.getStoryboardJson().contains("\"summary\""));
     }
 
     @Test
@@ -258,8 +257,6 @@ class SceneEvaluationNodeTest {
         scene.getActions().add(new Narrative.StoryboardAction());
 
         Narrative.Storyboard storyboard = new Narrative.Storyboard();
-        storyboard.setHook("Demo hook");
-        storyboard.setSummary("Demo summary");
         storyboard.setContinuityPlan("Preserve the same diagram while repairing layout.");
         storyboard.getScenes().add(scene);
 

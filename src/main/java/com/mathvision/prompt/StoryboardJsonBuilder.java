@@ -24,11 +24,9 @@ public final class StoryboardJsonBuilder {
     public static final String EMPTY_STORYBOARD_JSON = "{\"scenes\":[]}";
 
     private static final class BuildOptions {
-        private final boolean includeNarrativeFields;
         private final boolean includeSceneFixFields;
 
-        private BuildOptions(boolean includeNarrativeFields, boolean includeSceneFixFields) {
-            this.includeNarrativeFields = includeNarrativeFields;
+        private BuildOptions(boolean includeSceneFixFields) {
             this.includeSceneFixFields = includeSceneFixFields;
         }
     }
@@ -39,7 +37,7 @@ public final class StoryboardJsonBuilder {
      * Builds a compact storyboard JSON string optimized for code generation.
      */
     public static String buildForCodegen(Storyboard storyboard) {
-        return build(storyboard, new BuildOptions(false, true));
+        return build(storyboard, new BuildOptions(true));
     }
 
     /**
@@ -48,7 +46,7 @@ public final class StoryboardJsonBuilder {
      * so the fixer can recover layout without breaking geometric constraints.
      */
     public static String buildForSceneEvaluationFix(Storyboard storyboard) {
-        return build(storyboard, new BuildOptions(true, true));
+        return build(storyboard, new BuildOptions(true));
     }
 
     private static String build(Storyboard storyboard, BuildOptions options) {
@@ -60,10 +58,6 @@ public final class StoryboardJsonBuilder {
         Storyboard mergedStoryboard = StoryboardPatchResolver.buildMergedStoryboard(storyboard);
         Storyboard source = mergedStoryboard != null ? mergedStoryboard : storyboard;
 
-        if (options.includeNarrativeFields) {
-            putNonBlank(root, "hook", source.getHook());
-            putNonBlank(root, "summary", source.getSummary());
-        }
         putNonBlank(root, "continuity_plan", source.getContinuityPlan());
         putTrimmedStringArray(root, "global_visual_rules", source.getGlobalVisualRules());
 
