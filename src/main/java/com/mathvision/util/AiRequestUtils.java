@@ -5,15 +5,106 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * Shared async AI request helpers for JSON-oriented tool calls.
+ * Includes unified 429 / rate-limit retry logic at the application layer.
  */
 public final class AiRequestUtils {
 
+    private static final int RATE_LIMIT_RETRIES = 3;
+    private static final long RATE_LIMIT_BASE_DELAY_MILLIS = 2_000L;
+    private static final long RATE_LIMIT_MAX_DELAY_MILLIS = 30_000L;
+
     private AiRequestUtils() {}
+
+    // ---- Rate-limit / 429 retry logic ----
+
+    /**
+     * Detects whether an exception indicates a rate-limit (429) or other
+     * transient server error that is worth retrying after a wait.
+     */
+    static boolean isRateLimitError(Throwable error) {
+        if (error == null) return false;
+        String msg = error.getMessage();
+        if (msg == null) return false;
+        String lower = msg.toLowerCase();
+        return lower.contains("429")
+                || lower.contains("rate limit")
+                || lower.contains("rate_limit")
+                || lower.contains("too many requests")
+                || lower.contains("resource exhausted")
+                || lower.contains("quota exceeded");
+    }
+
+    private static long rateLimitDelayMillis(int attempt) {
+        long delay = RATE_LIMIT_BASE_DELAY_MILLIS * (1L << attempt);
+        return Math.min(delay, RATE_LIMIT_MAX_DELAY_MILLIS);
+    }
+
+    /**
+     * Wraps a CompletableFuture supplier with rate-limit retry logic.
+     * If the future completes exceptionally with a 429 / rate-limit error,
+     * waits with exponential backoff and retries up to RATE_LIMIT_RETRIES times.
+     */
+    static <T> CompletableFuture<T> withRateLimitRetry(
+            Supplier<CompletableFuture<T>> futureSupplier,
+            Logger log,
+            String subject,
+            Runnable onApiCall) {
+        return doRateLimitRetry(futureSupplier, log, subject, onApiCall, 0);
+    }
+
+    private static <T> CompletableFuture<T> doRateLimitRetry(
+            Supplier<CompletableFuture<T>> futureSupplier,
+            Logger log,
+            String subject,
+            Runnable onApiCall,
+            int attempt) {
+        CompletableFuture<T> future = futureSupplier.get();
+        CompletableFuture<RetryOutcome<T>> handled = future.handle((T result, Throwable error) -> {
+            if (error == null) {
+                return new RetryOutcome<>(result, null, false);
+            }
+            Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
+            if (isRateLimitError(cause) && attempt < RATE_LIMIT_RETRIES) {
+                long delay = rateLimitDelayMillis(attempt);
+                log.warn("Rate limit hit for '{}' (attempt {}/{}), retrying in {} ms: {}",
+                        subject, attempt + 1, RATE_LIMIT_RETRIES + 1, delay, cause.getMessage());
+                onApiCall.run();
+                return new RetryOutcome<>(null, null, true);
+            }
+            return new RetryOutcome<>(null, error, false);
+        });
+        return handled.thenCompose((RetryOutcome<T> outcome) -> {
+            if (outcome.retry) {
+                long delay = rateLimitDelayMillis(attempt);
+                CompletableFuture<Void> wait = CompletableFuture.runAsync(() -> { },
+                        CompletableFuture.delayedExecutor(delay, TimeUnit.MILLISECONDS));
+                return wait.thenCompose(ignored ->
+                        doRateLimitRetry(futureSupplier, log, subject, onApiCall, attempt + 1));
+            }
+            if (outcome.error != null) {
+                return CompletableFuture.failedFuture(outcome.error);
+            }
+            return CompletableFuture.completedFuture(outcome.result);
+        });
+    }
+
+    private static final class RetryOutcome<T> {
+        final T result;
+        final Throwable error;
+        final boolean retry;
+        RetryOutcome(T result, Throwable error, boolean retry) {
+            this.result = result;
+            this.error = error;
+            this.retry = retry;
+        }
+    }
 
     public static CompletableFuture<JsonNode> requestJsonObjectAsync(AiClient aiClient,
                                                                      Logger log,
@@ -68,7 +159,9 @@ public final class AiRequestUtils {
         Predicate<JsonNode> validator = payloadValidator != null
                 ? payloadValidator
                 : AiRequestUtils::isUsablePayload;
-        return aiClient.chatWithToolsRawAsync(userPrompt, systemPrompt, toolsJson)
+        return withRateLimitRetry(
+                        () -> aiClient.chatWithToolsRawAsync(userPrompt, systemPrompt, toolsJson),
+                        log, subject, onApiCall)
                 .thenApply(rawResponse -> {
                     onApiCall.run();
                     return extractJsonObject(rawResponse, plainTextParser, validator);
@@ -83,7 +176,9 @@ public final class AiRequestUtils {
                     if (data != null) {
                         return CompletableFuture.completedFuture(data);
                     }
-                    return aiClient.chatAsync(userPrompt, systemPrompt)
+                    return withRateLimitRetry(
+                                    () -> aiClient.chatAsync(userPrompt, systemPrompt),
+                                    log, subject, onApiCall)
                             .thenApply(response -> {
                                 onApiCall.run();
                                 JsonNode parsed = parsePlainTextResponse(response, plainTextParser);
@@ -209,7 +304,9 @@ public final class AiRequestUtils {
         java.util.List<NodeConversationContext.Message> requestSnapshot =
                 snapshotWithUserMessage(snapshot, userPrompt, maxInputTokens);
 
-        return aiClient.chatWithToolsRawAsync(requestSnapshot, toolsJson)
+        return withRateLimitRetry(
+                        () -> aiClient.chatWithToolsRawAsync(requestSnapshot, toolsJson),
+                        log, subject, onApiCall)
                 .thenApply(rawResponse -> {
                     onApiCall.run();
                     JsonNode data = extractJsonObject(rawResponse, plainTextParser, validator);
@@ -229,7 +326,9 @@ public final class AiRequestUtils {
                         return CompletableFuture.completedFuture(result);
                     }
 
-                    return aiClient.chatAsync(requestSnapshot)
+                    return withRateLimitRetry(
+                                    () -> aiClient.chatAsync(requestSnapshot),
+                                    log, subject, onApiCall)
                             .thenApply(response -> {
                                 onApiCall.run();
                                 JsonNode parsed = parsePlainTextResponse(response, plainTextParser);
@@ -299,7 +398,9 @@ public final class AiRequestUtils {
         NodeConversationContext.trimSnapshotToFitBudget(
                 snapshot, context.getMaxInputTokens());
 
-        return aiClient.chatWithToolsRawAsync(snapshot, toolsJson)
+        return withRateLimitRetry(
+                        () -> aiClient.chatWithToolsRawAsync(snapshot, toolsJson),
+                        log, subject, onApiCall)
                 .thenApply(rawResponse -> {
                     onApiCall.run();
                     JsonNode data = extractJsonObject(rawResponse, plainTextParser, validator);
@@ -330,7 +431,9 @@ public final class AiRequestUtils {
                     NodeConversationContext.trimSnapshotToFitBudget(
                             fallbackSnapshot, context.getMaxInputTokens());
 
-                    return aiClient.chatAsync(fallbackSnapshot)
+                    return withRateLimitRetry(
+                                    () -> aiClient.chatAsync(fallbackSnapshot),
+                                    log, subject, onApiCall)
                             .thenApply(response -> {
                                 onApiCall.run();
                                 context.appendReservedTurn(
@@ -418,6 +521,42 @@ public final class AiRequestUtils {
             return payload != null ? payload.toPrettyString() : "";
         }
         return assistantText;
+    }
+
+    /**
+     * Simple chat request with rate-limit retry. For nodes that only need a
+     * plain text response (no tool calling / JSON parsing).
+     */
+    public static CompletableFuture<String> requestChatAsync(AiClient aiClient,
+                                                              Logger log,
+                                                              String subject,
+                                                              String userPrompt,
+                                                              String systemPrompt,
+                                                              Runnable onApiCall) {
+        return withRateLimitRetry(
+                        () -> aiClient.chatAsync(userPrompt, systemPrompt),
+                        log, subject, onApiCall)
+                .thenApply(response -> {
+                    onApiCall.run();
+                    return response;
+                });
+    }
+
+    /**
+     * Context-aware chat request with rate-limit retry.
+     */
+    public static CompletableFuture<String> requestChatAsync(AiClient aiClient,
+                                                              Logger log,
+                                                              String subject,
+                                                              NodeConversationContext conversationContext,
+                                                              Runnable onApiCall) {
+        return withRateLimitRetry(
+                        () -> aiClient.chatAsync(conversationContext),
+                        log, subject, onApiCall)
+                .thenApply(response -> {
+                    onApiCall.run();
+                    return response;
+                });
     }
 
     public static final class JsonObjectResult {

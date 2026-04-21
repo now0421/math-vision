@@ -13,6 +13,7 @@ import com.mathvision.prompt.NarrativePrompts;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
 import com.mathvision.service.FileOutputService;
+import com.mathvision.util.AiRequestUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.StoryboardNormalizer;
 import com.mathvision.util.StoryboardPatchResolver;
@@ -920,22 +921,15 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                     narrative.getTargetDescription(),
                     outputTarget);
 
-            JsonNode fixedData = aiClient.chatWithToolsRawAsync(
-                    fixPrompt.toString(), systemPrompt, ToolSchemas.STORYBOARD)
-                    .thenApply(raw -> {
-                        toolCalls++;
-                        JsonNode payload = JsonUtils.extractToolCallPayload(raw);
-                        if (payload == null) {
-                            String text = JsonUtils.extractBestEffortTextFromResponse(raw);
-                            if (text != null && !text.isBlank()) {
-                                String json = JsonUtils.extractJsonObject(text);
-                                if (json != null) {
-                                    return JsonUtils.parseTreeBestEffort(json);
-                                }
-                            }
-                        }
-                        return payload;
-                    }).join();
+            JsonNode fixedData = AiRequestUtils.requestJsonObjectAsync(
+                            aiClient,
+                            log,
+                            "storyboard-fix",
+                            fixPrompt.toString(),
+                            systemPrompt,
+                            ToolSchemas.STORYBOARD,
+                            () -> toolCalls++)
+                    .join();
 
             if (fixedData == null) {
                 return null;

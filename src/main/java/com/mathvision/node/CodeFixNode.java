@@ -17,6 +17,7 @@ import com.mathvision.prompt.StoryboardJsonBuilder;
 import com.mathvision.service.AiClient;
 import com.mathvision.service.FileOutputService;
 import com.mathvision.node.support.NodeSupport;
+import com.mathvision.util.AiRequestUtils;
 import com.mathvision.util.CodeValidationSupport;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.ConcurrencyUtils;
@@ -105,9 +106,11 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         try {
             log.info("=== Shared Code Fix: {} ===", request.getSource());
             conversationContext.addUserMessage(userPrompt);
-            String response = aiClient.chatAsync(conversationContext).join();
+            String response = AiRequestUtils.requestChatAsync(
+                            aiClient, log, "code-fix", conversationContext,
+                            () -> toolCalls++)
+                    .join();
             conversationContext.addAssistantMessage(response);
-            toolCalls++;
 
             String fixedCode = extractReturnedCode(response);
             if (fixedCode == null || fixedCode.isBlank()) {
