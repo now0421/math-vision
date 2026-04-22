@@ -14,6 +14,7 @@ import com.mathvision.prompt.CodeGenerationPrompts;
 import com.mathvision.prompt.RenderFixPrompts;
 import com.mathvision.prompt.SceneEvaluationPrompts;
 import com.mathvision.prompt.StoryboardJsonBuilder;
+import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
 import com.mathvision.service.FileOutputService;
 import com.mathvision.node.support.NodeSupport;
@@ -104,13 +105,15 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
 
         try {
             log.info("=== Shared Code Fix: {} ===", request.getSource());
-            conversationContext.addUserMessage(userPrompt);
             String fixedCode = AiRequestUtils.requestExtractedTextAsync(
                             aiClient,
                             log,
                             "code-fix",
                             conversationContext,
+                            userPrompt,
+                            resolveToolSchema(),
                             () -> toolCalls++,
+                            List.of(resolveGeneratedCodeFieldName()),
                             this::extractCodeFromText,
                             text -> text != null && !text.isBlank())
                     .join();
@@ -307,6 +310,16 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         return NodeSupport.isGeoGebraTarget(workflowConfig)
                 ? GeoGebraCodeUtils.extractCode(text)
                 : ManimCodeUtils.extractCode(text);
+    }
+
+    private String resolveToolSchema() {
+        return NodeSupport.isGeoGebraTarget(workflowConfig)
+                ? ToolSchemas.GEOGEBRA_CODE
+                : ToolSchemas.MANIM_CODE;
+    }
+
+    private String resolveGeneratedCodeFieldName() {
+        return NodeSupport.isGeoGebraTarget(workflowConfig) ? "geogebraCode" : "manimCode";
     }
 
 }
