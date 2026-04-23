@@ -42,6 +42,16 @@ class JsonUtilsTest {
     }
 
     @Test
+    void extractTextFromResponsePreservesUnicodeMathCharacters() {
+        ObjectNode response = JsonUtils.mapper().createObjectNode();
+        ArrayNode choices = response.putArray("choices");
+        ObjectNode message = choices.addObject().putObject("message");
+        message.put("content", "θ ∠ B′");
+
+        assertEquals("θ ∠ B′", JsonUtils.extractTextFromResponse(response));
+    }
+
+    @Test
     void extractToolCallPayloadSupportsStructuredArguments() {
         ObjectNode response = JsonUtils.mapper().createObjectNode();
         ArrayNode choices = response.putArray("choices");

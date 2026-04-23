@@ -29,6 +29,10 @@ public final class ManimCodeUtils {
 
     private static final Pattern RULE3_VIOLATION = Pattern.compile(
             "\\w+\\[\\d+\\]\\[\\d+:\\d+\\]");
+    private static final Pattern TEXT_CONSTRUCTOR_PATTERN = Pattern.compile(
+            "\\b(Text|Tex|MathTex)\\s*\\(\\s*(?:r|rf|fr)?([\"'])(.*?)\\2",
+            Pattern.DOTALL
+    );
 
     /**
      * Matches {@code .method_name(} where the method name is snake_case
@@ -146,6 +150,8 @@ public final class ManimCodeUtils {
                     + " (" + rule4Evidence + ")");
         }
 
+        violations.addAll(validateTextConstructorSemantics(manimCode));
+
         return violations;
     }
 
@@ -154,6 +160,10 @@ public final class ManimCodeUtils {
         violations.addAll(validateStructure(manimCode));
         violations.addAll(validateManimRules(manimCode));
         return violations;
+    }
+
+    public static List<String> validateRenderPreflight(String manimCode) {
+        return validateFull(manimCode);
     }
 
     public static boolean hasMainSceneClass(String manimCode) {
@@ -188,5 +198,116 @@ public final class ManimCodeUtils {
             }
         }
         return null;
+    }
+
+    static List<String> validateTextConstructorSemantics(String manimCode) {
+        List<String> issues = new ArrayList<>();
+        if (manimCode == null || manimCode.isBlank()) {
+            return issues;
+        }
+
+        Matcher matcher = TEXT_CONSTRUCTOR_PATTERN.matcher(manimCode);
+        int line = 1;
+        int previousIndex = 0;
+        while (matcher.find()) {
+            line += countNewlines(manimCode, previousIndex, matcher.start());
+            previousIndex = matcher.start();
+
+            String constructor = matcher.group(1);
+            String content = matcher.group(3);
+            String normalizedContent = content != null ? content.trim() : "";
+            if (normalizedContent.isBlank()) {
+                continue;
+            }
+
+            if ("Text".equals(constructor) && looksLikeLatexMath(normalizedContent)) {
+                issues.add("Text constructor mismatch: math-like content should not use Text"
+                        + " (line " + line + ": " + summarizeSnippet(normalizedContent) + ")");
+                continue;
+            }
+
+            if ("Tex".equals(constructor) && looksLikeMathModeContent(normalizedContent)) {
+                issues.add("Tex constructor mismatch: math-mode content should use MathTex or explicit math mode"
+                        + " (line " + line + ": " + summarizeSnippet(normalizedContent) + ")");
+                continue;
+            }
+
+            if ("MathTex".equals(constructor) && looksLikePlainSentence(normalizedContent)) {
+                issues.add("MathTex constructor mismatch: plain-language sentence should not use MathTex"
+                        + " (line " + line + ": " + summarizeSnippet(normalizedContent) + ")");
+            }
+        }
+
+        return issues;
+    }
+
+    private static int countNewlines(String text, int start, int end) {
+        int count = 0;
+        for (int i = Math.max(0, start); i < Math.min(text.length(), end); i++) {
+            if (text.charAt(i) == '\n') {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static boolean looksLikeLatexMath(String content) {
+        return looksLikeMathModeContent(content);
+    }
+
+    private static boolean looksLikeMathModeContent(String content) {
+        // Structural math notation: superscripts, subscripts
+        if (content.contains("^") || content.contains("_")) return true;
+        // LaTeX control sequences: \ + alphabetic chars (matches ALL LaTeX commands)
+        // Exclude Python escape sequences ONLY when the backslash is followed by exactly
+        // one of the escape chars and NOT more letters (e.g. \n is Python, \name is LaTeX)
+        if (content.matches(".*\\\\[a-zA-Z]{2,}.*")) return true;
+        if (content.matches(".*\\\\[a-zA-Z].*") && !content.matches(".*\\\\[ntrfu0](?![a-zA-Z]).*")) return true;
+        // Math-mode delimiter
+        if (content.contains("$")) return true;
+        // Unicode math symbol ranges:
+        // U+2200-U+22FF = Mathematical Operators
+        // U+0391-U+03C9 = Greek letters
+        // U+2070-U+209F = Superscripts and Subscripts
+        if (content.matches(".*[\\u2200-\\u22FF\\u0391-\\u03C9\\u2070-\\u209F].*")) return true;
+        return false;
+    }
+
+    /**
+     * Public structural math indicator check, reused by ErrorSummarizer
+     * for LaTeX offending token extraction.
+     */
+    public static boolean containsMathIndicator(String token) {
+        if (token.contains("^") || token.contains("_") || token.contains("*")) return true;
+        // LaTeX command (2+ letters after backslash), or 1 letter that's not a Python escape
+        if (token.matches(".*\\\\[a-zA-Z]{2,}.*")) return true;
+        if (token.matches(".*\\\\[a-zA-Z].*") && !token.matches(".*\\\\[ntrfu0](?![a-zA-Z]).*")) return true;
+        if (token.matches(".*[\\u2200-\\u22FF\\u0391-\\u03C9].*")) return true;
+        if (token.contains("′") || token.contains("'")) return true;
+        return false;
+    }
+
+    private static boolean looksLikePlainSentence(String content) {
+        if (looksLikeMathModeContent(content)) {
+            return false;
+        }
+        // Brace grouping is a strong LaTeX structural indicator
+        if (content.contains("{")) {
+            return false;
+        }
+        String normalized = content.replaceAll("\\s+", " ").trim();
+        if (normalized.length() < 12) {
+            return false;
+        }
+        String[] words = normalized.split(" ");
+        return words.length >= 3 && normalized.matches(".*[A-Za-z]{3,}.*");
+    }
+
+    private static String summarizeSnippet(String text) {
+        String normalized = text.replaceAll("\\s+", " ").trim();
+        if (normalized.length() <= 80) {
+            return normalized;
+        }
+        return normalized.substring(0, 80) + "...";
     }
 }

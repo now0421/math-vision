@@ -5,6 +5,25 @@ package com.mathvision.prompt;
  */
 public final class CodeEvaluationPrompts {
 
+    private static final String REVIEW_OUTPUT_SCHEMA =
+            "Output format:\n"
+                    + "Return a JSON object with this shape:\n"
+                    + "{\n"
+                    + "  \"approved_for_render\": \"boolean, whether the code is safe enough to proceed to render\",\n"
+                    + "  \"layout_score\": \"integer 1-10, quality of overall layout and spatial organization\",\n"
+                    + "  \"continuity_score\": \"integer 1-10, how well object reuse and scene continuity match the storyboard\",\n"
+                    + "  \"pacing_score\": \"integer 1-10, how well animation timing matches the storyboard narration and beat structure\",\n"
+                    + "  \"clutter_risk\": \"integer 1-10, risk that the scene feels crowded or visually overloaded\",\n"
+                    + "  \"likely_offscreen_risk\": \"integer 1-10, risk that important content may drift out of the readable frame\",\n"
+                    + "  \"summary\": \"string, concise overall judgment of code quality against the storyboard\",\n"
+                    + "  \"strengths\": [\"string, specific strength that should be preserved\"],\n"
+                    + "  \"blocking_issues\": [\"string, issue serious enough to block confident render approval\"],\n"
+                    + "  \"revision_directives\": [\"string, concrete change request for the next revision\"]\n"
+                    + "}\n\n"
+                    + "Scores use 1 to 10 integers.\n"
+                    + SystemPrompts.TOOL_CALL_HINT
+                    + SystemPrompts.JSON_ONLY_OUTPUT;
+
     private static final String REVIEW_SYSTEM_MANIM =
             "You are a senior Manim code reviewer.\n"
                     + "Your job is NOT to debug runtime errors.\n"
@@ -29,31 +48,9 @@ public final class CodeEvaluationPrompts {
                     + "- Penalize scenes that keep too many active objects at full strength, lack breathing room after key reveals, or leave temporary annotations lingering without cleanup.\n"
                     + "- Penalize missing subtitle-ready beats, unreadable text size, edge-clipped text, or busy backgrounds without readability treatment when those issues are likely from the code.\n\n"
                     + "Production quality checks:\n"
-                    + "- Check that all `Text(...)` and `MarkupText(...)` calls use a monospace font.\n"
-                    + "- Check that no `font_size` value is below 18.\n"
-                    + "- Check that `.to_edge()` calls use `buff >= 0.5`.\n"
-                    + "- Check that `self.camera.background_color` is set in every scene.\n"
-                    + "- Check that color values use named constants instead of hardcoded hex strings inside scene methods.\n"
-                    + "- Check that significant animations have `subcaption=` or a preceding `self.add_subcaption(...)` call.\n"
-                    + "- Check that long text strings have width clamping or an explicit `set_width` guard.\n"
-                    + "- Check that visible text replacement uses `ReplacementTransform` or `FadeTransform` rather than overlapping `Write` calls.\n\n"
-                    + "Output format:\n"
-                    + "Return a JSON object with this shape:\n"
-                    + "{\n"
-                    + "  \"approved_for_render\": \"boolean, whether the code is safe enough to proceed to render\",\n"
-                    + "  \"layout_score\": \"integer 1-10, quality of overall layout and spatial organization\",\n"
-                    + "  \"continuity_score\": \"integer 1-10, how well object reuse and scene continuity match the storyboard\",\n"
-                    + "  \"pacing_score\": \"integer 1-10, how well animation timing matches the storyboard narration and beat structure\",\n"
-                    + "  \"clutter_risk\": \"integer 1-10, risk that the scene feels crowded or visually overloaded\",\n"
-                    + "  \"likely_offscreen_risk\": \"integer 1-10, risk that important content may drift out of the readable frame\",\n"
-                    + "  \"summary\": \"string, concise overall judgment of code quality against the storyboard\",\n"
-                    + "  \"strengths\": [\"string, specific strength that should be preserved\"],\n"
-                    + "  \"blocking_issues\": [\"string, issue serious enough to block confident render approval\"],\n"
-                    + "  \"revision_directives\": [\"string, concrete change request for the next revision\"]\n"
-                    + "}\n\n"
-                    + "Scores use 1 to 10 integers.\n"
-                    + SystemPrompts.TOOL_CALL_HINT
-                    + SystemPrompts.JSON_ONLY_OUTPUT;
+                    + "- Verify compliance with the Manim text, readability, and code hygiene rules above.\n"
+                    + "- Specifically flag: non-monospace fonts, font_size < 18, buff < 0.5, missing background_color, hardcoded hex colors, missing subcaptions, text width overflow, overlapping Write calls.\n\n"
+                    + REVIEW_OUTPUT_SCHEMA;
 
     private static final String REVIEW_SYSTEM_GEOGEBRA =
             "You are a senior GeoGebra construction reviewer.\n"
@@ -71,23 +68,7 @@ public final class CodeEvaluationPrompts {
                     + "- Penalize scripts that define helper or cloned objects but fail to include them in the scene visibility progression.\n"
                     + "- A later geometry-based stage will inspect rendered geometry for actual overlap/offscreen issues. Do not duplicate that stage.\n"
                     + "- GeoGebra is interactive, so do not over-penalize pure zoomability issues. Focus on likely initial-view readability and storyboard fidelity.\n\n"
-                    + "Output format:\n"
-                    + "Return a JSON object with this shape:\n"
-                    + "{\n"
-                    + "  \"approved_for_render\": \"boolean, whether the code is safe enough to proceed to render\",\n"
-                    + "  \"layout_score\": \"integer 1-10, quality of overall layout and storyboard realization\",\n"
-                    + "  \"continuity_score\": \"integer 1-10, how well object reuse and scene continuity match the storyboard\",\n"
-                    + "  \"pacing_score\": \"integer 1-10, how well scene progression matches the storyboard beat structure\",\n"
-                    + "  \"clutter_risk\": \"integer 1-10, risk that the construction feels crowded or visually overloaded\",\n"
-                    + "  \"likely_offscreen_risk\": \"integer 1-10, risk that important content is initially framed poorly or reads as out of place\",\n"
-                    + "  \"summary\": \"string, concise overall judgment of code quality against the storyboard\",\n"
-                    + "  \"strengths\": [\"string, specific strength that should be preserved\"],\n"
-                    + "  \"blocking_issues\": [\"string, issue serious enough to block confident render approval\"],\n"
-                    + "  \"revision_directives\": [\"string, concrete change request for the next revision\"]\n"
-                    + "}\n\n"
-                    + "Scores use 1 to 10 integers.\n"
-                    + SystemPrompts.TOOL_CALL_HINT
-                    + SystemPrompts.JSON_ONLY_OUTPUT;
+                    + REVIEW_OUTPUT_SCHEMA;
 
     private static final String REVISION_SYSTEM_MANIM =
             "You are a Manim code revision specialist.\n"

@@ -20,6 +20,10 @@ public class CodeFixRequest {
     private String staticAnalysisJson;
     private String reviewJson;
     private String sceneEvaluationJson;
+    private String errorContextMode;
+    private String inputTextHealth;
+    private int staticAuditIssueCount;
+    private String staticAuditSummary;
     private List<String> fixHistory = new ArrayList<>();
 
     public CodeFixSource getSource() { return source; }
@@ -59,6 +63,20 @@ public class CodeFixRequest {
     public void setSceneEvaluationJson(String sceneEvaluationJson) {
         this.sceneEvaluationJson = sceneEvaluationJson;
     }
+
+    public String getErrorContextMode() { return errorContextMode; }
+    public void setErrorContextMode(String errorContextMode) { this.errorContextMode = errorContextMode; }
+
+    public String getInputTextHealth() { return inputTextHealth; }
+    public void setInputTextHealth(String inputTextHealth) { this.inputTextHealth = inputTextHealth; }
+
+    public int getStaticAuditIssueCount() { return staticAuditIssueCount; }
+    public void setStaticAuditIssueCount(int staticAuditIssueCount) {
+        this.staticAuditIssueCount = staticAuditIssueCount;
+    }
+
+    public String getStaticAuditSummary() { return staticAuditSummary; }
+    public void setStaticAuditSummary(String staticAuditSummary) { this.staticAuditSummary = staticAuditSummary; }
 
     public List<String> getFixHistory() { return fixHistory; }
     public void setFixHistory(List<String> fixHistory) {

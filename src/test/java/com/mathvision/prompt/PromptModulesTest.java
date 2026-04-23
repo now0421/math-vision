@@ -218,12 +218,15 @@ class PromptModulesTest {
                 "from manim import *\n\nclass Demo(Scene):\n    pass",
                 "Traceback (most recent call last):\nValueError: invalid point data",
                 "{\"scenes\":[]}",
-                java.util.List.of()
+                java.util.List.of(),
+                null,
+                null
         );
 
         assertTrue(prompt.startsWith("Manim render failure detected.\nError type: TYPE_VALUE"));
         assertTrue(prompt.contains("Primary error signature: ValueError: invalid point data"));
         assertTrue(prompt.indexOf("Error type: TYPE_VALUE") < prompt.indexOf("```python"));
-        assertTrue(prompt.indexOf("Error output:") < prompt.indexOf("```python"));
+        assertTrue(prompt.indexOf("Error summary:") < prompt.indexOf("```python"));
+        assertTrue(prompt.contains("Treat the error summary as a routing hint"));
     }
 }

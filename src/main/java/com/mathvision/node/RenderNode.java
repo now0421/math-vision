@@ -19,6 +19,7 @@ import com.mathvision.service.ManimRendererService.RenderAttemptResult;
 import com.mathvision.util.ErrorSummarizer;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.ManimCodeUtils;
+import com.mathvision.util.TextHealthDiagnostics;
 import com.mathvision.util.TimeUtils;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
@@ -29,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -189,6 +191,28 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         int attemptNumber = retryState.getAttempts() + 1;
         log.info("  Render attempt {}/{}", attemptNumber, maxRetries + 1);
 
+        List<String> preflightIssues = ManimCodeUtils.validateRenderPreflight(currentCode);
+        if (!preflightIssues.isEmpty() && attemptNumber < maxRetries + 1) {
+            retryState.setAttempts(attemptNumber);
+            retryState.previousErrorSignature = ErrorSummarizer.buildRenderFixSummary(String.join("\n", preflightIssues));
+            retryState.setRequestFix(true);
+            retryState.pendingFocusedError = retryState.previousErrorSignature;
+            retryState.pendingStaticAuditIssues = new ArrayList<>(preflightIssues);
+            log.warn("  Render preflight found {} issues before Manim execution: {}",
+                    preflightIssues.size(), retryState.previousErrorSignature);
+            return failureResult(
+                    currentCode,
+                    sceneName,
+                    attemptNumber,
+                    retryState.pendingFocusedError,
+                    null,
+                    null,
+                    retryState.getFixToolCalls(),
+                    start,
+                    false
+            );
+        }
+
         RenderAttemptResult renderAttempt = renderer.render(currentCode, sceneName, quality, outputDir);
         String geometryPath = renderAttempt.geometryPath();
 
@@ -225,7 +249,8 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
                     String signature = ErrorSummarizer.summarizeSignature(focusedError);
                     log.warn("  Render timed out but stderr contains a fixable error: {}", signature);
                     retryState.setRequestFix(true);
-                    retryState.pendingFocusedError = focusedError;
+                    retryState.pendingFocusedError = ErrorSummarizer.buildRenderFixSummary(focusedError);
+                    retryState.pendingStaticAuditIssues = new ArrayList<>(ManimCodeUtils.validateRenderPreflight(currentCode));
                     return failureResult(
                             currentCode,
                             sceneName,
@@ -285,10 +310,11 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         }
 
         String focusedError = ErrorSummarizer.extractFocusedError(renderAttempt.stdout(), renderAttempt.stderr());
-        String errorSignature = ErrorSummarizer.summarizeSignature(focusedError);
+        String errorSignature = ErrorSummarizer.buildRenderFixSummary(focusedError);
         retryState.previousErrorSignature = errorSignature;
         retryState.setRequestFix(true);
-        retryState.pendingFocusedError = focusedError;
+        retryState.pendingFocusedError = errorSignature;
+        retryState.pendingStaticAuditIssues = new ArrayList<>(ManimCodeUtils.validateRenderPreflight(currentCode));
         return failureResult(
                 currentCode,
                 sceneName,
@@ -372,7 +398,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
             );
         }
 
-        if (isGeoGebraEnvironmentError(error)) {
+        if (ErrorSummarizer.isEnvironmentError(error)) {
             log.warn("  GeoGebra validation failure looks environmental, stopping retries");
             return failureResult(
                     preparedCode,
@@ -444,6 +470,11 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         request.setStoryboardJson(input.narrative() != null && input.narrative().hasStoryboard()
                 ? StoryboardJsonBuilder.buildForCodegen(input.narrative().getStoryboard())
                 : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
+        request.setErrorContextMode("summary_signature");
+        request.setInputTextHealth(TextHealthDiagnostics.summarize(
+                request.getErrorReason() + "\n" + request.getStoryboardJson()));
+        request.setStaticAuditIssueCount(retryState.pendingStaticAuditIssues.size());
+        request.setStaticAuditSummary(String.join(" | ", retryState.pendingStaticAuditIssues));
         request.setFixHistory(new ArrayList<>(retryState.fixHistory));
         return request;
     }
@@ -493,23 +524,6 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         return result;
     }
 
-    private boolean isGeoGebraEnvironmentError(String error) {
-        if (error == null || error.isBlank()) {
-            return true;
-        }
-
-        String normalized = error.toLowerCase(java.util.Locale.ROOT);
-        return normalized.contains("failed to launch chromium")
-                || normalized.contains("timeouterror")
-                || normalized.contains("timeout")
-                || normalized.contains("timed out")
-                || normalized.contains("did not become ready within")
-                || normalized.contains("install chromium")
-                || normalized.contains("configured browser executable does not exist")
-                || normalized.contains("output directory is unavailable")
-                || normalized.contains("no executable geogebra commands were found");
-    }
-
     private boolean isGeoGebraTarget(RenderInput input) {
         if (input == null) {
             return false;
@@ -534,7 +548,30 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
 
         String errorSignature = ErrorSummarizer.summarizeSignature(result.getErrorReason());
         String outcome;
-        if (result.isApplied()) {
+        CodeFixResult.FixOutcome fixOutcome = result.getOutcome();
+        if (fixOutcome != null) {
+            switch (fixOutcome) {
+                case FIXED:
+                    outcome = "fixed cleanly";
+                    break;
+                case APPLIED_WITH_ISSUES:
+                    outcome = "applied but " + result.getPostFixStaticAuditIssueCount()
+                            + " static issues remain";
+                    break;
+                case UNCHANGED:
+                    outcome = "code unchanged";
+                    break;
+                case INPUT_CORRUPTED:
+                    outcome = "input text had encoding issues";
+                    break;
+                case FAILED:
+                    outcome = "fix request failed";
+                    break;
+                default:
+                    outcome = "unknown outcome";
+                    break;
+            }
+        } else if (result.isApplied()) {
             outcome = "applied code change";
         } else {
             String failureReason = result.getFailureReason();
@@ -576,6 +613,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         String previousErrorSignature;
         final java.util.List<String> fixHistory = new ArrayList<>();
         String pendingFocusedError;
+        List<String> pendingStaticAuditIssues = new ArrayList<>();
 
         @Override
         public void reset() {
@@ -583,6 +621,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
             previousErrorSignature = null;
             fixHistory.clear();
             pendingFocusedError = null;
+            pendingStaticAuditIssues = new ArrayList<>();
         }
     }
 }

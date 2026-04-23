@@ -38,18 +38,12 @@ public final class CodeGenerationPrompts {
                     + "- " + SystemPrompts.ANGLE_MARKER_RULES
                     + "- Do not place a free-floating arc by shifting/rotating it near the vertex, and do not accidentally mark a large exterior angle when the scene intends two small equal angles.\n"
                     + "- Treat storyboard `geometry_constraints` and object `constraint_note` fields as hard mathematical invariants.\n"
+                    + "- " + SystemPrompts.MANIM_TEXT_CONSTRUCTOR_MAPPING
                     + "- " + SystemPrompts.GEOMETRY_CONSTRAINT_RULES + "\n"
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_FULL + "\n"
-                    + "Additional storyboard field rules:\n"
-                    + "- `continuity_plan` and `global_visual_rules` define global constraints that should shape the whole file.\n"
-                    + "- `entering_objects[].id` is a stable visual identity. Reuse the same mobject variable for that id whenever the object persists or is transformed later.\n"
-                    + "- `persistent_objects` entries describe objects that stay on screen from earlier beats; reuse the same mobject unless replacement is unavoidable.\n"
-                    + "- `exiting_objects` entries are id-only removals; make those objects leave the scene clearly when appropriate.\n"
-                    + "- `actions` are the main execution plan. Respect their order, targets, and visible intent when deciding the animation sequence and beat timing.\n"
+                    + "Additional code generation rules:\n"
                     + "- `entering_objects[].content` tells you what must be shown.\n"
                     + "- When `content`, `dependency_note`, or related fields mention another object, treat those mentions as object ids only rather than as repeated type declarations.\n"
-                    + "- `notes_for_codegen` are implementation hints and should be followed unless they conflict with Manim correctness.\n"
-                    + "- `step_refs`, `title`, and `narration` explain the teaching purpose of the beat and should help you choose clear animation structure.\n"
                     + "- If a storyboard object uses `behavior = follows_anchor`, `derived`, or an equivalent dependency note, implement that relationship continuously with the appropriate Manim mechanism.\n\n"
                     + "Continuity and object-management rules:\n"
                     + "- Build a stable object registry in local variables or dictionaries when useful so ids can be reused across beats.\n"
@@ -199,6 +193,7 @@ public final class CodeGenerationPrompts {
                         + "Problems found:\n%s\n\n"
                         + "Rewrite the FULL code so it satisfies all validation rules while preserving the teaching goal.\n"
                         + "If storyboard geometry constraints or derived-object definitions are present, preserve them while fixing validation issues.\n"
+                        + "Apply text constructor mapping consistently across the file: `math_text -> MathTex`, `plain_text -> Text`, and avoid `Tex` except for explicit non-math LaTeX text.\n"
                         + "Keep `%s` as the exact scene class name.\n"
                         + "Return ONLY the full Python code block.",
                 storyboardBlock, sceneName, generatedCode, problemList, sceneName);
@@ -264,6 +259,7 @@ public final class CodeGenerationPrompts {
                         + "- Include the full `def %s(self):` signature and all code inside.\n"
                         + "- Use variables and objects established in earlier scene methods via `self` if needed.\n"
                         + "- Follow the storyboard actions, entering/persistent/exiting objects exactly.\n"
+                        + "- Respect storyboard text semantics strictly: `math_text` means `MathTex(...)`, `plain_text` means `Text(...)`, and avoid `Tex(...)` unless the scene explicitly needs non-math LaTeX text.\n"
                         + "- Return the method code via the write_scene_code tool.",
                 methodName, sceneIndex + 1, totalScenes,
                 sceneJson, methodName, methodName);

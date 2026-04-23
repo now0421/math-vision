@@ -13,19 +13,21 @@ public final class RenderFixPrompts {
     private static final String MANIM_SYSTEM =
             "You are a Manim Community debugging expert.\n"
                     + "Fix the code so it renders successfully.\n"
-                    + "Preserve the original scene class name and intended animation meaning.\n"
-                + "Use root-cause-first repair: identify the first causal traceback error, fix it, then sweep structurally similar code paths in the same file.\n"
+                    + "Preserve the original scene class name and intended animation meaning.\n\n"
+                    + "Mandatory rules:\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + SystemPrompts.MANIM_CODE_HYGIENE_RULES
-                + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
+                    + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
                     + "Naming rules:\n"
                     + SystemPrompts.MANIM_NAMING_RULES
                     + "Color rules:\n"
                     + SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS
-                    + "Fix the reported root cause systematically, and also correct nearby Python/Manim runtime mistakes.\n"
-                    + "Do not store mobjects across scene methods via `self`, do not hardcode MathTex numeric indexing, and keep layout inside x[-7,7], y[-4,4].\n"
                     + SystemPrompts.ANGLE_MARKER_RULES
-                    + "Do not break mathematical construction constraints while fixing render issues; derived points should remain derived from their source geometry.\n\n"
+                    + "Do not break mathematical construction constraints while fixing render issues; derived points should remain derived from their source geometry.\n"
+                    + "Do not store mobjects across scene methods via `self`, do not hardcode MathTex numeric indexing, and keep layout inside x[-7,7], y[-4,4].\n\n"
+                    + "Fix strategy:\n"
+                    + "Use root-cause-first repair: identify the first causal traceback error, fix it, then sweep structurally similar code paths in the same file.\n"
+                    + "Fix the reported root cause systematically, and also correct nearby Python/Manim runtime mistakes.\n\n"
                     + SystemPrompts.PYTHON_CODE_OUTPUT_FORMAT;
 
     private static final String GEOGEBRA_SYSTEM =
@@ -67,17 +69,15 @@ public final class RenderFixPrompts {
     }
 
     public static String userPrompt(String generatedCode, String error) {
-        return userPrompt(generatedCode, error, null, Collections.emptyList());
-    }
-
-    public static String userPrompt(String generatedCode, String error, List<String> fixHistory) {
-        return userPrompt(generatedCode, error, null, fixHistory);
+        return userPrompt(generatedCode, error, null, Collections.emptyList(), null, null);
     }
 
     public static String userPrompt(String generatedCode,
                                     String error,
                                     String storyboardJson,
-                                    List<String> fixHistory) {
+                                    List<String> fixHistory,
+                                    String errorContextMode,
+                                    String staticAuditSummary) {
         String errorType = formatErrorType(error);
         String errorSignature = ErrorSummarizer.summarizeSignature(error);
         StringBuilder sb = new StringBuilder();
@@ -86,32 +86,29 @@ public final class RenderFixPrompts {
         if (!errorSignature.isBlank()) {
             sb.append("Primary error signature: ").append(errorSignature).append("\n");
         }
+        if (errorContextMode != null && !errorContextMode.isBlank()) {
+            sb.append("Error context mode: ").append(errorContextMode).append("\n");
+        }
         sb.append("\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank()
                         ? "Compact storyboard JSON (source of truth):\n```json\n"
                         + storyboardJson + "\n```\n\n"
                         : "")
-                .append("Error output:\n```\n").append(error).append("\n```\n\n")
+                .append(staticAuditSummary != null && !staticAuditSummary.isBlank()
+                        ? "Static preflight findings:\n```\n" + staticAuditSummary + "\n```\n\n"
+                        : "")
+                .append("Error summary:\n```\n").append(error).append("\n```\n\n")
                 .append("The following Manim code failed to render:\n\n")
                 .append("```python\n").append(generatedCode).append("\n```\n\n")
-                .append("Please fix the reported error and also inspect nearby and structurally similar code paths for the same root cause.\n")
-                .append("Prioritize fixing the earliest traceback cause instead of patching only downstream timeout symptoms.\n")
+                .append("You MUST audit the ENTIRE file. The error type and signature below are routing hints only — the actual bugs may be anywhere with the same structural pattern. Do NOT limit your fix to the line mentioned in the traceback.\n")
+                .append("Treat the error summary as a routing hint, not as a single-line patch target.\n")
+                .append("Sweep all `Text(...)`, `Tex(...)`, and `MathTex(...)` calls whenever the error category suggests text-constructor or LaTeX misuse.\n")
+                .append("Prioritize the earliest root-cause category instead of patching downstream symptoms.\n")
                 .append("If the storyboard encodes geometric constraints or derived constructions, preserve them while fixing the render failure.\n")
                 .append("Also proactively check for common Python and Manim runtime mistakes.\n")
                 .append("Remember: Return ONLY the single Python code block containing the full file. No explanation.\n");
 
-        if (fixHistory != null && !fixHistory.isEmpty()) {
-            sb.append("\nPrevious fix attempts to avoid repeating:\n");
-            for (int i = 0; i < fixHistory.size(); i++) {
-                String item = fixHistory.get(i);
-                if (item == null) {
-                    continue;
-                }
-                sb.append("  Attempt ").append(i + 1).append(": ")
-                        .append(item.length() > 100 ? item.substring(0, 100) + "..." : item)
-                        .append("\n");
-            }
-        }
+        PromptUtils.appendFixHistory(sb, fixHistory);
         return sb.toString();
     }
 
@@ -140,18 +137,7 @@ public final class RenderFixPrompts {
                 .append("If you rename an identifier or add a new one, also update the commented `SCENE_BUTTONS` script so it stays consistent with the final command script.\n")
                 .append("Remember: Return ONLY the single fenced `geogebra` code block. No explanation.\n");
 
-        if (fixHistory != null && !fixHistory.isEmpty()) {
-            sb.append("\nPrevious fix attempts to avoid repeating:\n");
-            for (int i = 0; i < fixHistory.size(); i++) {
-                String item = fixHistory.get(i);
-                if (item == null) {
-                    continue;
-                }
-                sb.append("  Attempt ").append(i + 1).append(": ")
-                        .append(item.length() > 100 ? item.substring(0, 100) + "..." : item)
-                        .append("\n");
-            }
-        }
+        PromptUtils.appendFixHistory(sb, fixHistory);
         return sb.toString();
     }
 

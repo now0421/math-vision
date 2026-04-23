@@ -355,11 +355,13 @@ public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
 
     protected static String extractTextContent(JsonNode root) {
         String content = JsonUtils.extractTextFromResponse(root);
+        AiTraceLogger.logTextSample("ai-response", "content_text", content);
         return content == null || content.isBlank() ? null : content;
     }
 
     protected static String extractReasoningContent(JsonNode root) {
         String reasoning = JsonUtils.extractReasoningTextFromResponse(root);
+        AiTraceLogger.logTextSample("ai-response", "reasoning_text", reasoning);
         return reasoning == null || reasoning.isBlank() ? null : reasoning;
     }
 

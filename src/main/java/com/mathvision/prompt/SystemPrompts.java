@@ -8,33 +8,24 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Shared workflow prompt helpers and prompt-resource loading.
+ * Shared workflow prompt constants and resource-loading helpers.
  */
 public final class SystemPrompts {
 
+    // ========================================================================
+    // Resource paths
+    // ========================================================================
+
     private static final String MANIM_SYNTAX_MANUAL_RESOURCE = "llm/manim_syntax_manual.md";
     private static final String MANIM_STYLE_REFERENCE_RESOURCE = "llm/manim_style_reference.md";
-        private static final String GEOGEBRA_SYNTAX_MANUAL_RESOURCE = "llm/geogebra_syntax_manual.md";
+    private static final String GEOGEBRA_SYNTAX_MANUAL_RESOURCE = "llm/geogebra_syntax_manual.md";
     private static final String GEOGEBRA_STYLE_REFERENCE_RESOURCE = "llm/geogebra_style_reference.md";
 
     // ========================================================================
-    // Shared prompt fragments for deduplication
+    // Storyboard field guides
     // ========================================================================
 
-    /** Layout frame rules: safe area bounds and element count guidance. */
-    public static final String LAYOUT_FRAME_RULES =
-            "Keep important content within x[-7,7] and y[-4,4].\n"
-                    + "Leave about 1 unit of edge margin.\n"
-                    + "Usually keep each step to about 7 to 10 main visual elements unless several are quiet carry-over context.\n";
-
-    /** Manim-specific layout and readability budget derived from production planning rules. */
-    public static final String MANIM_LAYOUT_FRAME_RULES =
-            "Keep important content within x[-6.5,6.5] and y[-3.5,3.5] whenever possible.\n"
-                    + "Reserve a readable top title band and a bottom note band instead of packing the whole frame.\n"
-                    + "Keep simultaneously active foreground elements around 6 to 8; brief bursts up to about 10 are acceptable when staging and hierarchy stay clear.\n"
-                    + "Leave a meaningful empty zone for overlays, captions, or upcoming reveals.\n";
-
-    /** Storyboard field interpretation guide — core fields for code generation and evaluation stages. */
+    /** Core fields for code generation and evaluation stages. */
     public static final String STORYBOARD_FIELD_GUIDE_CORE =
             "How to interpret the storyboard fields:\n"
                     + "- `behavior`: dependency semantics — `static` means independently defined, `derived` means defined from other geometry, `follows_anchor` means attached to `anchor_id`, `fixed_overlay` means screen-space overlay.\n"
@@ -44,7 +35,7 @@ public final class SystemPrompts {
                     + "- `placement`: structured scene-level placement patch with `coordinate_space` plus optional x/y/z `value` or `min/max`; use it for coordinates or allowed ranges, not the full geometric definition.\n"
                     + "- `anchor_id`: id of the object this one should stay attached to.\n";
 
-    /** Storyboard field interpretation guide — extended fields for object lifecycle and actions. */
+    /** Extended fields for object lifecycle and actions. */
     public static final String STORYBOARD_FIELD_GUIDE_EXTENDED =
             "- `entering_objects`: scene patches for newly entering objects; raw storyboard entries should contain `id` plus optional `placement`/`style` only.\n"
                     + "- `persistent_objects`: scene patches for carried objects; raw storyboard entries should contain `id` plus optional changed `placement`/`style` only.\n"
@@ -55,17 +46,13 @@ public final class SystemPrompts {
                     + "- `step_refs`, `title`, `narration`: teaching purpose; help choose clear animation structure.\n"
                     + "- `continuity_plan`, `global_visual_rules`: global constraints that shape the whole file.\n";
 
-    /** Storyboard field interpretation guide — layout and camera fields. */
+    /** Layout and camera fields. */
     public static final String STORYBOARD_FIELD_GUIDE_LAYOUT =
             "- `layout_goal`: intended screen composition and relative placement of major elements.\n"
                     + "- `safe_area_plan`: how important content stays readable and inside the safe frame.\n"
                     + "- `screen_overlay_plan`: text or formulas that stay fixed in screen space.\n"
                     + "- `camera_anchor`, `camera_plan`: camera focus and behavior.\n"
                     + "- `goal`: what the scene must accomplish for understanding or solution progress.\n";
-
-    /** Combined storyboard field guide for backward compatibility. */
-    public static final String STORYBOARD_FIELD_GUIDE =
-            STORYBOARD_FIELD_GUIDE_CORE;
 
     /** Full storyboard field guide combining all sections. */
     public static final String STORYBOARD_FIELD_GUIDE_FULL =
@@ -74,7 +61,7 @@ public final class SystemPrompts {
                     + STORYBOARD_FIELD_GUIDE_EXTENDED
                     + STORYBOARD_FIELD_GUIDE_LAYOUT;
 
-    /** Storyboard field guide for GeoGebra code generation. */
+    /** Field guide for GeoGebra code generation. */
     public static final String STORYBOARD_FIELD_GUIDE_GEOGEBRA =
             "How to interpret the storyboard fields:\n"
                     + "- `entering_objects`: scene patches for newly entering objects; use `id` plus optional `placement`/`style` changes.\n"
@@ -87,7 +74,7 @@ public final class SystemPrompts {
                     + "- For constrained motion, prefer explicit documented GeoGebra constructions such as `Point(path)`, `PointIn(region)`, `Intersect(...)`, `Reflect(...)`, `Midpoint(...)`, or slider-driven parameterizations with declared bounds.\n"
                     + "- When a point should remain on a line, segment, circle, or similar object, the generated command should visibly encode that incidence relation.\n";
 
-    /** Storyboard field guide for scene evaluation/repair pass. */
+    /** Field guide for scene evaluation/repair pass. */
     public static final String STORYBOARD_FIELD_GUIDE_REPAIR =
             "Storyboard field guide for this repair pass:\n"
                     + "- `goal` and `layout_goal`: preserve what the scene is trying to teach and how the frame should be composed.\n"
@@ -97,7 +84,7 @@ public final class SystemPrompts {
                     + "- `persistent_objects`, `exiting_objects`, and `actions`: preserve continuity and scene flow instead of redrawing the construction arbitrarily.\n"
                     + "- If a reported object is a reflection, midpoint, foot, or intersection, recompute it from its source construction instead of moving it freely.\n";
 
-    /** Storyboard field guide for GeoGebra scene evaluation/repair pass. */
+    /** Field guide for GeoGebra scene evaluation/repair pass. */
     public static final String STORYBOARD_FIELD_GUIDE_GEOGEBRA_REPAIR =
             "Storyboard field guide for this GeoGebra repair pass:\n"
                     + "- `goal` and `layout_goal`: preserve what the scene is trying to teach and how the construction should be laid out.\n"
@@ -106,6 +93,10 @@ public final class SystemPrompts {
                     + "- `behavior`, `anchor_id`, and `dependency_note`: preserve dependency-safe construction order for reflected points, intersections, midpoints, and derived objects.\n"
                     + "- `persistent_objects`, `exiting_objects`, and `actions`: preserve object visibility progression instead of rewriting the construction arbitrarily.\n"
                     + "- If a reported object is a reflection, midpoint, foot, or intersection, keep it defined from its source objects via GeoGebra dependency commands.\n";
+
+    // ========================================================================
+    // Geometry constraint rules
+    // ========================================================================
 
     /** Geometry constraint preservation rules. */
     public static final String GEOMETRY_CONSTRAINT_RULES =
@@ -122,14 +113,15 @@ public final class SystemPrompts {
                     + "- Treat geometric relationships such as symmetry, reflection, equal length, equal angle, collinearity, intersection, perpendicularity, and shared-center motion as hard constraints, not optional style notes.\n"
                     + "- If a layout risks overflow, prefer planning a smaller or recentered whole construction rather than placing mathematically linked points independently near the edges.\n";
 
-    /** High-contrast color rules to avoid pale-on-pale combinations. */
-    public static final String HIGH_CONTRAST_COLOR_RULES =
-            "Keep text, labels, strokes, and fills visually distinct from their background.\n"
-                    + "Avoid low-contrast pairings such as yellow on white, white on light yellow, or similar pale-on-pale combinations.\n";
+    // ========================================================================
+    // Visual design rules (shared across output targets)
+    // ========================================================================
 
-    /** High-contrast color rules formatted as bullet lines for direct prompt insertion. */
-    public static final String HIGH_CONTRAST_COLOR_RULES_BULLETS =
-            "- " + HIGH_CONTRAST_COLOR_RULES.replace("\n", "\n- ").trim() + "\n";
+    /** Layout frame rules: safe area bounds and element count guidance. */
+    public static final String LAYOUT_FRAME_RULES =
+            "Keep important content within x[-7,7] and y[-4,4].\n"
+                    + "Leave about 1 unit of edge margin.\n"
+                    + "Usually keep each step to about 7 to 10 main visual elements unless several are quiet carry-over context.\n";
 
     /** Shared storytelling philosophy for all output targets. */
     public static final String NARRATIVE_PHILOSOPHY =
@@ -150,15 +142,6 @@ public final class SystemPrompts {
                     + "- Prefer transform- or restyle-based continuity over replacing everything.\n"
                     + "- Decide intentionally whether a concept should animate or remain static; motion should clarify change, not add load.\n";
 
-    /** Shared Manim motion and pacing rules. */
-    public static final String MANIM_MOTION_AND_PACING_RULES =
-            "Manim motion and pacing rules:\n"
-                    + "- Write narration with visual beats in mind: what the learner hears should match what the learner sees.\n"
-                    + "- Treat one beat as one small `self.play(...)` group or one stable visual hold.\n"
-                    + "- After each important reveal, leave breathing room with `self.wait(...)` so the learner can read and absorb it.\n"
-                    + "- Vary tempo: slower for core reveals, faster for supporting details, and a longer pause around the key insight.\n"
-                    + "- Prefer the \"see, then hear\" timing pattern for major ideas.\n";
-
     /** Shared composition and empty-space rules for all output targets. */
     public static final String COMPOSITION_RULES =
             "Composition rules:\n"
@@ -168,6 +151,56 @@ public final class SystemPrompts {
                     + "- Preserve intentional empty space and a safe overlay zone; do not solve layout problems by piling overlays or opaque objects over the active geometry.\n"
                     + "- If the view becomes crowded, split the content, dim the old context, or remove temporary annotations instead of squeezing everything tighter.\n"
                     + "- When correcting out-of-bounds elements, reposition them with adequate clearance from every frame edge (minimum 0.5 units on all sides); never fix a boundary violation by placing objects flush against the edge.\n";
+
+    /** High-contrast color rules to avoid pale-on-pale combinations. */
+    public static final String HIGH_CONTRAST_COLOR_RULES =
+            "Keep text, labels, strokes, and fills visually distinct from their background.\n"
+                    + "Avoid low-contrast pairings such as yellow on white, white on light yellow, or similar pale-on-pale combinations.\n";
+
+    /** High-contrast color rules formatted as bullet lines for direct prompt insertion. */
+    public static final String HIGH_CONTRAST_COLOR_RULES_BULLETS =
+            "- " + HIGH_CONTRAST_COLOR_RULES.replace("\n", "\n- ").trim() + "\n";
+
+    /** Opacity hierarchy for visual layering, applicable to all output targets. */
+    public static final String OPACITY_LEVELS =
+            "Opacity hierarchy:\n"
+                    + "- Primary focus elements: opacity 1.0\n"
+                    + "- Contextual / previously-introduced elements: opacity 0.3–0.4\n"
+                    + "- Structural scaffolding (axes, grids, construction lines): opacity 0.15\n"
+                    + "- Never show everything at full brightness simultaneously.\n";
+
+    /** Shared object lifecycle and storyboard contract rules for all output targets. */
+    public static final String OBJECT_LIFECYCLE_RULES =
+            "Storyboard and object-lifecycle rules:\n"
+                    + "- Every learner-visible object that should appear in the scene or construction must be declared explicitly in the storyboard; do not rely on unstated inferred visuals.\n"
+                    + "- If an object remains visible across beats or steps, keep the same visual identity instead of silently recreating it.\n"
+                    + "- If an object depends on another object's motion, make the dependency explicit in storyboard fields and preserve it in code.\n"
+                    + "- Temporary annotations, comparison aids, and helper overlays need an exit plan; once they have taught their point, remove or dim them.\n"
+                    + "- End scenes or steps cleanly: use clean breaks, carry-forward anchors, or transition bridges intentionally rather than leaving accidental residue.\n";
+
+    // ========================================================================
+    // Manim-specific rules
+    // ========================================================================
+
+    /** Manim-specific layout and readability budget. */
+    public static final String MANIM_LAYOUT_FRAME_RULES =
+            "Keep important content within x[-6.5,6.5] and y[-3.5,3.5] whenever possible.\n"
+                    + "Reserve a readable top title band and a bottom note band instead of packing the whole frame.\n"
+                    + "Keep simultaneously active foreground elements around 6 to 8; brief bursts up to about 10 are acceptable when staging and hierarchy stay clear.\n"
+                    + "If a scene would have more than 8 simultaneously visible foreground elements, dim context objects (opacity 0.3-0.4) before introducing new ones rather than showing everything at full strength.\n"
+                    + "Prefer staggered reveals: create groups of 3-4 objects, then dim before creating the next group.\n"
+                    + "Leave a meaningful empty zone for overlays, captions, or upcoming reveals.\n";
+
+    /** Shared Manim motion and pacing rules. */
+    public static final String MANIM_MOTION_AND_PACING_RULES =
+            "Manim motion and pacing rules:\n"
+                    + "- Write narration with visual beats in mind: what the learner hears should match what the learner sees.\n"
+                    + "- Treat one beat as one small `self.play(...)` group or one stable visual hold.\n"
+                    + "- After each important reveal, leave breathing room with `self.wait(...)` so the learner can read and absorb it.\n"
+                    + "- After every significant equation reveal, include `self.wait(2.0)` minimum before the next animation.\n"
+                    + "- Vary tempo: slower for core reveals, faster for supporting details, and a longer pause around the key insight.\n"
+                    + "- Prefer the \"see, then hear\" timing pattern for major ideas.\n"
+                    + "- If the storyboard narration has more than 20 words for a scene under 10 seconds, reduce narration density.\n";
 
     /** Shared Manim text and readability rules. */
     public static final String MANIM_TEXT_AND_READABILITY_RULES =
@@ -191,15 +224,6 @@ public final class SystemPrompts {
                     + "- Prefer `add_updater(...)` for simple position or color tracking (cheap). Use `always_redraw(...)` only when the mobject's structure or shape must be rebuilt each frame (expensive).\n"
                     + "- For a label that follows a moving object, use `add_updater` to reposition the existing label in-place (`label.add_updater(lambda m: m.next_to(anchor, UP))`). Use `always_redraw` only when the label's text content itself changes dynamically (e.g., live coordinates, counter values).\n"
                     + "- Use `FadeOut`, `Uncreate`, or `ShrinkToCenter` for temporary objects that have served their purpose.\n";
-
-    /** Shared object lifecycle and storyboard contract rules for all output targets. */
-    public static final String OBJECT_LIFECYCLE_RULES =
-            "Storyboard and object-lifecycle rules:\n"
-                    + "- Every learner-visible object that should appear in the scene or construction must be declared explicitly in the storyboard; do not rely on unstated inferred visuals.\n"
-                    + "- If an object remains visible across beats or steps, keep the same visual identity instead of silently recreating it.\n"
-                    + "- If an object depends on another object's motion, make the dependency explicit in storyboard fields and preserve it in code.\n"
-                    + "- Temporary annotations, comparison aids, and helper overlays need an exit plan; once they have taught their point, remove or dim them.\n"
-                    + "- End scenes or steps cleanly: use clean breaks, carry-forward anchors, or transition bridges intentionally rather than leaving accidental residue.\n";
 
     /** Shared Manim implementation and code-hygiene rules. */
     public static final String MANIM_CODE_HYGIENE_RULES =
@@ -254,14 +278,6 @@ public final class SystemPrompts {
                     + "- Caption / fine print: font_size=20\n"
                     + "- Hard minimum: font_size=18 — anything smaller blurs at draft quality and is barely legible at production quality.\n";
 
-    /** Opacity hierarchy for visual layering, applicable to all output targets. */
-    public static final String OPACITY_LEVELS =
-            "Opacity hierarchy:\n"
-                    + "- Primary focus elements: opacity 1.0\n"
-                    + "- Contextual / previously-introduced elements: opacity 0.3–0.4\n"
-                    + "- Structural scaffolding (axes, grids, construction lines): opacity 0.15\n"
-                    + "- Never show everything at full brightness simultaneously.\n";
-
     /** Manim animation timing reference table. */
     public static final String MANIM_TIMING_REFERENCE =
             "Manim animation timing reference:\n"
@@ -280,10 +296,6 @@ public final class SystemPrompts {
                     + "- Never hard-cut between scenes; always animate the transition.\n"
                     + "- Three transition types: clean break (fade all, pause), carry-forward (keep one anchor, fade rest), transform bridge (end with shape, start next by transforming it).\n";
 
-    /** ASCII identifier rules. */
-    public static final String ASCII_IDENTIFIER_RULES =
-            "Keep all Python identifiers and object names ASCII only.\n";
-
     /** Shared Manim naming rules for storyboard ids and generated identifiers. */
     public static final String MANIM_NAMING_RULES =
             "- Keep all Python identifiers and object names ASCII only.\n"
@@ -291,18 +303,39 @@ public final class SystemPrompts {
                     + "- Single uppercase letters are acceptable for geometric points (e.g. `A`, `B`, `P`); use camelCase or snake_case for compound names.\n"
                     + "- Do not use Python reserved words (`class`, `def`, `lambda`, `for`, `if`, `in`, `is`, `not`, `None`, `True`, `False`, etc.) or Manim built-in class names (`Scene`, `Mobject`, `Line`, `Circle`, `Text`, etc.) as identifiers.\n";
 
+    /** Manim API whitelist rules sourced from the attached syntax manual. */
+    public static final String MANIM_MANUAL_ONLY_RULES = buildManimManualOnlyRules();
+
+    /** Text constructor mapping rules shared between code generation and evaluation. */
+    public static final String MANIM_TEXT_CONSTRUCTOR_MAPPING =
+            "Text constructor mapping is mandatory:\n"
+                    + "- `style.type = math_text` must render with `MathTex(...)`.\n"
+                    + "- `style.type = plain_text` must render with `Text(...)`.\n"
+                    + "- Avoid `Tex(...)` unless the storyboard explicitly calls for non-math LaTeX text.\n"
+                    + "- If storyboard style type is missing, infer it from content: formulas, Greek letters, angle notation, superscripts, subscripts, and LaTeX control sequences are math text; ordinary labels and prose fragments are plain text.\n";
+
+    // ========================================================================
+    // GeoGebra-specific rules
+    // ========================================================================
+
     /** Shared GeoGebra naming rules for storyboard ids and generated identifiers. */
     public static final String GEOGEBRA_NAMING_RULES =
             "- Keep object names concise and non-redundant because the role/type is already carried elsewhere; prefer `l` over `lineL` and `c` over `circleC`.\n"
                     + "- Prefer native GeoGebra math-style names. Point names must start with an uppercase letter (e.g. `A`, `P_1`); vector names must start with a lowercase letter (e.g. `v`, `u`); lines, circles, and other non-point objects may start with a lowercase letter (e.g. `l`, `c`, `tri`). Use `_` for subscripts and `'` for primes.\n"
-                    + "- Translate ASCII-spelled ids to GeoGebra-native math names when needed: `Bprime` -> `B'`, `ABprime` -> `AB'`, `Pstar` -> `P_{*}`, `Popt` -> `P_{opt}`, `P1` -> `P_1`. If native names like `B'` or `P_{opt}` are already used, keep them verbatim.\n"
+                    + "- Translate ASCII-spelled ids to GeoGebra-native math names when needed by applying these structural rules:\n"
+                    + "  - A trailing `prime` suffix becomes a prime mark: `<base>prime` -> `<base>'`\n"
+                    + "  - A trailing `star` suffix becomes a star subscript: `<base>star` -> `<base>_{*}`\n"
+                    + "  - A trailing numeric suffix becomes a subscript: `<base><digits>` -> `<base>_{<digits>}`\n"
+                    + "  - A trailing alphabetic suffix that reads as a known math modifier (opt, max, min, avg) becomes a subscript: `<base><modifier>` -> `<base>_{<modifier>}`\n"
+                    + "  If native names like `B'` or `P_{opt}` are already used in the storyboard, keep them verbatim.\n"
                     + "- Do not use reserved names such as `x`, `y`, `z`, `xAxis`, `yAxis`, `zAxis`, `e`, `i`, `pi`, `sin`, `cos`, `tan`, `exp`, `log`, `ln`, `abs`, `sqrt`, `floor`, `ceil`, `round`, `random`, `arg`, `gamma`, `beta`, `sec`, `csc`, or `cot` as object identifiers.\n";
-
-    /** Manim API whitelist rules sourced from the attached syntax manual. */
-    public static final String MANIM_MANUAL_ONLY_RULES = buildManimManualOnlyRules();
 
     /** GeoGebra command whitelist rules sourced from the attached syntax manual. */
     public static final String GEOGEBRA_MANUAL_ONLY_RULES = buildGeoGebraManualOnlyRules();
+
+    // ========================================================================
+    // Output format constants
+    // ========================================================================
 
     /** Tool call hint for structured output prompts. */
     public static final String TOOL_CALL_HINT =
@@ -339,10 +372,9 @@ public final class SystemPrompts {
                     + "```\n\n"
                     + "Do not add any explanation before or after the code block.";
 
-    /** Common fix instructions appended to user prompts. */
-    public static final String COMMON_FIX_INSTRUCTIONS =
-            "Also proactively check for common Python and Manim runtime mistakes.\n"
-                    + "Remember: Return ONLY the single Python code block containing the full file. No explanation.\n";
+    // ========================================================================
+    // Storyboard codegen intro constants
+    // ========================================================================
 
     /** Storyboard codegen preamble for Manim output. */
     public static final String STORYBOARD_CODEGEN_INTRO_MANIM =
@@ -379,13 +411,12 @@ public final class SystemPrompts {
                     + "- Create a separate label/text object only when the visible text is not the object's own native label, such as overlays, formulas, counters, captions, or explanatory annotations.\n"
                     + "- If the storyboard contains a redundant geometry-label pair, prefer keeping the geometry object and dropping the extra label object in the generated GeoGebra commands.\n"
                     + "- Choose readable coordinates and label placement that respect `layout_goal`, `placement`, and `safe_area_plan`.\n"
-                    + HIGH_CONTRAST_COLOR_RULES_BULLETS /*
-                    + "- For angle markers, use only `Angle(B, vertex, C)` with `SetFilling`; never `CircularArc`. The angle sweeps counterclockwise from ray(vertex→B) to ray(vertex→C), so place the starting-ray point first: e.g. for the small angle between a rightward horizontal and an upper-left segment at vertex P, use `Angle((x(P)+1,0), P, A)` (CCW from right to upper-left = small angle above line).\n";
+                    + HIGH_CONTRAST_COLOR_RULES_BULLETS
+                    + "- If the storyboard asks for an effect that would require an undocumented command, preserve the core geometry with documented commands only and do not invent syntax.\n";
 
     // ========================================================================
-
-                    */
-                    + "- If the storyboard asks for an effect that would require an undocumented command, preserve the core geometry with documented commands only and do not invent syntax.\n";
+    // Helper methods
+    // ========================================================================
 
     private static final String WORKFLOW_OVERVIEW =
             "Stage 0 Exploration -> Stage 1a Mathematical Enrichment -> Stage 1b Visual Design"
@@ -395,48 +426,6 @@ public final class SystemPrompts {
                     + " (Stages 2–5 may each route to the shared Code Fix node for iterative repair)";
 
     private SystemPrompts() {}
-
-    private static final class ManimSyntaxManualHolder {
-        private static final String VALUE = loadPromptResource(MANIM_SYNTAX_MANUAL_RESOURCE);
-    }
-
-    private static final class ManimStyleReferenceHolder {
-        private static final String VALUE = loadPromptResource(MANIM_STYLE_REFERENCE_RESOURCE);
-    }
-
-    
-    private static final class GeoGebraSyntaxManualHolder {
-        private static final String VALUE = loadPromptResource(GEOGEBRA_SYNTAX_MANUAL_RESOURCE);
-    }
-
-    private static final class GeoGebraStyleReferenceHolder {
-        private static final String VALUE = loadPromptResource(GEOGEBRA_STYLE_REFERENCE_RESOURCE);
-    }
-
-    private static String buildManimManualOnlyRules() {
-        return "Treat the attached Manim syntax manual as the authoritative whitelist.\n"
-                + "Use only classes, functions, methods, arguments, scene patterns, and code forms documented there.\n"
-                + "Never invent Manim APIs, guessed helper methods, unsupported keyword arguments, or private/internal shortcuts.\n"
-                + "If the current code uses an undocumented or unstable API, replace it with a documented stable equivalent while preserving the scene intent.\n"
-                + "If a desired effect is not covered by the manual, simplify it with documented Manim constructs rather than guessing syntax.\n"
-                + "Documented instance methods (snake_case): `"
-                + String.join("`, `", ManimValidationSupport.documentedInstanceMethodNames())
-                + "`.\n";
-    }
-
-    private static String buildGeoGebraManualOnlyRules() {
-        return "Treat the attached GeoGebra syntax manual as the authoritative whitelist.\n"
-                + "Use only command names and syntax forms documented there.\n"
-                + "Never invent aliases, tool names, guessed overloads, shorthand assignments, or undocumented commands.\n"
-                + "If the current script contains an undocumented command, replace it with a documented equivalent or remove the unsupported decoration while preserving the construction.\n"
-                + "If a requested effect is not covered by the manual, re-express it with documented commands or omit that effect rather than guessing syntax.\n"
-                + "Documented construction commands: `"
-                + String.join("`, `", GeoGebraValidationSupport.documentedConstructionCommandNames())
-                + "`.\n"
-                + "Documented scripting commands: `"
-                + String.join("`, `", GeoGebraValidationSupport.documentedScriptingCommandNames())
-                + "`.\n";
-    }
 
     public static String sanitize(String text, String defaultValue) {
         if (text == null) {
@@ -481,6 +470,51 @@ public final class SystemPrompts {
                 + "Keep the full target in mind, but perform only the responsibility of the current substep.\n\n";
     }
 
+    // ========================================================================
+    // Resource loading
+    // ========================================================================
+
+    private static final class ManimSyntaxManualHolder {
+        private static final String VALUE = loadPromptResource(MANIM_SYNTAX_MANUAL_RESOURCE);
+    }
+
+    private static final class ManimStyleReferenceHolder {
+        private static final String VALUE = loadPromptResource(MANIM_STYLE_REFERENCE_RESOURCE);
+    }
+
+    private static final class GeoGebraSyntaxManualHolder {
+        private static final String VALUE = loadPromptResource(GEOGEBRA_SYNTAX_MANUAL_RESOURCE);
+    }
+
+    private static final class GeoGebraStyleReferenceHolder {
+        private static final String VALUE = loadPromptResource(GEOGEBRA_STYLE_REFERENCE_RESOURCE);
+    }
+
+    private static String buildManimManualOnlyRules() {
+        return "Treat the attached Manim syntax manual as the authoritative whitelist.\n"
+                + "Use only classes, functions, methods, arguments, scene patterns, and code forms documented there.\n"
+                + "Never invent Manim APIs, guessed helper methods, unsupported keyword arguments, or private/internal shortcuts.\n"
+                + "If the current code uses an undocumented or unstable API, replace it with a documented stable equivalent while preserving the scene intent.\n"
+                + "If a desired effect is not covered by the manual, simplify it with documented Manim constructs rather than guessing syntax.\n"
+                + "Documented instance methods (snake_case): `"
+                + String.join("`, `", ManimValidationSupport.documentedInstanceMethodNames())
+                + "`.\n";
+    }
+
+    private static String buildGeoGebraManualOnlyRules() {
+        return "Treat the attached GeoGebra syntax manual as the authoritative whitelist.\n"
+                + "Use only command names and syntax forms documented there.\n"
+                + "Never invent aliases, tool names, guessed overloads, shorthand assignments, or undocumented commands.\n"
+                + "If the current script contains an undocumented command, replace it with a documented equivalent or remove the unsupported decoration while preserving the construction.\n"
+                + "If a requested effect is not covered by the manual, re-express it with documented commands or omit that effect rather than guessing syntax.\n"
+                + "Documented construction commands: `"
+                + String.join("`, `", GeoGebraValidationSupport.documentedConstructionCommandNames())
+                + "`.\n"
+                + "Documented scripting commands: `"
+                + String.join("`, `", GeoGebraValidationSupport.documentedScriptingCommandNames())
+                + "`.\n";
+    }
+
     public static String ensureManimSyntaxManual(String prompt) {
         String base = prompt == null ? "" : prompt;
         if (base.contains(ManimSyntaxManualHolder.VALUE)) {
@@ -503,8 +537,6 @@ public final class SystemPrompts {
                 + ManimStyleReferenceHolder.VALUE;
     }
 
-    
-    
     public static String ensureGeoGebraSyntaxManual(String prompt) {
         String base = prompt == null ? "" : prompt;
         if (base.contains(GeoGebraSyntaxManualHolder.VALUE)) {

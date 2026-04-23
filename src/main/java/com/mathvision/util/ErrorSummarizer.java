@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -30,7 +29,7 @@ public final class ErrorSummarizer {
             "([A-Za-z]:\\\\(?:[^\\\\\\s]+\\\\)*[^\\\\\\s]+\\.log)",
             Pattern.CASE_INSENSITIVE);
 
-    private static final List<Pattern> NON_CODE_ERROR_PATTERNS = Arrays.asList(
+    private static final List<Pattern> NON_CODE_ERROR_PATTERNS = List.of(
             Pattern.compile("(?i)no module named"),
             Pattern.compile("(?i)command not found"),
             Pattern.compile("(?i)permission denied"),
@@ -44,6 +43,59 @@ public final class ErrorSummarizer {
             Pattern.compile("(?i)dvisvgm.*not found")
     );
 
+    private static final List<Pattern> GEOGEBRA_ENVIRONMENT_PATTERNS = List.of(
+            Pattern.compile("(?i)failed to launch chromium"),
+            Pattern.compile("(?i)did not become ready within"),
+            Pattern.compile("(?i)install chromium"),
+            Pattern.compile("(?i)configured browser executable does not exist"),
+            Pattern.compile("(?i)output directory is unavailable"),
+            Pattern.compile("(?i)no executable geogebra commands were found"),
+            Pattern.compile("(?i)page\\.timed ?out")
+    );
+
+    private static final Pattern INFRASTRUCTURE_FAILURE_WORDS = Pattern.compile(
+            "(?i)\\b(cannot|failed|unable|refused|denied|not found|not available|timed? ?out|unreachable)\\b"
+    );
+
+    private static final class ClassificationRule {
+        final ErrorCategory category;
+        final List<Pattern> patterns;
+        ClassificationRule(ErrorCategory category, List<Pattern> patterns) {
+            this.category = category;
+            this.patterns = patterns;
+        }
+    }
+
+    private static final List<ClassificationRule> CLASSIFICATION_RULES = List.of(
+            new ClassificationRule(ErrorCategory.SYNTAX, compile(
+                    "(?i)syntaxerror", "(?i)indentationerror")),
+            new ClassificationRule(ErrorCategory.LATEX_COMPILE_FAILURE, compile(
+                    "(?i)missing \\$ inserted", "(?i)latex compilation error",
+                    "(?i)latex error converting", "(?i)tex error converting", "(?i)dvisvgm")),
+            new ClassificationRule(ErrorCategory.MANIM_API_MISUSE, compile(
+                    "(?i)documented manim api call", "(?i)undocumented manim api call",
+                    "(?i)invalid animation target")),
+            new ClassificationRule(ErrorCategory.EMPTY_REDRAW_TARGET, compile(
+                    "(?i)empty redraw target", "(?i)cannot animate empty",
+                    "(?i)no points to animate", "(?i)zero mobject")),
+            new ClassificationRule(ErrorCategory.NAME_RESOLUTION, compile(
+                    "(?i)nameerror", "(?i)attributeerror")),
+            new ClassificationRule(ErrorCategory.TYPE_VALUE, compile(
+                    "(?i)typeerror", "(?i)valueerror")),
+            new ClassificationRule(ErrorCategory.INDEX_KEY, compile(
+                    "(?i)indexerror", "(?i)keyerror")),
+            new ClassificationRule(ErrorCategory.IMPORT, compile(
+                    "(?i)importerror", "(?i)modulenotfounderror"))
+    );
+
+    private static List<Pattern> compile(String... regexes) {
+        List<Pattern> patterns = new ArrayList<>(regexes.length);
+        for (String regex : regexes) {
+            patterns.add(Pattern.compile(regex));
+        }
+        return patterns;
+    }
+
     /**
      * Checks if the error indicates an environment problem rather than a code bug.
      */
@@ -53,6 +105,19 @@ public final class ErrorSummarizer {
         }
         for (Pattern pattern : NON_CODE_ERROR_PATTERNS) {
             if (pattern.matcher(error).find()) {
+                return true;
+            }
+        }
+        for (Pattern pattern : GEOGEBRA_ENVIRONMENT_PATTERNS) {
+            if (pattern.matcher(error).find()) {
+                return true;
+            }
+        }
+        // Structural fallback: if there's no Python error signature but the text
+        // reads like an infrastructure message, classify as environment.
+        if (!ERROR_SIGNATURE_PATTERN.matcher(error).find()) {
+            String lower = error.toLowerCase();
+            if (lower.length() < 200 && INFRASTRUCTURE_FAILURE_WORDS.matcher(lower).find()) {
                 return true;
             }
         }
@@ -227,6 +292,11 @@ public final class ErrorSummarizer {
             return "";
         }
 
+        String latexSpecific = summarizeLatexSignature(focusedError);
+        if (!latexSpecific.isBlank()) {
+            return latexSpecific;
+        }
+
         String[] lines = focusedError.split("\\R");
         for (int i = lines.length - 1; i >= 0; i--) {
             String line = lines[i].trim();
@@ -239,6 +309,23 @@ public final class ErrorSummarizer {
 
         String normalized = focusedError.replaceAll("\\s+", " ").trim();
         return normalized.length() > 200 ? normalized.substring(0, 200) : normalized;
+    }
+
+    public static String buildRenderFixSummary(String focusedError) {
+        ErrorCategory category = classifyError(focusedError);
+        String signature = summarizeSignature(focusedError);
+        if (category == ErrorCategory.FALLBACK) {
+            // For unknown errors, include raw error context so the LLM can reason about it
+            String context = tailLines(focusedError, 5);
+            if (!context.isBlank()) {
+                return ErrorCategory.FALLBACK.name() + ": " + context.replaceAll("\\s+", " ").trim();
+            }
+            return ErrorCategory.FALLBACK.name();
+        }
+        if (signature == null || signature.isBlank()) {
+            return category.name();
+        }
+        return category.name() + ": " + signature;
     }
 
     /**
@@ -303,25 +390,15 @@ public final class ErrorSummarizer {
             return ErrorCategory.ENVIRONMENT;
         }
 
-        String lower = error.toLowerCase();
-
-        if (lower.contains("syntaxerror") || lower.contains("indentationerror")) {
-            return ErrorCategory.SYNTAX;
-        }
-        if (lower.contains("nameerror") || lower.contains("attributeerror")) {
-            return ErrorCategory.NAME_RESOLUTION;
-        }
-        if (lower.contains("typeerror") || lower.contains("valueerror")) {
-            return ErrorCategory.TYPE_VALUE;
-        }
-        if (lower.contains("indexerror") || lower.contains("keyerror")) {
-            return ErrorCategory.INDEX_KEY;
-        }
-        if (lower.contains("importerror") || lower.contains("modulenotfounderror")) {
-            return ErrorCategory.IMPORT;
+        for (ClassificationRule rule : CLASSIFICATION_RULES) {
+            for (Pattern pattern : rule.patterns) {
+                if (pattern.matcher(error).find()) {
+                    return rule.category;
+                }
+            }
         }
 
-        return ErrorCategory.RUNTIME;
+        return ErrorCategory.FALLBACK;
     }
 
     /**
@@ -329,11 +406,14 @@ public final class ErrorSummarizer {
      */
     public enum ErrorCategory {
         SYNTAX,
+        LATEX_COMPILE_FAILURE,
+        MANIM_API_MISUSE,
+        EMPTY_REDRAW_TARGET,
         NAME_RESOLUTION,
         TYPE_VALUE,
         INDEX_KEY,
         IMPORT,
-        RUNTIME,
+        FALLBACK,
         ENVIRONMENT,
         UNKNOWN
     }
@@ -424,5 +504,43 @@ public final class ErrorSummarizer {
             }
         }
         return -1;
+    }
+
+    private static String summarizeLatexSignature(String focusedError) {
+        String lower = focusedError.toLowerCase();
+        if (!lower.contains("missing $ inserted")
+                && !lower.contains("latex compilation error")
+                && !lower.contains("latex error converting")) {
+            return "";
+        }
+
+        String offending = extractLatexOffendingToken(focusedError);
+        if (offending != null && !offending.isBlank()) {
+            return "Missing $ inserted near " + offending;
+        }
+        return "LaTeX compile failure";
+    }
+
+    private static String extractLatexOffendingToken(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        Pattern tokenPattern = Pattern.compile(
+                "(?:\\}|\")?([A-Za-z]+(?:\\\\[A-Za-z]+|\\^[^\\s\\\\]+|\\*|′|\\^\\*|_[^\\s\\\\]+)*)"
+        );
+        String[] lines = text.split("\\R");
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("l.") || trimmed.contains("special{dvisvgm:raw")) {
+                Matcher matcher = tokenPattern.matcher(trimmed);
+                while (matcher.find()) {
+                    String candidate = matcher.group(1);
+                    if (candidate != null && ManimCodeUtils.containsMathIndicator(candidate)) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+        return "";
     }
 }

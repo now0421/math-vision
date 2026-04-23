@@ -32,6 +32,7 @@ import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
 import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TargetDescriptionBuilder;
+import com.mathvision.util.TextHealthDiagnostics;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
@@ -426,6 +427,10 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         request.setStoryboardJson(narrative != null && narrative.hasStoryboard()
                 ? StoryboardJsonBuilder.buildForCodegen(narrative.getStoryboard())
                 : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
+        request.setErrorContextMode("validation_findings");
+        request.setInputTextHealth(TextHealthDiagnostics.summarize(request.getStoryboardJson()));
+        request.setStaticAuditIssueCount(fixState.getCurrentIssues() != null ? fixState.getCurrentIssues().size() : 0);
+        request.setStaticAuditSummary(String.join(" | ", fixState.getCurrentIssues()));
         return request;
     }
 
@@ -575,6 +580,12 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                 .map(s -> {
                     StringBuilder sb = new StringBuilder();
                     if (s.getRole() != null) sb.append(s.getRole());
+                    if (s.getType() != null && !s.getType().isBlank()) {
+                        if (sb.length() > 0) {
+                            sb.append(":");
+                        }
+                        sb.append(s.getType());
+                    }
                     if (s.getProperties() != null && !s.getProperties().isEmpty()) {
                         sb.append("{");
                         sb.append(s.getProperties().entrySet().stream()

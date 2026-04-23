@@ -15,11 +15,18 @@ public class CodeFixTraceEntry {
     private String expectedSceneName;
     private String targetConcept;
     private String errorReason;
+    private String errorContextMode;
+    private String inputTextHealth;
+    private int staticAuditIssueCount;
+    private String staticAuditSummary;
     private List<String> fixHistory = new ArrayList<>();
     private String systemPrompt;
     private String userPrompt;
     private boolean applied;
     private String failureReason;
+    private int postFixStaticAuditIssueCount;
+    private String postFixStaticAuditSummary;
+    private CodeFixResult.FixOutcome fixOutcome;
     private int toolCalls;
     private double executionTimeSeconds;
 
@@ -44,6 +51,20 @@ public class CodeFixTraceEntry {
     public String getErrorReason() { return errorReason; }
     public void setErrorReason(String errorReason) { this.errorReason = errorReason; }
 
+    public String getErrorContextMode() { return errorContextMode; }
+    public void setErrorContextMode(String errorContextMode) { this.errorContextMode = errorContextMode; }
+
+    public String getInputTextHealth() { return inputTextHealth; }
+    public void setInputTextHealth(String inputTextHealth) { this.inputTextHealth = inputTextHealth; }
+
+    public int getStaticAuditIssueCount() { return staticAuditIssueCount; }
+    public void setStaticAuditIssueCount(int staticAuditIssueCount) {
+        this.staticAuditIssueCount = staticAuditIssueCount;
+    }
+
+    public String getStaticAuditSummary() { return staticAuditSummary; }
+    public void setStaticAuditSummary(String staticAuditSummary) { this.staticAuditSummary = staticAuditSummary; }
+
     public List<String> getFixHistory() { return fixHistory; }
     public void setFixHistory(List<String> fixHistory) {
         this.fixHistory = fixHistory != null ? new ArrayList<>(fixHistory) : new ArrayList<>();
@@ -60,6 +81,19 @@ public class CodeFixTraceEntry {
 
     public String getFailureReason() { return failureReason; }
     public void setFailureReason(String failureReason) { this.failureReason = failureReason; }
+
+    public int getPostFixStaticAuditIssueCount() { return postFixStaticAuditIssueCount; }
+    public void setPostFixStaticAuditIssueCount(int postFixStaticAuditIssueCount) {
+        this.postFixStaticAuditIssueCount = postFixStaticAuditIssueCount;
+    }
+
+    public String getPostFixStaticAuditSummary() { return postFixStaticAuditSummary; }
+    public void setPostFixStaticAuditSummary(String postFixStaticAuditSummary) {
+        this.postFixStaticAuditSummary = postFixStaticAuditSummary;
+    }
+
+    public CodeFixResult.FixOutcome getFixOutcome() { return fixOutcome; }
+    public void setFixOutcome(CodeFixResult.FixOutcome fixOutcome) { this.fixOutcome = fixOutcome; }
 
     public int getToolCalls() { return toolCalls; }
     public void setToolCalls(int toolCalls) { this.toolCalls = toolCalls; }

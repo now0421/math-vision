@@ -24,6 +24,7 @@ import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.ConcurrencyUtils;
 import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.TextHealthDiagnostics;
 import com.mathvision.util.TextUtils;
 import com.mathvision.util.TimeUtils;
 import io.github.the_pocket.PocketFlow;
@@ -120,8 +121,10 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             if (fixedCode == null || fixedCode.isBlank()) {
                 result.setFailureReason("Code fix returned no parseable "
                         + (NodeSupport.isGeoGebraTarget(workflowConfig) ? "GeoGebra code" : "Python code"));
+                result.setOutcome(CodeFixResult.FixOutcome.UNCHANGED);
             } else if (!CodeValidationSupport.hasCodeChanged(request.getGeneratedCode(), fixedCode)) {
                 result.setFailureReason("Code fix returned code identical to source code");
+                result.setOutcome(CodeFixResult.FixOutcome.UNCHANGED);
             } else {
                 result.setApplied(true);
                 result.setFixedGeneratedCode(fixedCode);
@@ -129,8 +132,29 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         } catch (CompletionException e) {
             Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
             result.setFailureReason("Code fix request failed: " + cause.getMessage());
+            result.setOutcome(CodeFixResult.FixOutcome.FAILED);
         } catch (RuntimeException e) {
             result.setFailureReason("Code fix request failed: " + e.getMessage());
+            result.setOutcome(CodeFixResult.FixOutcome.FAILED);
+        }
+
+        // Check for input corruption
+        if (request.getInputTextHealth() != null
+                && TextHealthDiagnostics.hasSuspiciousEncoding(request.getInputTextHealth())) {
+            result.setOutcome(CodeFixResult.FixOutcome.INPUT_CORRUPTED);
+        }
+
+        if (result.isApplied()) {
+            List<String> postFixIssues = NodeSupport.isGeoGebraTarget(workflowConfig)
+                    ? GeoGebraCodeUtils.validateFull(result.getFixedGeneratedCode())
+                    : ManimCodeUtils.validateRenderPreflight(result.getFixedGeneratedCode());
+            result.setPostFixStaticAuditIssueCount(postFixIssues.size());
+            result.setPostFixStaticAuditSummary(summarizeIssues(postFixIssues));
+            if (postFixIssues.isEmpty()) {
+                result.setOutcome(CodeFixResult.FixOutcome.FIXED);
+            } else {
+                result.setOutcome(CodeFixResult.FixOutcome.APPLIED_WITH_ISSUES);
+            }
         }
 
         result.setToolCalls(toolCalls);
@@ -183,11 +207,18 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             entry.setExpectedSceneName(request.getExpectedSceneName());
             entry.setTargetConcept(request.getTargetConcept());
             entry.setErrorReason(request.getErrorReason());
+            entry.setErrorContextMode(request.getErrorContextMode());
+            entry.setInputTextHealth(request.getInputTextHealth());
+            entry.setStaticAuditIssueCount(request.getStaticAuditIssueCount());
+            entry.setStaticAuditSummary(request.getStaticAuditSummary());
             entry.setFixHistory(request.getFixHistory());
         }
         if (result != null) {
             entry.setApplied(result.isApplied());
             entry.setFailureReason(result.getFailureReason());
+            entry.setPostFixStaticAuditIssueCount(result.getPostFixStaticAuditIssueCount());
+            entry.setPostFixStaticAuditSummary(result.getPostFixStaticAuditSummary());
+            entry.setFixOutcome(result.getOutcome());
             entry.setToolCalls(result.getToolCalls());
             entry.setExecutionTimeSeconds(result.getExecutionTimeSeconds());
             entry.setSystemPrompt(result.getSystemPrompt());
@@ -292,7 +323,9 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
                 request.getGeneratedCode(),
                 TextUtils.firstNonBlank(request.getErrorReason(), "Unknown render failure"),
                 TextUtils.defaultIfBlank(request.getStoryboardJson(), StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON),
-                request.getFixHistory() != null ? request.getFixHistory() : Collections.emptyList()
+                request.getFixHistory() != null ? request.getFixHistory() : Collections.emptyList(),
+                TextUtils.firstNonBlank(request.getErrorContextMode(), ""),
+                TextUtils.firstNonBlank(request.getStaticAuditSummary(), "")
         );
     }
 
@@ -310,6 +343,14 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         return NodeSupport.isGeoGebraTarget(workflowConfig)
                 ? GeoGebraCodeUtils.extractCode(text)
                 : ManimCodeUtils.extractCode(text);
+    }
+
+    private String summarizeIssues(List<String> issues) {
+        if (issues == null || issues.isEmpty()) {
+            return "";
+        }
+        String joined = String.join(" | ", issues);
+        return joined.length() > 400 ? joined.substring(0, 400) + "..." : joined;
     }
 
     private String resolveToolSchema() {

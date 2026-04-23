@@ -1,5 +1,6 @@
 package com.mathvision.service;
 
+import com.mathvision.util.TextHealthDiagnostics;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,7 +10,7 @@ import java.net.http.HttpResponse;
 /**
  * Shared trace logging helper for outbound AI requests and raw responses.
  */
-final class AiTraceLogger {
+public final class AiTraceLogger {
 
     private static final Logger TRACE_LOG = LoggerFactory.getLogger("com.mathvision.ai.trace");
 
@@ -27,7 +28,10 @@ final class AiTraceLogger {
     }
 
     static void logRequestBody(String clientName, String body) {
-        TRACE_LOG.debug("{} request body:\n{}", clientName, safe(body));
+        TRACE_LOG.debug("{} request body [{}]:\n{}",
+                clientName,
+                TextHealthDiagnostics.summarize(body),
+                safe(body));
     }
 
     static void logRetryRequest(String clientName,
@@ -37,18 +41,26 @@ final class AiTraceLogger {
                                 int toolCount,
                                 String url,
                                 String body) {
-        TRACE_LOG.debug("{} retry request: attempt={}, model={}, messages={}, tools={}, url={}, body=\n{}",
-                clientName, attempt, model, messageCount, toolCount, url, safe(body));
+        TRACE_LOG.debug("{} retry request: attempt={}, model={}, messages={}, tools={}, url={}, body_health={}, body=\n{}",
+                clientName, attempt, model, messageCount, toolCount, url,
+                TextHealthDiagnostics.summarize(body), safe(body));
     }
 
     static void logRequest(String clientName, String model, String url, String body) {
-        TRACE_LOG.debug("{} request body: model={}, url={}\n{}",
-                clientName, model, url, safe(body));
+        TRACE_LOG.debug("{} request body: model={}, url={}, body_health={}\n{}",
+                clientName, model, url, TextHealthDiagnostics.summarize(body), safe(body));
     }
 
     static void logResponse(String clientName, HttpResponse<String> response) {
-        TRACE_LOG.debug("{} raw response: http={}, body=\n{}",
-                clientName, response.statusCode(), safe(response.body()));
+        TRACE_LOG.debug("{} raw response: http={}, body_health={}, body=\n{}",
+                clientName, response.statusCode(),
+                TextHealthDiagnostics.summarize(response.body()),
+                safe(response.body()));
+    }
+
+    public static void logTextSample(String source, String label, String text) {
+        TRACE_LOG.debug("{} {} [{}]:\n{}",
+                source, label, TextHealthDiagnostics.summarize(text), safe(text));
     }
 
     static String safe(String text) {

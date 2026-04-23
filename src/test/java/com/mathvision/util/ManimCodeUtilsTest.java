@@ -176,4 +176,34 @@ class ManimCodeUtilsTest {
         List<String> violations = ManimCodeUtils.validateManimRules(code);
         assertTrue(violations.stream().noneMatch(v -> v.contains("Rule 4 violation")));
     }
+
+    @Test
+    void validateManimRules_flagsTexMathModeMisuse() {
+        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
+                + "        label = Tex(r\"B^\\\\prime\")";
+
+        List<String> violations = ManimCodeUtils.validateManimRules(code);
+
+        assertTrue(violations.stream().anyMatch(v -> v.contains("Tex constructor mismatch")));
+    }
+
+    @Test
+    void validateManimRules_flagsTextLatexMisuse() {
+        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
+                + "        label = Text(r\"\\\\theta\")";
+
+        List<String> violations = ManimCodeUtils.validateManimRules(code);
+
+        assertTrue(violations.stream().anyMatch(v -> v.contains("Text constructor mismatch")));
+    }
+
+    @Test
+    void validateManimRules_flagsMathTexPlainSentenceMisuse() {
+        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
+                + "        label = MathTex(\"minimum distance equals segment AB\")";
+
+        List<String> violations = ManimCodeUtils.validateManimRules(code);
+
+        assertTrue(violations.stream().anyMatch(v -> v.contains("MathTex constructor mismatch")));
+    }
 }

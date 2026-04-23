@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class RenderNodeCodeGateTest {
 
@@ -156,6 +157,49 @@ class RenderNodeCodeGateTest {
         // Should NOT request fix — pure timeout with no underlying error
         assertFalse(ctx.containsKey(WorkflowKeys.CODE_FIX_REQUEST),
                 "Pure timeout without underlying Python error should stop retries");
+    }
+
+    @Test
+    void preflightAuditRoutesToFixBeforeInvokingRenderer() {
+        WorkflowConfig config = new WorkflowConfig();
+        config.setRenderEnabled(true);
+        config.setRenderMaxRetries(1);
+
+        CodeResult codeResult = new CodeResult(
+                String.join("\n",
+                        "from manim import *",
+                        "",
+                        "class DemoScene(Scene):",
+                        "    def construct(self):",
+                        "        label = Tex(r\"B^\\\\prime\")",
+                        "        self.add(label)"),
+                "DemoScene",
+                "demo",
+                "Demo concept",
+                "Demo description");
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.CONFIG, config);
+        ctx.put(WorkflowKeys.CODE_RESULT, codeResult);
+        ctx.put(WorkflowKeys.OUTPUT_DIR, tempDir);
+
+        ManimRendererService renderer = new ManimRendererService() {
+            @Override
+            public RenderAttemptResult render(String code, String sceneName, String quality, java.nio.file.Path outputDir) {
+                throw new AssertionError("renderer.render should not be called when preflight fails");
+            }
+        };
+
+        RenderNode renderNode = new RenderNode(renderer);
+        renderNode.run(ctx);
+
+        assertTrue(ctx.containsKey(WorkflowKeys.CODE_FIX_REQUEST));
+        com.mathvision.model.CodeFixRequest request =
+                (com.mathvision.model.CodeFixRequest) ctx.get(WorkflowKeys.CODE_FIX_REQUEST);
+        assertEquals("summary_signature", request.getErrorContextMode());
+        assertTrue(request.getStaticAuditIssueCount() > 0);
+        assertTrue(request.getStaticAuditSummary().contains("Tex constructor mismatch"));
+        assertNotEquals("", request.getInputTextHealth());
     }
 
     @Test
@@ -365,4 +409,3 @@ class RenderNodeCodeGateTest {
         }
     }
 }
-

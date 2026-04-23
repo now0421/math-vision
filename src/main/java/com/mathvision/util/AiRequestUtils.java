@@ -1,5 +1,6 @@
 package com.mathvision.util;
 
+import com.mathvision.service.AiTraceLogger;
 import com.mathvision.service.AiClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
@@ -234,7 +235,9 @@ public final class AiRequestUtils {
                         log, subject, onApiCall)
                 .thenApply(rawResponse -> {
                     onApiCall.run();
-                    return extractTextResult(rawResponse, preferredPayloadFields, extractor, validator);
+                    ExtractedTextResult result = extractTextResult(rawResponse, preferredPayloadFields, extractor, validator);
+                    logExtractedTextDiagnostics("tool-call:" + subject, result);
+                    return result;
                 })
                 .exceptionally(error -> {
                     Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
@@ -252,7 +255,9 @@ public final class AiRequestUtils {
                             .thenApply(response -> {
                                 onApiCall.run();
                                 String extractedText = extractExtractedText(response, extractor, validator);
-                                return new ExtractedTextResult(null, extractedText, response);
+                                ExtractedTextResult fallbackResult = new ExtractedTextResult(null, extractedText, response);
+                                logExtractedTextDiagnostics("plain-chat:" + subject, fallbackResult);
+                                return fallbackResult;
                             });
                 });
     }
@@ -459,6 +464,7 @@ public final class AiRequestUtils {
                 .thenApply(rawResponse -> {
                     onApiCall.run();
                     ExtractedTextResult result = extractTextResult(rawResponse, preferredPayloadFields, extractor, validator);
+                    logExtractedTextDiagnostics("tool-call:" + subject, result);
                     if (result != null && result.getAssistantTranscript() != null
                             && !result.getAssistantTranscript().isBlank()) {
                         context.appendReservedTurn(
@@ -490,7 +496,9 @@ public final class AiRequestUtils {
                                 context.appendReservedTurn(
                                         reservation.getSequence(), userPrompt, response);
                                 String extractedText = extractExtractedText(response, extractor, validator);
-                                return new ExtractedTextResult(null, extractedText, response);
+                                ExtractedTextResult fallbackResult = new ExtractedTextResult(null, extractedText, response);
+                                logExtractedTextDiagnostics("plain-chat:" + subject, fallbackResult);
+                                return fallbackResult;
                             });
                 })
                 .whenComplete((ignored, error) -> {
@@ -799,6 +807,14 @@ public final class AiRequestUtils {
         }
         String textContent = JsonUtils.extractBestEffortTextFromResponse(rawResponse);
         return textContent != null ? textContent : "";
+    }
+
+    private static void logExtractedTextDiagnostics(String source, ExtractedTextResult result) {
+        if (result == null) {
+            return;
+        }
+        AiTraceLogger.logTextSample(source, "assistant_transcript", result.getAssistantTranscript());
+        AiTraceLogger.logTextSample(source, "extracted_text", result.getExtractedText());
     }
 
     /**

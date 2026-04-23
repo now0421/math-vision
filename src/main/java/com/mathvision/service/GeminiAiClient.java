@@ -185,8 +185,10 @@ public class GeminiAiClient implements AiClient {
                         if (candidates == null || candidates.isEmpty()) {
                             throw new RuntimeException("Gemini API returned no candidates");
                         }
-                        return candidates.get(0).path("content").path("parts")
+                        String text = candidates.get(0).path("content").path("parts")
                                 .get(0).path("text").asText("");
+                        AiTraceLogger.logTextSample("Gemini", "content_text", text);
+                        return text;
                     } catch (Exception e) {
                         throw new CompletionException(e);
                     }

@@ -98,15 +98,32 @@ class ErrorSummarizerTest {
     }
 
     @Test
+    void classifyError_identifiesLatexCompileFailure() {
+        assertEquals(ErrorSummarizer.ErrorCategory.LATEX_COMPILE_FAILURE,
+                ErrorSummarizer.classifyError("LaTeX compilation error: Missing $ inserted"));
+    }
+
+    @Test
     void classifyError_identifiesEnvironmentError() {
         assertEquals(ErrorSummarizer.ErrorCategory.ENVIRONMENT,
                 ErrorSummarizer.classifyError("No module named 'missing'"));
     }
 
     @Test
-    void classifyError_returnsRuntimeForUnknown() {
-        assertEquals(ErrorSummarizer.ErrorCategory.RUNTIME,
+    void classifyError_returnsFallbackForUnknown() {
+        assertEquals(ErrorSummarizer.ErrorCategory.FALLBACK,
                 ErrorSummarizer.classifyError("ZeroDivisionError: division by zero"));
+    }
+
+    @Test
+    void summarizeSignature_extractsLatexOffendingToken() {
+        String error = String.join("\n",
+                "=== latex log context ===",
+                "! Missing $ inserted.",
+                "l.7 \\special{dvisvgm:raw <g id='unique000'>}B^",
+                "                                              \\prime\\special{dvisvgm:raw </g>}");
+
+        assertTrue(ErrorSummarizer.summarizeSignature(error).contains("Missing $ inserted"));
     }
 
     @Test

@@ -88,13 +88,13 @@ public final class SceneEvaluationPrompts {
                 .append("5. Preserve reflections, symmetry, intersections, equal distances, and anchor-follow relationships exactly.\n")
                 .append("6. Prefer cleaning up temporary annotations or stale overlays over covering them with new opaque cards.\n")
                 .append("7. Preserve a readable empty zone for overlays and key conclusions.\n\n")
-                .append("Please fix the code so the reported sampled frames no longer have elements overlapping or going outside the frame.\n")
+                .append("You MUST audit the ENTIRE file for similar issues, not just the reported elements. The reported issues indicate structural patterns that may appear elsewhere.\n")
                 .append("Preserve the intended teaching flow and animation meaning.\n")
                 .append("Preserve geometric invariants from the storyboard; do not fix offscreen issues by breaking reflections, symmetry, intersections, equal distances, or other defining constructions.\n")
                 .append("Also proactively check for common Python and Manim runtime mistakes.\n")
                 .append("Remember: Return ONLY the single Python code block containing the full file. No explanation.\n");
 
-        appendFixHistory(sb, fixHistory);
+        PromptUtils.appendFixHistory(sb, fixHistory);
         return sb.toString();
     }
 
@@ -122,22 +122,7 @@ public final class SceneEvaluationPrompts {
                 .append("Preserve geometric invariants from the storyboard; do not fix overlap by breaking reflections, symmetry, intersections, or other defining constructions.\n")
                 .append("Remember: Return ONLY the single fenced `geogebra` code block. No explanation.\n");
 
-        appendFixHistory(sb, fixHistory);
+        PromptUtils.appendFixHistory(sb, fixHistory);
         return sb.toString();
-    }
-
-    private static void appendFixHistory(StringBuilder sb, List<String> fixHistory) {
-        if (fixHistory != null && !fixHistory.isEmpty()) {
-            sb.append("\nPrevious fix attempts to avoid repeating:\n");
-            for (int i = 0; i < fixHistory.size(); i++) {
-                String item = fixHistory.get(i);
-                if (item == null) {
-                    continue;
-                }
-                sb.append("  Attempt ").append(i + 1).append(": ")
-                        .append(item.length() > 100 ? item.substring(0, 100) + "..." : item)
-                        .append("\n");
-            }
-        }
     }
 }
