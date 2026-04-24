@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * Result from the code evaluation stage.
- * Captures static layout/continuity checks, code-review scores,
+ * Captures static validation, rule-based code review checks,
  * one-shot code revision state, and whether rendering is allowed.
  */
 public class CodeEvaluationResult {
@@ -337,11 +337,7 @@ public class CodeEvaluationResult {
 
     public static class ReviewSnapshot {
         private boolean approvedForRender;
-        private int layoutScore;
-        private int continuityScore;
-        private int pacingScore;
-        private int clutterRisk;
-        private int likelyOffscreenRisk;
+        private List<RuleCheck> ruleChecks = new ArrayList<>();
         private String summary;
         private List<String> strengths = new ArrayList<>();
         private List<String> blockingIssues = new ArrayList<>();
@@ -352,23 +348,9 @@ public class CodeEvaluationResult {
             this.approvedForRender = approvedForRender;
         }
 
-        public int getLayoutScore() { return layoutScore; }
-        public void setLayoutScore(int layoutScore) { this.layoutScore = layoutScore; }
-
-        public int getContinuityScore() { return continuityScore; }
-        public void setContinuityScore(int continuityScore) {
-            this.continuityScore = continuityScore;
-        }
-
-        public int getPacingScore() { return pacingScore; }
-        public void setPacingScore(int pacingScore) { this.pacingScore = pacingScore; }
-
-        public int getClutterRisk() { return clutterRisk; }
-        public void setClutterRisk(int clutterRisk) { this.clutterRisk = clutterRisk; }
-
-        public int getLikelyOffscreenRisk() { return likelyOffscreenRisk; }
-        public void setLikelyOffscreenRisk(int likelyOffscreenRisk) {
-            this.likelyOffscreenRisk = likelyOffscreenRisk;
+        public List<RuleCheck> getRuleChecks() { return ruleChecks; }
+        public void setRuleChecks(List<RuleCheck> ruleChecks) {
+            this.ruleChecks = ruleChecks != null ? ruleChecks : new ArrayList<>();
         }
 
         public String getSummary() { return summary; }
@@ -388,5 +370,33 @@ public class CodeEvaluationResult {
         public void setRevisionDirectives(List<String> revisionDirectives) {
             this.revisionDirectives = revisionDirectives != null ? revisionDirectives : new ArrayList<>();
         }
+    }
+
+    public static class RuleCheck {
+        private String ruleId;
+        private String requirement;
+        private String status;
+        private String evidence;
+
+        public RuleCheck() {}
+
+        public RuleCheck(String ruleId, String requirement, String status, String evidence) {
+            this.ruleId = ruleId;
+            this.requirement = requirement;
+            this.status = status;
+            this.evidence = evidence;
+        }
+
+        public String getRuleId() { return ruleId; }
+        public void setRuleId(String ruleId) { this.ruleId = ruleId; }
+
+        public String getRequirement() { return requirement; }
+        public void setRequirement(String requirement) { this.requirement = requirement; }
+
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+
+        public String getEvidence() { return evidence; }
+        public void setEvidence(String evidence) { this.evidence = evidence; }
     }
 }

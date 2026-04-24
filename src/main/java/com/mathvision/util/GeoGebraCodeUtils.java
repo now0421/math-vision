@@ -119,22 +119,22 @@ public final class GeoGebraCodeUtils {
             return violations;
         }
 
-        String punctuationEvidence = CodeValidationSupport.findFirstMatchEvidence(geoGebraCode, FULL_WIDTH_PUNCTUATION);
-        if (punctuationEvidence != null) {
+        List<String> punctuationEvidences = CodeValidationSupport.findAllMatchEvidences(geoGebraCode, FULL_WIDTH_PUNCTUATION);
+        for (String evidence : punctuationEvidences) {
             violations.add("Contains full-width punctuation that GeoGebra command parsing may reject"
-                    + " (" + punctuationEvidence + ")");
+                    + " (" + evidence + ")");
         }
 
-        String multiCommandEvidence = findFirstSemicolonEvidence(extractCommands(geoGebraCode));
-        if (multiCommandEvidence != null) {
+        List<String> semicolonEvidences = findAllSemicolonEvidences(extractCommands(geoGebraCode));
+        for (String evidence : semicolonEvidences) {
             violations.add("Contains multiple commands on one line; keep one GeoGebra command per line"
-                    + " (" + multiCommandEvidence + ")");
+                    + " (" + evidence + ")");
         }
 
-        String undocumentedCommandEvidence = findFirstUndocumentedGeoGebraCommandCall(geoGebraCode);
-        if (undocumentedCommandEvidence != null) {
+        List<String> undocumentedEvidences = findAllUndocumentedGeoGebraCommandCalls(geoGebraCode);
+        for (String evidence : undocumentedEvidences) {
             violations.add("Static rule violation: undocumented GeoGebra command"
-                    + " (" + undocumentedCommandEvidence + ")");
+                    + " (" + evidence + ")");
         }
 
         return violations;
@@ -170,17 +170,19 @@ public final class GeoGebraCodeUtils {
                 || COMMAND_CALL.matcher(command).matches();
     }
 
-    private static String findFirstSemicolonEvidence(List<String> commands) {
+    private static List<String> findAllSemicolonEvidences(List<String> commands) {
+        List<String> evidences = new ArrayList<>();
         for (int i = 0; i < commands.size(); i++) {
             String command = commands.get(i);
             if (command.contains(";")) {
-                return "line " + (i + 1) + ": " + abbreviate(command);
+                evidences.add("line " + (i + 1) + ": " + abbreviate(command));
             }
         }
-        return null;
+        return evidences;
     }
 
-    static String findFirstUndocumentedGeoGebraCommandCall(String geoGebraCode) {
+    static List<String> findAllUndocumentedGeoGebraCommandCalls(String geoGebraCode) {
+        List<String> evidences = new ArrayList<>();
         List<String> commands = extractCommands(geoGebraCode);
         Set<String> documented = GeoGebraValidationSupport.documentedCommandNames();
         for (int i = 0; i < commands.size(); i++) {
@@ -189,11 +191,11 @@ public final class GeoGebraCodeUtils {
             while (matcher.find()) {
                 String commandName = matcher.group(1);
                 if (!documented.contains(commandName)) {
-                    return "line " + (i + 1) + ": " + commandName + "() - " + abbreviate(commands.get(i));
+                    evidences.add("line " + (i + 1) + ": " + commandName + "() - " + abbreviate(commands.get(i)));
                 }
             }
         }
-        return null;
+        return evidences;
     }
 
     private static String stripDoubleQuotedText(String command) {
@@ -215,51 +217,7 @@ public final class GeoGebraCodeUtils {
         return result.toString();
     }
 
-    private static boolean hasBalancedDelimiters(String command) {
-        int parentheses = 0;
-        int brackets = 0;
-        int braces = 0;
-        boolean inDoubleQuote = false;
 
-        for (int i = 0; i < command.length(); i++) {
-            char ch = command.charAt(i);
-            char previous = i > 0 ? command.charAt(i - 1) : '\0';
-
-            // In GeoGebra, ' (apostrophe) is the prime notation for object names
-            // (e.g. A', B', AB') — not a string quote delimiter. Only " is used
-            // for string literals, so we skip single-quote toggling entirely.
-            if (ch == '"' && previous != '\\') {
-                inDoubleQuote = !inDoubleQuote;
-                continue;
-            }
-            if (inDoubleQuote) {
-                continue;
-            }
-
-            if (ch == '(') {
-                parentheses++;
-            } else if (ch == ')') {
-                parentheses--;
-            } else if (ch == '[') {
-                brackets++;
-            } else if (ch == ']') {
-                brackets--;
-            } else if (ch == '{') {
-                braces++;
-            } else if (ch == '}') {
-                braces--;
-            }
-
-            if (parentheses < 0 || brackets < 0 || braces < 0) {
-                return false;
-            }
-        }
-
-        return !inDoubleQuote
-                && parentheses == 0
-                && brackets == 0
-                && braces == 0;
-    }
 
     private static String abbreviate(String text) {
         if (text == null) {

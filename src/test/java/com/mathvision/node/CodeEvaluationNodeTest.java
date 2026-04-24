@@ -75,7 +75,7 @@ class CodeEvaluationNodeTest {
                 "Split the scene further."));
         aiClient.chatResponses.add(wrapCodeResponse(revisedCodeRoundTwo()));
         aiClient.toolResponses.add(reviewResponse(false, 6, 5, 5, 4, 4,
-                "Second revision still does not clear the advisory gate.",
+                "Second revision still does not clear the rule gate.",
                 "Scene remains under the threshold.",
                 "Stop after the second attempt."));
 
@@ -356,18 +356,26 @@ class CodeEvaluationNodeTest {
         ObjectNode message = choices.addObject().putObject("message");
         ArrayNode toolCalls = message.putArray("tool_calls");
         ObjectNode function = toolCalls.addObject().putObject("function");
-        function.put("name", "review_code_quality");
+        function.put("name", "write_code_review");
 
         ObjectNode arguments = JsonUtils.mapper().createObjectNode();
         arguments.put("approved_for_render", approved);
-        arguments.put("layout_score", layout);
-        arguments.put("continuity_score", continuity);
-        arguments.put("pacing_score", pacing);
-        arguments.put("clutter_risk", clutter);
-        arguments.put("likely_offscreen_risk", offscreen);
+        ArrayNode ruleChecks = arguments.putArray("rule_checks");
+        ObjectNode ruleCheck = ruleChecks.addObject();
+        ruleCheck.put("rule_id", approved ? "storyboard_execution" : "layout_and_hierarchy");
+        ruleCheck.put("requirement", approved
+                ? "Storyboard execution and presentation rules are satisfied."
+                : blockingIssue);
+        ruleCheck.put("status", approved ? "pass" : "fail");
+        ruleCheck.put("evidence", approved
+                ? "The test response marks the generated code as render-ready."
+                : "The test response provides a blocking issue.");
         arguments.put("summary", summary);
         arguments.putArray("strengths").add("One clear center anchor.");
-        arguments.putArray("blocking_issues").add(blockingIssue);
+        ArrayNode blockingIssues = arguments.putArray("blocking_issues");
+        if (!approved) {
+            blockingIssues.add(blockingIssue);
+        }
         arguments.putArray("revision_directives").add(directive);
         function.set("arguments", arguments);
         return response;

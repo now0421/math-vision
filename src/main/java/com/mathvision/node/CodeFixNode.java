@@ -150,7 +150,7 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         if (result.isApplied()) {
             List<String> postFixIssues = NodeSupport.isGeoGebraTarget(workflowConfig)
                     ? GeoGebraCodeUtils.validateFull(result.getFixedGeneratedCode())
-                    : ManimCodeUtils.validateRenderPreflight(result.getFixedGeneratedCode());
+                    : ManimCodeUtils.validateFull(result.getFixedGeneratedCode());
             result.setPostFixStaticAuditIssueCount(postFixIssues.size());
             result.setPostFixStaticAuditSummary(summarizeIssues(postFixIssues));
             if (postFixIssues.isEmpty()) {

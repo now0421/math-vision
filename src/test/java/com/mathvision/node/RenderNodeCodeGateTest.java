@@ -56,7 +56,7 @@ class RenderNodeCodeGateTest {
 
         CodeEvaluationResult codeEvaluationResult = new CodeEvaluationResult();
         codeEvaluationResult.setApprovedForRender(false);
-        codeEvaluationResult.setGateReason("layout_score=5 < 7");
+        codeEvaluationResult.setGateReason("layout_and_hierarchy rule failed");
 
         Map<String, Object> ctx = new LinkedHashMap<>();
         ctx.put(WorkflowKeys.CONFIG, config);

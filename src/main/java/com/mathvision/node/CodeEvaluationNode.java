@@ -12,6 +12,7 @@ import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.Narrative.StoryboardScene;
 import com.mathvision.model.CodeEvaluationResult;
 import com.mathvision.model.CodeEvaluationResult.ReviewSnapshot;
+import com.mathvision.model.CodeEvaluationResult.RuleCheck;
 import com.mathvision.model.CodeEvaluationResult.StaticAnalysis;
 import com.mathvision.model.CodeEvaluationResult.StaticFinding;
 import com.mathvision.model.WorkflowActions;
@@ -56,9 +57,6 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
 
     private static final Logger log = LoggerFactory.getLogger(CodeEvaluationNode.class);
 
-    private static final int MIN_LAYOUT_SCORE = 7;
-    private static final int MIN_CONTINUITY_SCORE = 6;
-    private static final int MIN_PACING_SCORE = 6;
     private static final int MAX_REVISION_ATTEMPTS = 2;
 
     private static final Pattern FADE_IN_PATTERN = Pattern.compile("\\bFadeIn\\s*\\(");
@@ -195,10 +193,10 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         if (!approved && fixState.getAttempts() < MAX_REVISION_ATTEMPTS) {
             fixState.setRequestFix(true);
             fixState.setAttempts(fixState.getAttempts() + 1);
-            log.warn("Code evaluation advisory review still failed for scene {}, routing to shared CodeFixNode (attempt {}/{})",
+            log.warn("Code evaluation rule review still failed for scene {}, routing to shared CodeFixNode (attempt {}/{})",
                     sceneName, fixState.getAttempts(), MAX_REVISION_ATTEMPTS);
         } else if (!approved) {
-            log.warn("Code evaluation advisory review still failed for scene {}, max revision attempts reached ({})",
+            log.warn("Code evaluation rule review still failed for scene {}, max revision attempts reached ({})",
                     sceneName, MAX_REVISION_ATTEMPTS);
         }
 
@@ -211,7 +209,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         result.setExecutionTimeSeconds(TimeUtils.secondsSince(start));
 
         if (approved) {
-            log.info("Code evaluation advisory passed for scene {}", sceneName);
+            log.info("Code evaluation rule review passed for scene {}", sceneName);
         } else {
             log.warn("Code evaluation still recommends revisions for scene {}: {}",
                     sceneName, result.getGateReason());
@@ -427,6 +425,24 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         }
 
         if (review != null && review.getBlockingIssues() != null) {
+            if (review.getRuleChecks() != null) {
+                for (RuleCheck check : review.getRuleChecks()) {
+                    if (!isFailedRuleCheck(check)) {
+                        continue;
+                    }
+                    StringBuilder item = new StringBuilder("Failed rule");
+                    if (check.getRuleId() != null && !check.getRuleId().isBlank()) {
+                        item.append(" `").append(check.getRuleId().trim()).append("`");
+                    }
+                    if (check.getRequirement() != null && !check.getRequirement().isBlank()) {
+                        item.append(": ").append(check.getRequirement().trim());
+                    }
+                    if (check.getEvidence() != null && !check.getEvidence().isBlank()) {
+                        item.append(" [evidence: ").append(check.getEvidence().trim()).append("]");
+                    }
+                    reasons.add(item.toString());
+                }
+            }
             for (String issue : review.getBlockingIssues()) {
                 if (issue == null || issue.isBlank()) {
                     continue;
@@ -500,18 +516,19 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         if (review == null) {
             return false;
         }
-        if (review.getContinuityScore() < MIN_CONTINUITY_SCORE
-                || review.getPacingScore() < MIN_PACING_SCORE) {
+        if (analysis != null && analysis.hasBlockingFindings()) {
             return false;
         }
-        return review.getLayoutScore() >= MIN_LAYOUT_SCORE;
+        return review.isApprovedForRender()
+                && !hasFailedRuleChecks(review)
+                && (review.getBlockingIssues() == null || review.getBlockingIssues().isEmpty());
     }
 
     private String buildGateReason(boolean approved,
                                    StaticAnalysis analysis,
                                    ReviewSnapshot review) {
         if (approved) {
-            return "Advisory review passed";
+            return "Rule compliance review passed";
         }
 
         List<String> reasons = new ArrayList<>();
@@ -519,34 +536,49 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
             for (StaticFinding finding : analysis.getFindings()) {
                 if ("fail".equalsIgnoreCase(finding.getSeverity())
                         || "warn".equalsIgnoreCase(finding.getSeverity())) {
-                    reasons.add(finding.getSummary());
+                    addReason(reasons, finding.getSummary());
                 }
             }
         }
 
         if (review != null) {
-            if (review.getLayoutScore() < MIN_LAYOUT_SCORE) {
-                reasons.add("layout_score=" + safeScore(review.getLayoutScore()) + " < " + MIN_LAYOUT_SCORE);
-            }
-            if (review.getContinuityScore() < MIN_CONTINUITY_SCORE) {
-                reasons.add("continuity_score=" + safeScore(review.getContinuityScore()) + " < " + MIN_CONTINUITY_SCORE);
-            }
-            if (review.getPacingScore() < MIN_PACING_SCORE) {
-                reasons.add("pacing_score=" + safeScore(review.getPacingScore()) + " < " + MIN_PACING_SCORE);
+            if (review.getRuleChecks() != null) {
+                for (RuleCheck check : review.getRuleChecks()) {
+                    if (check == null || !isFailedRuleCheck(check)) {
+                        continue;
+                    }
+                    String summary = check.getRequirement();
+                    if (summary == null || summary.isBlank()) {
+                        summary = check.getRuleId();
+                    }
+                    if (summary != null && !summary.isBlank()) {
+                        addReason(reasons, summary);
+                    }
+                }
             }
             if (review.getBlockingIssues() != null) {
                 for (String issue : review.getBlockingIssues()) {
                     if (issue != null && !issue.isBlank()) {
-                        reasons.add(issue.trim());
+                        addReason(reasons, issue);
                     }
                 }
             }
         }
 
         if (reasons.isEmpty()) {
-            return "Advisory review suggests visual refinements before render.";
+            return "Rule compliance review recommends revisions before render.";
         }
         return String.join("; ", reasons.subList(0, Math.min(3, reasons.size())));
+    }
+
+    private void addReason(List<String> reasons, String reason) {
+        if (reason == null || reason.isBlank()) {
+            return;
+        }
+        String trimmed = reason.trim();
+        if (!reasons.contains(trimmed)) {
+            reasons.add(trimmed);
+        }
     }
 
     private boolean isTextualObject(StoryboardObject object) {
@@ -653,7 +685,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                 continue;
             }
             String trimmed = violation.trim();
-            addFinding(analysis, "static_validation", "warn", trimmed, trimmed);
+            addFinding(analysis, "static_validation", "fail", trimmed, trimmed);
         }
     }
 
@@ -663,6 +695,17 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         }
         return analysis.getFindings().stream()
                 .anyMatch(finding -> ruleId.equalsIgnoreCase(finding.getRuleId()));
+    }
+
+    private boolean hasFailedRuleChecks(ReviewSnapshot review) {
+        if (review == null || review.getRuleChecks() == null) {
+            return false;
+        }
+        return review.getRuleChecks().stream().anyMatch(this::isFailedRuleCheck);
+    }
+
+    private boolean isFailedRuleCheck(RuleCheck check) {
+        return check != null && "fail".equalsIgnoreCase(check.getStatus());
     }
 
     private int countMatches(String text, Pattern pattern) {
@@ -685,16 +728,6 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
             }
         }
         return false;
-    }
-
-    private int readInt(JsonNode node, String... fieldNames) {
-        for (String fieldName : fieldNames) {
-            JsonNode value = node.get(fieldName);
-            if (value != null && !value.isNull()) {
-                return value.asInt(0);
-            }
-        }
-        return 0;
     }
 
     private String readText(JsonNode node, String... fieldNames) {
@@ -724,18 +757,86 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         return new ArrayList<>();
     }
 
-    private int clampScore(int value, int fallback) {
-        if (value <= 0) {
-            return fallback;
+    private List<RuleCheck> readRuleChecks(JsonNode node, String... fieldNames) {
+        for (String fieldName : fieldNames) {
+            JsonNode value = node.get(fieldName);
+            if (value != null && value.isArray()) {
+                List<RuleCheck> checks = new ArrayList<>();
+                for (JsonNode item : value) {
+                    if (item == null || !item.isObject()) {
+                        continue;
+                    }
+                    RuleCheck check = new RuleCheck();
+                    check.setRuleId(readText(item, "rule_id", "ruleId"));
+                    check.setRequirement(readText(item, "requirement"));
+                    check.setStatus(readText(item, "status"));
+                    check.setEvidence(readText(item, "evidence"));
+                    if (!check.getRuleId().isBlank()
+                            || !check.getRequirement().isBlank()
+                            || !check.getStatus().isBlank()) {
+                        checks.add(check);
+                    }
+                }
+                return checks;
+            }
         }
-        if (value > 10) {
-            return 10;
-        }
-        return value;
+        return new ArrayList<>();
     }
 
-    private int safeScore(int value) {
-        return Math.max(0, value);
+    private List<RuleCheck> normalizeRuleChecks(List<RuleCheck> checks) {
+        List<RuleCheck> normalized = new ArrayList<>();
+        if (checks == null) {
+            return normalized;
+        }
+        for (RuleCheck check : checks) {
+            if (check == null) {
+                continue;
+            }
+            String ruleId = normalizeRuleText(check.getRuleId());
+            String requirement = normalizeRuleText(check.getRequirement());
+            String status = normalizeRuleStatus(check.getStatus());
+            String evidence = normalizeRuleText(check.getEvidence());
+            if (ruleId.isBlank() && requirement.isBlank()) {
+                continue;
+            }
+            normalized.add(new RuleCheck(ruleId, requirement, status, evidence));
+        }
+        return normalized;
+    }
+
+    private String normalizeRuleStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return "warn";
+        }
+        String normalized = status.trim().toLowerCase(Locale.ROOT);
+        if ("passed".equals(normalized)) {
+            return "pass";
+        }
+        if ("warning".equals(normalized)) {
+            return "warn";
+        }
+        if ("failed".equals(normalized)
+                || "failure".equals(normalized)
+                || "block".equals(normalized)
+                || "blocked".equals(normalized)) {
+            return "fail";
+        }
+        if ("n/a".equals(normalized)
+                || "na".equals(normalized)
+                || "not applicable".equals(normalized)) {
+            return "not_applicable";
+        }
+        if ("pass".equals(normalized)
+                || "warn".equals(normalized)
+                || "fail".equals(normalized)
+                || "not_applicable".equals(normalized)) {
+            return normalized;
+        }
+        return "warn";
+    }
+
+    private String normalizeRuleText(String text) {
+        return text != null ? text.trim() : "";
     }
 
     private ReviewSnapshot parseReviewSnapshot(JsonNode toolData) {
@@ -750,17 +851,16 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
 
         ReviewSnapshot snapshot = new ReviewSnapshot();
         snapshot.setApprovedForRender(readBoolean(reviewNode, "approved_for_render", "approvedForRender"));
-        snapshot.setLayoutScore(readInt(reviewNode, "layout_score", "layoutScore"));
-        snapshot.setContinuityScore(readInt(reviewNode, "continuity_score", "continuityScore"));
-        snapshot.setPacingScore(readInt(reviewNode, "pacing_score", "pacingScore"));
+        snapshot.setRuleChecks(readRuleChecks(reviewNode, "rule_checks", "ruleChecks"));
         snapshot.setSummary(readText(reviewNode, "summary"));
         snapshot.setStrengths(readStringList(reviewNode, "strengths"));
         snapshot.setBlockingIssues(readStringList(reviewNode, "blocking_issues", "blockingIssues"));
         snapshot.setRevisionDirectives(readStringList(reviewNode, "revision_directives", "revisionDirectives"));
 
-        if (snapshot.getLayoutScore() <= 0
-                && snapshot.getContinuityScore() <= 0
-                && snapshot.getPacingScore() <= 0) {
+        if (snapshot.getRuleChecks().isEmpty()
+                && snapshot.getBlockingIssues().isEmpty()
+                && snapshot.getRevisionDirectives().isEmpty()
+                && (snapshot.getSummary() == null || snapshot.getSummary().isBlank())) {
             return null;
         }
         return snapshot;
@@ -787,12 +887,10 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     }
 
     private ReviewSnapshot normalizeReview(ReviewSnapshot snapshot) {
-        snapshot.setLayoutScore(clampScore(snapshot.getLayoutScore(), 7));
-        snapshot.setContinuityScore(clampScore(snapshot.getContinuityScore(), 6));
-        snapshot.setPacingScore(clampScore(snapshot.getPacingScore(), 6));
         if (snapshot.getSummary() == null || snapshot.getSummary().isBlank()) {
-            snapshot.setSummary("Structured code review completed.");
+            snapshot.setSummary("Structured rule-compliance review completed.");
         }
+        snapshot.setRuleChecks(normalizeRuleChecks(snapshot.getRuleChecks()));
         if (snapshot.getStrengths() == null) {
             snapshot.setStrengths(new ArrayList<>());
         }
@@ -802,37 +900,47 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         if (snapshot.getRevisionDirectives() == null) {
             snapshot.setRevisionDirectives(new ArrayList<>());
         }
+        if (hasFailedRuleChecks(snapshot) || !snapshot.getBlockingIssues().isEmpty()) {
+            snapshot.setApprovedForRender(false);
+        }
         return snapshot;
     }
 
     private ReviewSnapshot fallbackReviewFromStaticAnalysis(StaticAnalysis analysis) {
         ReviewSnapshot review = new ReviewSnapshot();
+        List<RuleCheck> ruleChecks = new ArrayList<>();
         List<String> blockingIssues = new ArrayList<>();
         List<String> directives = new ArrayList<>();
 
         for (StaticFinding finding : analysis.getFindings()) {
-            if ("three_d_scene_required".equalsIgnoreCase(finding.getRuleId())
-                    || "three_d_overlay_unfixed".equalsIgnoreCase(finding.getRuleId())) {
+            boolean blocking = "fail".equalsIgnoreCase(finding.getSeverity())
+                    || "three_d_scene_required".equalsIgnoreCase(finding.getRuleId())
+                    || "three_d_overlay_unfixed".equalsIgnoreCase(finding.getRuleId());
+            String status = blocking ? "fail" : "warn";
+            ruleChecks.add(new RuleCheck(
+                    finding.getRuleId(),
+                    finding.getSummary(),
+                    status,
+                    finding.getEvidence()));
+            if (blocking) {
                 blockingIssues.add(finding.getSummary());
             }
             directives.add(finding.getSummary());
         }
 
-        int semanticPenalty = 0;
-        semanticPenalty += hasRule(analysis, "three_d_scene_required") ? 3 : 0;
-        semanticPenalty += hasRule(analysis, "three_d_overlay_unfixed") ? 2 : 0;
-        semanticPenalty += hasRule(analysis, "three_d_camera_plan_missing") ? 1 : 0;
-        semanticPenalty += hasRule(analysis, "three_d_camera_motion_missing") ? 1 : 0;
-        semanticPenalty += hasRule(analysis, "three_d_overlay_missing") ? 1 : 0;
-        review.setLayoutScore(Math.max(2, 8 - semanticPenalty));
-        review.setContinuityScore(8);
-        review.setPacingScore(8);
+        if (ruleChecks.isEmpty()) {
+            ruleChecks.add(new RuleCheck(
+                    "static_review",
+                    "No static validation or 3D-readability findings were produced.",
+                    "pass",
+                    "Static analysis completed without findings."));
+        }
+
+        review.setRuleChecks(ruleChecks);
         review.setBlockingIssues(blockingIssues);
         review.setRevisionDirectives(directives);
-        review.setSummary("Fallback Stage 3 review synthesized from static validation and Manim 3D-readability heuristics.");
-        review.setApprovedForRender(review.getLayoutScore() >= MIN_LAYOUT_SCORE
-                && review.getContinuityScore() >= MIN_CONTINUITY_SCORE
-                && review.getPacingScore() >= MIN_PACING_SCORE);
+        review.setSummary("Fallback Stage 3 rule-compliance review synthesized from static validation and 3D-readability heuristics.");
+        review.setApprovedForRender(blockingIssues.isEmpty());
         return review;
     }
 

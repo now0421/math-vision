@@ -91,8 +91,12 @@ class ToolSchemasTest {
     @Test
     void codeReviewTool_usesCanonicalFields() {
         assertTrue(ToolSchemas.CODE_REVIEW.contains("approved_for_render"));
+        assertTrue(ToolSchemas.CODE_REVIEW.contains("rule_checks"));
+        assertTrue(ToolSchemas.CODE_REVIEW.contains("rule_id"));
+        assertTrue(ToolSchemas.CODE_REVIEW.contains("not_applicable"));
         assertTrue(ToolSchemas.CODE_REVIEW.contains("revision_directives"));
-        assertTrue(ToolSchemas.CODE_REVIEW.contains("likely_offscreen_risk"));
+        assertFalse(ToolSchemas.CODE_REVIEW.contains("layout_score"));
+        assertFalse(ToolSchemas.CODE_REVIEW.contains("pacing_score"));
     }
 
     @Test

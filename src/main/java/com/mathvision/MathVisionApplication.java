@@ -323,11 +323,15 @@ public class MathVisionApplication {
 
             CodeEvaluationResult.ReviewSnapshot finalReview = codeEvaluationResult.getFinalReview();
             if (finalReview != null) {
-                summary.put("layout_score", finalReview.getLayoutScore());
-                summary.put("continuity_score", finalReview.getContinuityScore());
-                summary.put("pacing_score", finalReview.getPacingScore());
-                summary.put("clutter_risk", finalReview.getClutterRisk());
-                summary.put("likely_offscreen_risk", finalReview.getLikelyOffscreenRisk());
+                long failedRuleCount = finalReview.getRuleChecks().stream()
+                        .filter(check -> "fail".equalsIgnoreCase(check.getStatus()))
+                        .count();
+                long warnedRuleCount = finalReview.getRuleChecks().stream()
+                        .filter(check -> "warn".equalsIgnoreCase(check.getStatus()))
+                        .count();
+                summary.put("code_review_rule_checks", finalReview.getRuleChecks().size());
+                summary.put("code_review_failed_rules", failedRuleCount);
+                summary.put("code_review_warned_rules", warnedRuleCount);
             }
         }
 
@@ -396,13 +400,11 @@ public class MathVisionApplication {
                     Boolean.TRUE.equals(summary.get("code_evaluation_approved")) ? "APPROVED" : "BLOCKED",
                     summary.get("code_revision_triggered"),
                     summary.get("code_revision_attempts"));
-            if (summary.containsKey("layout_score")) {
-                log.info("  Scores: layout={}, continuity={}, pacing={}, clutter_risk={}, offscreen_risk={}",
-                        summary.get("layout_score"),
-                        summary.get("continuity_score"),
-                        summary.get("pacing_score"),
-                        summary.get("clutter_risk"),
-                        summary.get("likely_offscreen_risk"));
+            if (summary.containsKey("code_review_rule_checks")) {
+                log.info("  Rule Checks: total={}, failed={}, warned={}",
+                        summary.get("code_review_rule_checks"),
+                        summary.get("code_review_failed_rules"),
+                        summary.get("code_review_warned_rules"));
             }
             if (summary.get("code_gate_reason") != null) {
                 log.info("  Gate:   {}", summary.get("code_gate_reason"));

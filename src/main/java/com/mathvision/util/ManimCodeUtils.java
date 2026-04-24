@@ -121,16 +121,14 @@ public final class ManimCodeUtils {
             return violations;
         }
 
-        String staticIndexingEvidence = CodeValidationSupport.findFirstMatchEvidence(manimCode, STATIC_INDEXING_VIOLATION);
-        if (staticIndexingEvidence != null) {
+        for (String evidence : CodeValidationSupport.findAllMatchEvidences(manimCode, STATIC_INDEXING_VIOLATION)) {
             violations.add("Static rule violation: hardcoded MathTex subobject indexing"
-                    + " (" + staticIndexingEvidence + ")");
+                    + " (" + evidence + ")");
         }
 
-        String undocumentedApiEvidence = findUndocumentedManimMethodCall(manimCode);
-        if (undocumentedApiEvidence != null) {
+        for (String evidence : findAllUndocumentedManimMethodCalls(manimCode)) {
             violations.add("Static rule violation: undocumented Manim API call"
-                    + " (" + undocumentedApiEvidence + ")");
+                    + " (" + evidence + ")");
         }
 
         violations.addAll(validateTextConstructorSemantics(manimCode));
@@ -145,10 +143,6 @@ public final class ManimCodeUtils {
         return violations;
     }
 
-    public static List<String> validateRenderPreflight(String manimCode) {
-        return validateFull(manimCode);
-    }
-
     public static boolean hasMainSceneClass(String manimCode) {
         return manimCode != null && MAIN_SCENE_CLASS.matcher(manimCode).find();
     }
@@ -161,7 +155,8 @@ public final class ManimCodeUtils {
      * Scans code for undocumented snake_case method calls while ignoring
      * user-defined helpers on {@code self} or class-level receivers.
      */
-    static String findUndocumentedManimMethodCall(String manimCode) {
+    static List<String> findAllUndocumentedManimMethodCalls(String manimCode) {
+        List<String> evidences = new ArrayList<>();
         Set<String> documented = ManimValidationSupport.documentedInstanceMethodNames();
         String[] lines = manimCode.split("\\R");
         for (int i = 0; i < lines.length; i++) {
@@ -183,11 +178,11 @@ public final class ManimCodeUtils {
                 }
                 if (!documented.contains(methodName)) {
                     String fragment = trimmed.length() > 80 ? trimmed.substring(0, 80) + "..." : trimmed;
-                    return "line " + (i + 1) + ": " + receiver + "." + methodName + "() — " + fragment;
+                    evidences.add("line " + (i + 1) + ": " + receiver + "." + methodName + "() — " + fragment);
                 }
             }
         }
-        return null;
+        return evidences;
     }
 
     static List<String> validateTextConstructorSemantics(String manimCode) {

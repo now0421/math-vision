@@ -1,5 +1,7 @@
 package com.mathvision.util;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -18,9 +20,10 @@ public final class CodeValidationSupport {
         return !normalizeForComparison(sourceCode).equals(normalizeForComparison(revisedCode));
     }
 
-    public static String findFirstMatchEvidence(String generatedCode, Pattern pattern) {
+    public static List<String> findAllMatchEvidences(String generatedCode, Pattern pattern) {
+        List<String> evidences = new ArrayList<>();
         if (generatedCode == null || generatedCode.isBlank() || pattern == null) {
-            return null;
+            return evidences;
         }
 
         String[] lines = generatedCode.split("\\R");
@@ -35,11 +38,11 @@ public final class CodeValidationSupport {
                 if (fragment.length() > 120) {
                     fragment = fragment.substring(0, 120) + "...";
                 }
-                return "line " + (i + 1) + ": " + fragment;
+                evidences.add("line " + (i + 1) + ": " + fragment);
             }
         }
 
-        return null;
+        return evidences;
     }
 
     public static int countLines(String generatedCode) {

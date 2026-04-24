@@ -157,7 +157,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
 
         if (codeEvaluationResult != null && !codeEvaluationResult.isApprovedForRender()) {
             String reason = codeEvaluationResult.getGateReason();
-            log.warn("Code evaluation reported advisory issues; continuing to render anyway: {}",
+            log.warn("Code evaluation reported rule-compliance issues; continuing to render anyway: {}",
                     reason != null && !reason.isBlank() ? reason : "No additional detail");
         }
 
@@ -191,7 +191,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         int attemptNumber = retryState.getAttempts() + 1;
         log.info("  Render attempt {}/{}", attemptNumber, maxRetries + 1);
 
-        List<String> preflightIssues = ManimCodeUtils.validateRenderPreflight(currentCode);
+        List<String> preflightIssues = ManimCodeUtils.validateFull(currentCode);
         if (!preflightIssues.isEmpty() && attemptNumber < maxRetries + 1) {
             retryState.setAttempts(attemptNumber);
             retryState.previousErrorSignature = ErrorSummarizer.buildRenderFixSummary(String.join("\n", preflightIssues));
@@ -250,7 +250,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
                     log.warn("  Render timed out but stderr contains a fixable error: {}", signature);
                     retryState.setRequestFix(true);
                     retryState.pendingFocusedError = ErrorSummarizer.buildRenderFixSummary(focusedError);
-                    retryState.pendingStaticAuditIssues = new ArrayList<>(ManimCodeUtils.validateRenderPreflight(currentCode));
+                    retryState.pendingStaticAuditIssues = new ArrayList<>(ManimCodeUtils.validateFull(currentCode));
                     return failureResult(
                             currentCode,
                             sceneName,
@@ -314,7 +314,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         retryState.previousErrorSignature = errorSignature;
         retryState.setRequestFix(true);
         retryState.pendingFocusedError = errorSignature;
-        retryState.pendingStaticAuditIssues = new ArrayList<>(ManimCodeUtils.validateRenderPreflight(currentCode));
+        retryState.pendingStaticAuditIssues = new ArrayList<>(ManimCodeUtils.validateFull(currentCode));
         return failureResult(
                 currentCode,
                 sceneName,
