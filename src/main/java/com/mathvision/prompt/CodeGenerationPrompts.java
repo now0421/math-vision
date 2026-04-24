@@ -122,49 +122,55 @@ public final class CodeGenerationPrompts {
 
     private CodeGenerationPrompts() {}
 
-    public static String systemPrompt(String targetConcept, String targetDescription) {
-        return systemPrompt(targetConcept, targetDescription, "manim");
+    public static String buildRulesPrompt(String outputTarget) {
+        if ("geogebra".equalsIgnoreCase(outputTarget)) {
+            return SystemPrompts.buildRulesSection(
+                    SystemPrompts.ensureGeoGebraSyntaxManual(GEOGEBRA_CODE_GENERATION_SYSTEM));
+        }
+        return SystemPrompts.buildRulesSection(
+                SystemPrompts.ensureManimSyntaxManual(MANIM_CODE_GENERATION_SYSTEM));
     }
 
-    public static String systemPrompt(String targetConcept,
-                                      String targetDescription,
-                                      String outputTarget) {
-        if ("geogebra".equalsIgnoreCase(outputTarget)) {
-            return SystemPrompts.ensureGeoGebraSyntaxManual(SystemPrompts.buildWorkflowPrefix(
-                    "Stage 2 / Code Generation",
-                    "Generate executable GeoGebra code",
-                    targetConcept,
-                    targetDescription,
-                    "geogebra"
-            ) + GEOGEBRA_CODE_GENERATION_SYSTEM);
-        }
-        return SystemPrompts.ensureManimSyntaxManual(SystemPrompts.buildWorkflowPrefix(
+    public static String buildFixedContextPrompt(String targetConcept,
+                                                 String targetDescription,
+                                                 String outputTarget) {
+        return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 2 / Code Generation",
-                "Generate executable Manim code",
+                "Generate executable " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra code" : "Manim code"),
                 targetConcept,
                 targetDescription,
-                "manim"
-        ) + MANIM_CODE_GENERATION_SYSTEM);
+                outputTarget
+        ));
     }
 
-    public static String validationFixSystemPrompt(String targetConcept, String targetDescription) {
-        return SystemPrompts.ensureManimSyntaxManual(SystemPrompts.buildWorkflowPrefix(
+    public static String buildValidationFixRulesPrompt() {
+        return SystemPrompts.buildRulesSection(
+                SystemPrompts.ensureManimSyntaxManual(MANIM_VALIDATION_FIX_SYSTEM));
+    }
+
+    public static String buildValidationFixFixedContextPrompt(String targetConcept, String targetDescription) {
+        return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 2 / Code Fix",
                 "Repair generated code after validation findings",
                 targetConcept,
                 targetDescription,
                 "manim"
-        ) + MANIM_VALIDATION_FIX_SYSTEM);
+        ));
     }
 
-    public static String geoGebraValidationFixSystemPrompt(String targetConcept, String targetDescription) {
-        return SystemPrompts.ensureGeoGebraSyntaxManual(SystemPrompts.buildWorkflowPrefix(
+    public static String buildGeoGebraValidationFixRulesPrompt() {
+        return SystemPrompts.buildRulesSection(
+                SystemPrompts.ensureGeoGebraSyntaxManual(GEOGEBRA_VALIDATION_FIX_SYSTEM));
+    }
+
+    public static String buildGeoGebraValidationFixFixedContextPrompt(String targetConcept, String targetDescription) {
+        return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 2 / Code Fix",
                 "Repair generated GeoGebra commands after validation findings",
                 targetConcept,
                 targetDescription,
                 "geogebra"
-        ) + GEOGEBRA_VALIDATION_FIX_SYSTEM);
+        ));
     }
 
     public static String validationFixUserPrompt(String sceneName,
@@ -185,7 +191,7 @@ public final class CodeGenerationPrompts {
                 : "Compact storyboard JSON (source of truth):\n```json\n"
                 + storyboardJson
                 + "\n```\n\n";
-        return String.format(
+        return SystemPrompts.buildCurrentRequestSection(String.format(
                 "The generated Manim code failed validation checks.\n\n"
                         + "%s"
                         + "Required scene class name: %s\n\n"
@@ -196,7 +202,7 @@ public final class CodeGenerationPrompts {
                         + "Apply text constructor mapping consistently across the file: `math_text -> MathTex`, `plain_text -> Text`, and avoid `Tex` except for explicit non-math LaTeX text.\n"
                         + "Keep `%s` as the exact scene class name.\n"
                         + "Return ONLY the full Python code block.",
-                storyboardBlock, sceneName, generatedCode, problemList, sceneName);
+                storyboardBlock, sceneName, generatedCode, problemList, sceneName));
     }
 
     public static String geoGebraValidationFixUserPrompt(String figureName,
@@ -211,7 +217,7 @@ public final class CodeGenerationPrompts {
                 : "Compact storyboard JSON (source of truth):\n```json\n"
                 + storyboardJson
                 + "\n```\n\n";
-        return String.format(
+        return SystemPrompts.buildCurrentRequestSection(String.format(
                 "The generated GeoGebra command script failed static validation checks.\n\n"
                         + "%s"
                         + "Intended figure name: %s\n\n"
@@ -221,7 +227,7 @@ public final class CodeGenerationPrompts {
                         + "If storyboard geometry constraints or derived-object definitions are present, preserve them while fixing validation issues.\n"
                         + "Use English GeoGebra command names and preserve the figure naming intent around `%s`.\n"
                         + "Return ONLY the full GeoGebra code block.",
-                storyboardBlock, figureName, geoGebraCode, problemList, figureName);
+                storyboardBlock, figureName, geoGebraCode, problemList, figureName));
     }
 
     /**
@@ -231,7 +237,7 @@ public final class CodeGenerationPrompts {
     public static String skeletonUserPrompt(String storyboardJson,
                                             java.util.List<String> sceneMethodNames) {
         String methodList = String.join(", ", sceneMethodNames);
-        return String.format(
+        return SystemPrompts.buildCurrentRequestSection(String.format(
                 "Compact storyboard JSON:\n```json\n%s\n```\n\n"
                         + "Generate ONLY the code skeleton for a single-file Manim animation:\n"
                         + "- `from manim import *` and any other needed imports\n"
@@ -242,7 +248,7 @@ public final class CodeGenerationPrompts {
                         + "Do NOT implement the scene methods yet — just provide the skeleton with `pass` stubs.\n"
                         + "Return the skeleton code via the write_code_skeleton tool.",
                 storyboardJson, methodList,
-                sceneMethodNames.get(0) + "`, `def " + sceneMethodNames.get(sceneMethodNames.size() - 1));
+                sceneMethodNames.get(0) + "`, `def " + sceneMethodNames.get(sceneMethodNames.size() - 1)));
     }
 
     /**
@@ -252,7 +258,7 @@ public final class CodeGenerationPrompts {
                                              String methodName,
                                              int sceneIndex,
                                              int totalScenes) {
-        return String.format(
+        return SystemPrompts.buildCurrentRequestSection(String.format(
                 "Now implement scene method `%s` (scene %d of %d).\n\n"
                         + "Scene specification:\n```json\n%s\n```\n\n"
                         + "Generate the COMPLETE method body for `def %s(self):`.\n"
@@ -262,7 +268,7 @@ public final class CodeGenerationPrompts {
                         + "- Respect storyboard text semantics strictly: `math_text` means `MathTex(...)`, `plain_text` means `Text(...)`, and avoid `Tex(...)` unless the scene explicitly needs non-math LaTeX text.\n"
                         + "- Return the method code via the write_scene_code tool.",
                 methodName, sceneIndex + 1, totalScenes,
-                sceneJson, methodName, methodName);
+                sceneJson, methodName, methodName));
     }
 
     /**
@@ -272,7 +278,7 @@ public final class CodeGenerationPrompts {
     public static String geoGebraSkeletonUserPrompt(String storyboardJson,
                                                      List<String> sceneSectionNames) {
         String sectionList = String.join(", ", sceneSectionNames);
-        return String.format(
+        return SystemPrompts.buildCurrentRequestSection(String.format(
                 "Compact storyboard JSON:\n```json\n%s\n```\n\n"
                         + "Generate ONLY the GeoGebra code skeleton (setup section):\n"
                         + "- Global coordinate and view settings if needed\n"
@@ -280,7 +286,7 @@ public final class CodeGenerationPrompts {
                         + "- A section comment header for each scene: %s\n\n"
                         + "Do NOT implement the scene-specific objects yet — just provide the global setup.\n"
                         + "Return the skeleton code via the write_code_skeleton tool.",
-                storyboardJson, sectionList);
+                storyboardJson, sectionList));
     }
 
     /**
@@ -290,7 +296,7 @@ public final class CodeGenerationPrompts {
                                                       String sceneSectionName,
                                                       int sceneIndex,
                                                       int totalScenes) {
-        return String.format(
+        return SystemPrompts.buildCurrentRequestSection(String.format(
                 "Now implement scene section \"%s\" (scene %d of %d).\n\n"
                         + "Scene specification:\n```json\n%s\n```\n\n"
                         + "Generate the COMPLETE GeoGebra command block for this scene:\n"
@@ -300,6 +306,6 @@ public final class CodeGenerationPrompts {
                         + "- Reference shared objects from the skeleton by their established names\n"
                         + "- Return the scene code via the write_scene_code tool.",
                 sceneSectionName, sceneIndex + 1, totalScenes,
-                sceneJson, sceneSectionName);
+                sceneJson, sceneSectionName));
     }
 }

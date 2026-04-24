@@ -7,6 +7,7 @@ import com.mathvision.model.Narrative;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.service.AiClient;
 import com.mathvision.util.JsonUtils;
+import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -198,20 +199,21 @@ class VisualDesignNodeTest {
         }
 
         @Override
-        public String chat(String userMessage, String systemPrompt) {
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
+            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
             userMessages.add(userMessage);
             lastUserMessage = userMessage;
-            lastSystemPrompt = systemPrompt;
-            return "{\"layout\":\"fallback\",\"motion_plan\":\"fallback\",\"color_scheme\":\"fallback\"}";
+            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
+            return CompletableFuture.completedFuture("{\"layout\":\"fallback\",\"motion_plan\":\"fallback\",\"color_scheme\":\"fallback\"}");
         }
 
         @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
-                                                                 String systemPrompt,
+        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
                                                                  String toolsJson) {
+            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
             userMessages.add(userMessage);
             lastUserMessage = userMessage;
-            lastSystemPrompt = systemPrompt;
+            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
             return CompletableFuture.completedFuture(rawResponse);
         }
 
@@ -234,9 +236,10 @@ class VisualDesignNodeTest {
         private final List<String> userMessages = new ArrayList<>();
 
         @Override
-        public String chat(String userMessage, String systemPrompt) {
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
+            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
             userMessages.add(userMessage);
-            return "{\"scene\":{\"title\":\"fallback\"},\"new_objects\":[]}";
+            return CompletableFuture.completedFuture("{\"scene\":{\"title\":\"fallback\"},\"new_objects\":[]}");
         }
 
         @Override
@@ -246,14 +249,6 @@ class VisualDesignNodeTest {
             String currentUserMessage = snapshot.get(snapshot.size() - 1).getContent();
             userMessages.add(currentUserMessage);
             return CompletableFuture.completedFuture(validSceneDesignResponseFor(currentUserMessage));
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
-                                                                 String systemPrompt,
-                                                                 String toolsJson) {
-            userMessages.add(userMessage);
-            return CompletableFuture.completedFuture(validSceneDesignResponseFor(userMessage));
         }
 
         private String findUserMessageContaining(String snippet) {

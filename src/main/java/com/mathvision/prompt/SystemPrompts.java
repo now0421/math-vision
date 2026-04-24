@@ -423,7 +423,7 @@ public final class SystemPrompts {
                     + " -> Stage 1c Storyboard Validation -> Stage 2 Code Generation"
                     + " -> Stage 3 Code Evaluation -> Stage 4 Code Rendering"
                     + " -> Stage 5 Scene Evaluation"
-                    + " (Stages 2–5 may each route to the shared Code Fix node for iterative repair)";
+                    + " (Stages 2-5 may each route to the shared Code Fix node for iterative repair)";
 
     private SystemPrompts() {}
 
@@ -468,6 +468,26 @@ public final class SystemPrompts {
                 + sanitize(targetDescription, "No explicit target description is available yet.")
                 + "\n"
                 + "Keep the full target in mind, but perform only the responsibility of the current substep.\n\n";
+    }
+
+    public static String buildRulesSection(String content) {
+        return buildSection("[RULES]", content);
+    }
+
+    public static String buildFixedContextSection(String content) {
+        return buildSection("[FIXED_CONTEXT]", content);
+    }
+
+    public static String buildCurrentRequestSection(String content) {
+        return buildSection("[CURRENT_REQUEST]", content);
+    }
+
+    private static String buildSection(String label, String content) {
+        String normalized = sanitize(content, "").trim();
+        if (normalized.isEmpty()) {
+            return label;
+        }
+        return label + "\n" + normalized;
     }
 
     // ========================================================================

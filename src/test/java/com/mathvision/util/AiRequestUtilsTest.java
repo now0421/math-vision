@@ -26,8 +26,8 @@ class AiRequestUtilsTest {
                 aiClient,
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "input mode",
+                createContext("system"),
                 "user",
-                "system",
                 "[]",
                 () -> { },
                 text -> {
@@ -52,8 +52,8 @@ class AiRequestUtilsTest {
                 aiClient,
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "visual design",
+                createContext("system"),
                 "user",
-                "system",
                 "[]",
                 () -> { }
         ).join();
@@ -76,8 +76,8 @@ class AiRequestUtilsTest {
                 aiClient,
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "code generation",
+                createContext("system"),
                 "user",
-                "system",
                 "[]",
                 () -> { },
                 JsonUtils::parseTree,
@@ -126,8 +126,8 @@ class AiRequestUtilsTest {
                 new FakeAiClient(wrapToolResponse(arguments), "ignored"),
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "codegen",
+                createContext("system"),
                 "user",
-                "system",
                 "[]",
                 () -> { },
                 List.of("manimCode"),
@@ -136,7 +136,8 @@ class AiRequestUtilsTest {
         ).join();
 
         assertEquals("from manim import *\nclass MainScene(Scene):\n    pass", result.getExtractedText());
-        assertEquals("from manim import *\nclass MainScene(Scene):\n    pass", result.getAssistantTranscript());
+        assertTrue(result.getAssistantTranscript().contains("[tool_call]"));
+        assertTrue(result.getAssistantTranscript().contains("\"manimCode\""));
         assertEquals("from manim import *\nclass MainScene(Scene):\n    pass", result.getPayload().get("manimCode").asText());
     }
 
@@ -148,8 +149,8 @@ class AiRequestUtilsTest {
                 new FakeAiClient(wrapTextResponse(responseText), "ignored"),
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "codegen",
+                createContext("system"),
                 "user",
-                "system",
                 "[]",
                 () -> { },
                 List.of("manimCode"),
@@ -166,8 +167,8 @@ class AiRequestUtilsTest {
                 new FakeAiClient(wrapTextResponse("problem"), "ignored"),
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "classification",
+                createContext("system"),
                 "user",
-                "system",
                 "[]",
                 () -> { },
                 List.of("input_mode"),
@@ -184,8 +185,8 @@ class AiRequestUtilsTest {
                 new FakeAiClient(wrapTextResponse("   "), "   "),
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "empty",
+                createContext("system"),
                 "user",
-                "system",
                 "[]",
                 () -> { },
                 List.of("sceneCode"),
@@ -215,6 +216,12 @@ class AiRequestUtilsTest {
         return response;
     }
 
+    private static NodeConversationContext createContext(String systemPrompt) {
+        NodeConversationContext context = new NodeConversationContext(1000);
+        context.setSystemMessage(systemPrompt);
+        return context;
+    }
+
     private static final class FakeAiClient implements AiClient {
         private final JsonNode rawResponse;
         private final String plainChatResponse;
@@ -226,14 +233,13 @@ class AiRequestUtilsTest {
         }
 
         @Override
-        public String chat(String userMessage, String systemPrompt) {
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
             chatCalls.incrementAndGet();
-            return plainChatResponse;
+            return CompletableFuture.completedFuture(plainChatResponse);
         }
 
         @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
-                                                                 String systemPrompt,
+        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
                                                                  String toolsJson) {
             return CompletableFuture.completedFuture(rawResponse);
         }
@@ -255,9 +261,9 @@ class AiRequestUtilsTest {
         }
 
         @Override
-        public String chat(String userMessage, String systemPrompt) {
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
             chatCalls.incrementAndGet();
-            return "{\"ok\":true}";
+            return CompletableFuture.completedFuture("{\"ok\":true}");
         }
 
         @Override
@@ -268,13 +274,6 @@ class AiRequestUtilsTest {
                     .map(NodeConversationContext.Message::getRole)
                     .collect(Collectors.toList());
             lastSnapshotUserContent = snapshot.get(snapshot.size() - 1).getContent();
-            return CompletableFuture.completedFuture(snapshotRawResponse);
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
-                                                                 String systemPrompt,
-                                                                 String toolsJson) {
             return CompletableFuture.completedFuture(snapshotRawResponse);
         }
 

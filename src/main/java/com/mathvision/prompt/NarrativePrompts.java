@@ -105,33 +105,47 @@ public final class NarrativePrompts {
 
     private NarrativePrompts() {}
 
-    public static String systemPrompt(String targetConcept,
-                                      String targetDescription,
-                                      String outputTarget) {
-        String prompt = SystemPrompts.buildWorkflowPrefix(
-                "Stage 1c / Storyboard Validation",
-                "Storyboard composition and validation",
-                targetConcept,
-                targetDescription,
-                outputTarget
-        ) + "Output target backend: " + outputTarget + ".\n"
-                + "Keep the storyboard reusable, but make it practical for this backend.\n";
-
+    public static String buildRulesPrompt(String outputTarget) {
+        String prompt = "";
         if ("geogebra".equalsIgnoreCase(outputTarget)) {
             prompt += "\n" + GEOGEBRA_RULES;
         } else if ("manim".equalsIgnoreCase(outputTarget)) {
             prompt += "\n" + MANIM_RULES;
         }
-
         prompt += "\n" + SYSTEM;
-
         if ("geogebra".equalsIgnoreCase(outputTarget)) {
-            return SystemPrompts.ensureGeoGebraStyleReference(prompt);
+            return SystemPrompts.buildRulesSection(SystemPrompts.ensureGeoGebraStyleReference(prompt));
         }
         if ("manim".equalsIgnoreCase(outputTarget)) {
-            return SystemPrompts.ensureManimStyleReference(prompt);
+            return SystemPrompts.buildRulesSection(SystemPrompts.ensureManimStyleReference(prompt));
         }
-        return prompt;
+        return SystemPrompts.buildRulesSection(prompt);
+    }
+
+    public static String buildFixedContextPrompt(String targetConcept,
+                                                 String targetDescription,
+                                                 String outputTarget) {
+        return buildFixedContextPrompt(targetConcept, targetDescription, outputTarget, "");
+    }
+
+    public static String buildFixedContextPrompt(String targetConcept,
+                                                 String targetDescription,
+                                                 String outputTarget,
+                                                 String solutionChainSummary) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(SystemPrompts.buildWorkflowPrefix(
+                "Stage 1c / Storyboard Validation",
+                "Storyboard composition and validation",
+                targetConcept,
+                targetDescription,
+                outputTarget
+        ));
+        sb.append("Output target backend: ").append(outputTarget).append(".\n");
+        sb.append("Keep the storyboard reusable, but make it practical for this backend.\n");
+        if (solutionChainSummary != null && !solutionChainSummary.isBlank()) {
+            sb.append("\n").append(solutionChainSummary.trim()).append("\n");
+        }
+        return SystemPrompts.buildFixedContextSection(sb.toString());
     }
 
     public static String storyboardCodegenPrompt(Storyboard storyboard,
@@ -144,14 +158,14 @@ public final class NarrativePrompts {
     public static String storyboardCodegenPrompt(String storyboardJson,
                                                  String outputTarget) {
         if ("geogebra".equalsIgnoreCase(outputTarget)) {
-            return String.format(
+            return SystemPrompts.buildCurrentRequestSection(String.format(
                     "Compact storyboard JSON:\n```json\n%s\n```\n\n"
                             + "Remember: Return ONLY the single GeoGebra code block. No explanation.",
-                    storyboardJson);
+                    storyboardJson));
         }
-        return String.format(
+        return SystemPrompts.buildCurrentRequestSection(String.format(
                 "Compact storyboard JSON:\n```json\n%s\n```\n\n"
                         + "Remember: Return ONLY the single Python code block. No explanation.",
-                storyboardJson);
+                storyboardJson));
     }
 }

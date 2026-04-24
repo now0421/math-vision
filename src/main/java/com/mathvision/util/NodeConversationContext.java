@@ -15,10 +15,15 @@ import java.util.TreeMap;
 /**
  * Transient per-node conversation context for multi-turn LLM interactions.
  *
- * Stores a sequence of messages (system, user, assistant) and provides
- * serialization to OpenAI and Gemini API formats. Automatically trims
- * the oldest conversation turns when the estimated token count exceeds
- * the configured budget.
+ * Stores messages in two layers:
+ * <ul>
+ *   <li><b>pinnedMessages</b> — system rules and fixed context that are never trimmed.
+ *       Always prepended to snapshots in the order: rules first, fixed context second.</li>
+ *   <li><b>rollingMessages</b> — dynamic conversation turns that are trimmed from the
+ *       front when the token budget is exceeded.</li>
+ * </ul>
+ *
+ * Snapshot assembly order: pinnedMessages → rollingMessages → current user message.
  *
  * Thread-safe: all public methods are synchronized to support concurrent
  * access from parallel depth-level processing in enrichment/design nodes.
@@ -30,7 +35,8 @@ public class NodeConversationContext {
     private static final double SAFETY_MARGIN = 0.9;
 
     private final int maxInputTokens;
-    private final List<Message> messages = new ArrayList<>();
+    private final List<Message> pinnedMessages = new ArrayList<>();
+    private final List<Message> rollingMessages = new ArrayList<>();
     private final Map<Long, PendingTurn> pendingTurns = new TreeMap<>();
     private long nextTurnSequence = 0L;
     private long nextCommittedTurnSequence = 0L;
@@ -39,72 +45,117 @@ public class NodeConversationContext {
         this.maxInputTokens = maxInputTokens;
     }
 
-    // ---- Message management ----
+    // ---- Pinned message management ----
 
     public synchronized void setSystemMessage(String content) {
-        if (!messages.isEmpty() && "system".equals(messages.get(0).role)) {
-            messages.set(0, new Message("system", content));
-        } else {
-            messages.add(0, new Message("system", content));
-        }
+        pinnedMessages.removeIf(m -> "system".equals(m.role));
+        pinnedMessages.add(0, new Message("system", content));
     }
 
+    public synchronized void setFixedContextMessage(String content) {
+        pinnedMessages.add(new Message("system", content));
+    }
+
+    public synchronized void setPinnedMessages(List<Message> messages) {
+        pinnedMessages.clear();
+        pinnedMessages.addAll(messages);
+    }
+
+    public synchronized List<Message> getPinnedMessages() {
+        return Collections.unmodifiableList(new ArrayList<>(pinnedMessages));
+    }
+
+    // ---- Rolling message management ----
+
     public synchronized void addUserMessage(String content) {
-        messages.add(new Message("user", content));
-        trimToFitBudgetLocked();
+        rollingMessages.add(new Message("user", content));
+        trimRollingToFitBudgetLocked();
     }
 
     public synchronized void addAssistantMessage(String content) {
-        messages.add(new Message("assistant", content));
-        trimToFitBudgetLocked();
+        rollingMessages.add(new Message("assistant", content));
+        trimRollingToFitBudgetLocked();
     }
 
+    public synchronized List<Message> getRollingMessages() {
+        return Collections.unmodifiableList(new ArrayList<>(rollingMessages));
+    }
+
+    public synchronized void appendTurn(String userContent, String assistantContent) {
+        rollingMessages.add(new Message("user", userContent));
+        rollingMessages.add(new Message("assistant", assistantContent));
+        trimRollingToFitBudgetLocked();
+    }
+
+    public synchronized void appendTurnRaw(String userContent, String assistantContent) {
+        appendTurn(userContent, assistantContent);
+    }
+
+    public synchronized void appendTurnSummary(String userContent, String assistantContent) {
+        appendTurn(userContent, assistantContent);
+    }
+
+    // ---- Accessors ----
+
     public synchronized String getSystemContent() {
-        if (!messages.isEmpty() && "system".equals(messages.get(0).role)) {
-            return messages.get(0).content;
+        StringBuilder sb = new StringBuilder();
+        for (Message m : pinnedMessages) {
+            if ("system".equals(m.role)) {
+                if (sb.length() > 0) sb.append("\n\n");
+                sb.append(m.content);
+            }
         }
-        return null;
+        return sb.length() > 0 ? sb.toString() : null;
     }
 
     public synchronized String getLastUserContent() {
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            if ("user".equals(messages.get(i).role)) {
-                return messages.get(i).content;
+        for (int i = rollingMessages.size() - 1; i >= 0; i--) {
+            if ("user".equals(rollingMessages.get(i).role)) {
+                return rollingMessages.get(i).content;
+            }
+        }
+        for (int i = pinnedMessages.size() - 1; i >= 0; i--) {
+            if ("user".equals(pinnedMessages.get(i).role)) {
+                return pinnedMessages.get(i).content;
             }
         }
         return null;
     }
 
     public synchronized void clear() {
-        messages.clear();
+        pinnedMessages.clear();
+        rollingMessages.clear();
         pendingTurns.clear();
         nextTurnSequence = 0L;
         nextCommittedTurnSequence = 0L;
     }
 
     public synchronized boolean isEmpty() {
-        return messages.isEmpty();
+        return pinnedMessages.isEmpty() && rollingMessages.isEmpty();
     }
 
     public synchronized int messageCount() {
-        return messages.size();
+        return pinnedMessages.size() + rollingMessages.size();
     }
 
     public synchronized List<Message> getMessages() {
-        return Collections.unmodifiableList(new ArrayList<>(messages));
+        List<Message> all = new ArrayList<>(pinnedMessages.size() + rollingMessages.size());
+        all.addAll(pinnedMessages);
+        all.addAll(rollingMessages);
+        return Collections.unmodifiableList(all);
     }
 
+    // ---- Snapshot ----
+
     /**
-     * Creates a snapshot of the current messages plus an additional user message,
-     * WITHOUT mutating this context. Used by concurrent callers to build an
-     * isolated request body while keeping the shared context clean.
-     *
-     * After the API call completes, use {@link #appendReservedTurn(long, String, String)}
-     * to record the completed user+assistant pair in request order.
+     * Creates a snapshot: pinnedMessages + rollingMessages + additional user message.
+     * Does NOT mutate this context.
      */
     public synchronized List<Message> snapshotWithUserMessage(String userContent) {
-        List<Message> snapshot = new ArrayList<>(messages.size() + 1);
-        snapshot.addAll(messages);
+        List<Message> snapshot = new ArrayList<>(
+                pinnedMessages.size() + rollingMessages.size() + 1);
+        snapshot.addAll(pinnedMessages);
+        snapshot.addAll(rollingMessages);
         snapshot.add(new Message("user", userContent));
         return snapshot;
     }
@@ -113,23 +164,12 @@ public class NodeConversationContext {
         return new TurnReservation(nextTurnSequence++, snapshotWithUserMessage(userContent));
     }
 
-    /**
-     * Atomically appends a completed user→assistant turn to the context.
-     * Callers within a depth level should synchronize at the level barrier
-     * so that turns from the same level are written sequentially.
-     */
-    public synchronized void appendTurn(String userContent, String assistantContent) {
-        messages.add(new Message("user", userContent));
-        messages.add(new Message("assistant", assistantContent));
-        trimToFitBudgetLocked();
-    }
-
     public synchronized void appendReservedTurn(long turnSequence,
                                                 String userContent,
                                                 String assistantContent) {
         pendingTurns.put(turnSequence, new PendingTurn(userContent, assistantContent));
         flushPendingTurnsLocked();
-        trimToFitBudgetLocked();
+        trimRollingToFitBudgetLocked();
     }
 
     public synchronized void cancelReservedTurn(long turnSequence) {
@@ -137,12 +177,88 @@ public class NodeConversationContext {
         flushPendingTurnsLocked();
     }
 
-    // ---- Snapshot serialization helpers ----
+    // ---- Token management ----
+
+    public synchronized int estimateTotalTokens() {
+        int total = 0;
+        for (Message m : pinnedMessages) total += m.estimatedTokens;
+        for (Message m : rollingMessages) total += m.estimatedTokens;
+        return total;
+    }
+
+    public int getMaxInputTokens() {
+        return maxInputTokens;
+    }
 
     /**
-     * Builds OpenAI-format messages from an arbitrary snapshot list.
-     * Does NOT lock this context — the list is already a copy.
+     * Trims the oldest rolling turns until the total fits within
+     * {@code maxInputTokens * SAFETY_MARGIN}. Pinned messages are never removed.
      */
+    public synchronized void trimToFitBudget() {
+        trimRollingToFitBudgetLocked();
+    }
+
+    private void trimRollingToFitBudgetLocked() {
+        int effectiveBudget = (int) (maxInputTokens * SAFETY_MARGIN);
+        int pinnedTokens = 0;
+        for (Message m : pinnedMessages) {
+            pinnedTokens += m.estimatedTokens;
+        }
+
+        if (pinnedTokens >= effectiveBudget) {
+            log.warn("Pinned messages alone exceed budget: {} tokens >= budget {}",
+                    pinnedTokens, effectiveBudget);
+            return;
+        }
+
+        int rollingBudget = effectiveBudget - pinnedTokens;
+        int rollingTokens = 0;
+        for (Message m : rollingMessages) {
+            rollingTokens += m.estimatedTokens;
+        }
+
+        if (rollingTokens <= rollingBudget) {
+            return;
+        }
+
+        int removedMessages = 0;
+        int beforeTokens = rollingTokens;
+        while (rollingTokens > rollingBudget && rollingMessages.size() > 1) {
+            Message removed = rollingMessages.remove(0);
+            rollingTokens -= removed.estimatedTokens;
+            removedMessages++;
+
+            if (!rollingMessages.isEmpty()
+                    && "assistant".equals(rollingMessages.get(0).role)) {
+                Message pair = rollingMessages.remove(0);
+                rollingTokens -= pair.estimatedTokens;
+                removedMessages++;
+            }
+        }
+
+        if (removedMessages > 0) {
+            log.info("Rolling context trimmed: {} messages removed, "
+                            + "rolling ~{} -> ~{} tokens (budget: {} of {} total)",
+                    removedMessages, beforeTokens, rollingTokens, rollingBudget, effectiveBudget);
+        }
+    }
+
+    private void flushPendingTurnsLocked() {
+        while (true) {
+            PendingTurn pending = pendingTurns.remove(nextCommittedTurnSequence);
+            if (pending == null) {
+                return;
+            }
+            if (!pending.skipped) {
+                rollingMessages.add(new Message("user", pending.userContent));
+                rollingMessages.add(new Message("assistant", pending.assistantContent));
+            }
+            nextCommittedTurnSequence++;
+        }
+    }
+
+    // ---- Snapshot serialization helpers ----
+
     public static ArrayNode buildOpenAiMessages(List<Message> snapshot) {
         ArrayNode array = MAPPER.createArrayNode();
         for (Message m : snapshot) {
@@ -153,10 +269,6 @@ public class NodeConversationContext {
         return array;
     }
 
-    /**
-     * Builds Gemini-format contents from an arbitrary snapshot list.
-     * Does NOT lock this context — the list is already a copy.
-     */
     public static ArrayNode buildGeminiContents(List<Message> snapshot) {
         ArrayNode array = MAPPER.createArrayNode();
         for (Message m : snapshot) {
@@ -172,19 +284,27 @@ public class NodeConversationContext {
     }
 
     /**
-     * Returns the system content from a snapshot list, or null if absent.
+     * Returns the concatenated system content from a snapshot list,
+     * or null if absent. Concatenates all consecutive system-role messages
+     * at the start of the list.
      */
     public static String getSystemContent(List<Message> snapshot) {
-        if (!snapshot.isEmpty() && "system".equals(snapshot.get(0).role)) {
-            return snapshot.get(0).content;
+        StringBuilder sb = new StringBuilder();
+        for (Message m : snapshot) {
+            if ("system".equals(m.role)) {
+                if (sb.length() > 0) sb.append("\n\n");
+                sb.append(m.content);
+            } else {
+                break;
+            }
         }
-        return null;
+        return sb.length() > 0 ? sb.toString() : null;
     }
 
     /**
      * Trims a snapshot list in-place by removing old turns until it fits
-     * the given token budget, preserving system (index 0) and the last
-     * user message.
+     * the given token budget, preserving all leading system messages and
+     * the last user message.
      */
     public static void trimSnapshotToFitBudget(List<Message> snapshot, int maxInputTokens) {
         int effectiveBudget = (int) (maxInputTokens * SAFETY_MARGIN);
@@ -193,8 +313,9 @@ public class NodeConversationContext {
         }
 
         int firstNonSystem = 0;
-        if (!snapshot.isEmpty() && "system".equals(snapshot.get(0).role)) {
-            firstNonSystem = 1;
+        while (firstNonSystem < snapshot.size()
+                && "system".equals(snapshot.get(firstNonSystem).role)) {
+            firstNonSystem++;
         }
 
         while (estimateTokens(snapshot) > effectiveBudget) {
@@ -218,91 +339,16 @@ public class NodeConversationContext {
         return total;
     }
 
-    public int getMaxInputTokens() {
-        return maxInputTokens;
-    }
+    // ---- Instance serialization ----
 
-    // ---- Token management ----
-
-    public synchronized int estimateTotalTokens() {
-        int total = 0;
-        for (Message m : messages) {
-            total += m.estimatedTokens;
-        }
-        return total;
-    }
-
-    /**
-     * Trims the oldest conversation turns (user + assistant pairs) until
-     * the estimated total tokens fits within {@code maxInputTokens * SAFETY_MARGIN}.
-     *
-     * The system message (index 0) and the most recent user message are
-     * never removed.
-     */
-    public synchronized void trimToFitBudget() {
-        trimToFitBudgetLocked();
-    }
-
-    private void trimToFitBudgetLocked() {
-        int effectiveBudget = (int) (maxInputTokens * SAFETY_MARGIN);
-        int beforeTokens = estimateTotalTokens();
-        if (beforeTokens <= effectiveBudget) {
-            return;
-        }
-
-        int firstNonSystem = 0;
-        if (!messages.isEmpty() && "system".equals(messages.get(0).role)) {
-            firstNonSystem = 1;
-        }
-
-        int removedMessages = 0;
-        while (estimateTotalTokens() > effectiveBudget) {
-            int nonSystemCount = messages.size() - firstNonSystem;
-            if (nonSystemCount <= 1) {
-                break;
-            }
-
-            messages.remove(firstNonSystem);
-            removedMessages++;
-
-            // If we removed a user message and the next is its paired assistant,
-            // remove the pair together
-            if (firstNonSystem < messages.size()
-                    && "assistant".equals(messages.get(firstNonSystem).role)) {
-                messages.remove(firstNonSystem);
-                removedMessages++;
-            }
-        }
-
-        if (removedMessages > 0) {
-            log.info("Conversation context trimmed: {} messages removed, "
-                            + "~{} -> ~{} tokens (budget: {})",
-                    removedMessages, beforeTokens, estimateTotalTokens(), effectiveBudget);
-        }
-    }
-
-    private void flushPendingTurnsLocked() {
-        while (true) {
-            PendingTurn pending = pendingTurns.remove(nextCommittedTurnSequence);
-            if (pending == null) {
-                return;
-            }
-            if (!pending.skipped) {
-                messages.add(new Message("user", pending.userContent));
-                messages.add(new Message("assistant", pending.assistantContent));
-            }
-            nextCommittedTurnSequence++;
-        }
-    }
-
-    // ---- Serialization ----
-
-    /**
-     * OpenAI-compatible messages array: [{role, content}, ...]
-     */
     public synchronized ArrayNode buildOpenAiMessages() {
         ArrayNode array = MAPPER.createArrayNode();
-        for (Message m : messages) {
+        for (Message m : pinnedMessages) {
+            ObjectNode msg = array.addObject();
+            msg.put("role", m.role);
+            msg.put("content", m.content);
+        }
+        for (Message m : rollingMessages) {
             ObjectNode msg = array.addObject();
             msg.put("role", m.role);
             msg.put("content", m.content);
@@ -310,13 +356,18 @@ public class NodeConversationContext {
         return array;
     }
 
-    /**
-     * Gemini-format contents array (user/model turns, system excluded).
-     * Maps "assistant" role to "model".
-     */
     public synchronized ArrayNode buildGeminiContents() {
         ArrayNode array = MAPPER.createArrayNode();
-        for (Message m : messages) {
+        for (Message m : pinnedMessages) {
+            if ("system".equals(m.role)) {
+                continue;
+            }
+            ObjectNode entry = array.addObject();
+            entry.put("role", "assistant".equals(m.role) ? "model" : m.role);
+            ArrayNode parts = entry.putArray("parts");
+            parts.addObject().put("text", m.content);
+        }
+        for (Message m : rollingMessages) {
             if ("system".equals(m.role)) {
                 continue;
             }
@@ -328,14 +379,14 @@ public class NodeConversationContext {
         return array;
     }
 
-    // ---- Inner type ----
+    // ---- Inner types ----
 
     public static class Message {
         private final String role;
         private final String content;
         private final int estimatedTokens;
 
-        Message(String role, String content) {
+        public Message(String role, String content) {
             this.role = role;
             this.content = content;
             this.estimatedTokens = TokenEstimator.estimateTokens(content);

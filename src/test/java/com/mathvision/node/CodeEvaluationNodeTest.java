@@ -8,6 +8,7 @@ import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.service.AiClient;
 import com.mathvision.util.JsonUtils;
+import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -56,7 +58,7 @@ class CodeEvaluationNodeTest {
         assertEquals(1, result.getRevisionAttempts());
         assertEquals(3, result.getToolCalls());
         assertTrue(codeResult.getGeneratedCode().contains("ReplacementTransform"));
-        assertEquals("DemoScene", codeResult.getSceneName());
+        assertEquals("MainScene", codeResult.getSceneName());
     }
 
     @Test
@@ -389,7 +391,7 @@ class CodeEvaluationNodeTest {
         return String.join("\n",
                 "from manim import *",
                 "",
-                "class DemoScene(Scene):",
+                "class MainScene(Scene):",
                 "    def construct(self):",
                 "        title = Text(\"Intro\").to_edge(UP)",
                 "        eq_main = MathTex(\"a+b\").next_to(title, DOWN)",
@@ -406,18 +408,20 @@ class CodeEvaluationNodeTest {
         private String lastSystemPrompt;
 
         @Override
-        public String chat(String userMessage, String systemPrompt) {
-            lastUserMessage = userMessage;
-            lastSystemPrompt = systemPrompt;
-            return chatResponses.removeFirst();
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
+            lastUserMessage = snapshot.get(snapshot.size() - 1).getContent();
+            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
+            return CompletableFuture.completedFuture(chatResponses.removeFirst());
         }
 
         @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
-                                                                 String systemPrompt,
+        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
                                                                  String toolsJson) {
-            lastUserMessage = userMessage;
-            lastSystemPrompt = systemPrompt;
+            lastUserMessage = snapshot.get(snapshot.size() - 1).getContent();
+            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
+            if (!com.mathvision.prompt.ToolSchemas.CODE_REVIEW.equals(toolsJson)) {
+                return CompletableFuture.failedFuture(new RuntimeException("tools not used"));
+            }
             return CompletableFuture.completedFuture(toolResponses.removeFirst());
         }
 
@@ -429,13 +433,12 @@ class CodeEvaluationNodeTest {
 
     private static final class FailingReviewAiClient implements AiClient {
         @Override
-        public String chat(String userMessage, String systemPrompt) {
-            return "";
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
+            return CompletableFuture.completedFuture("");
         }
 
         @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
-                                                                 String systemPrompt,
+        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
                                                                  String toolsJson) {
             return CompletableFuture.failedFuture(new RuntimeException("review unavailable"));
         }

@@ -10,7 +10,7 @@ class PromptModulesTest {
 
     @Test
     void codeEvaluationPromptsMentionSemanticPlacementChecks() {
-        String prompt = CodeEvaluationPrompts.reviewSystemPrompt("Triangle Angles", "Demo");
+        String prompt = codeEvaluationSystemPrompt("Triangle Angles", "Demo", "manim");
 
         assertTrue(prompt.contains("semantically wrong placements"));
         assertTrue(prompt.contains("angle arcs"));
@@ -19,7 +19,8 @@ class PromptModulesTest {
 
     @Test
     void conceptGraphPromptFramesCompactTypedTeachingDag() {
-        String prompt = ExplorationPrompts.conceptGraphSystemPrompt("Circle theorem", "Demo", 4, 1);
+        String prompt = ExplorationPrompts.buildConceptGraphFixedContextPrompt("Demo")
+                + ExplorationPrompts.buildConceptGraphRulesPrompt(4, 1);
 
         assertTrue(prompt.contains("compact teaching DAG"));
         assertTrue(prompt.contains("5 to 9 strong beats"));
@@ -48,10 +49,11 @@ class PromptModulesTest {
 
     @Test
     void promptsMentionThreeDPlanningAndOverlayRules() {
-        String visualPrompt = VisualDesignPrompts.systemPrompt("Vector Field", "3D demo", "manim", null);
-        String narrativePrompt = NarrativePrompts.systemPrompt("Vector Field", "3D demo", "manim");
-        String codegenPrompt = CodeGenerationPrompts.systemPrompt("Vector Field", "3D demo", "manim");
-        String reviewPrompt = CodeEvaluationPrompts.reviewSystemPrompt("Vector Field", "3D demo");
+        String visualPrompt = VisualDesignPrompts.buildFixedContextPrompt("Vector Field", "3D demo", "manim", null)
+                + VisualDesignPrompts.buildRulesPrompt("manim");
+        String narrativePrompt = narrativeSystemPrompt("Vector Field", "3D demo", "manim");
+        String codegenPrompt = codeGenerationSystemPrompt("Vector Field", "3D demo", "manim");
+        String reviewPrompt = codeEvaluationSystemPrompt("Vector Field", "3D demo", "manim");
 
         assertTrue(visualPrompt.contains("scene_mode"));
         assertTrue(visualPrompt.contains("screen_overlay_plan"));
@@ -65,8 +67,8 @@ class PromptModulesTest {
 
     @Test
     void geogebraCodegenPromptIncludesSyntaxManualLikeManim() {
-        String manimPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "manim");
-        String geogebraPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "geogebra");
+        String manimPrompt = codeGenerationSystemPrompt("Triangle", "Demo", "manim");
+        String geogebraPrompt = codeGenerationSystemPrompt("Triangle", "Demo", "geogebra");
 
         assertTrue(manimPrompt.contains("Manim syntax reference manual:"));
         assertTrue(geogebraPrompt.contains("GeoGebra syntax reference manual:"));
@@ -76,8 +78,8 @@ class PromptModulesTest {
 
     @Test
     void geogebraNarrativePromptIncludesStyleReferenceLikeManim() {
-        String manimPrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "manim");
-        String geogebraPrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
+        String manimPrompt = narrativeSystemPrompt("Triangle", "Demo", "manim");
+        String geogebraPrompt = narrativeSystemPrompt("Triangle", "Demo", "geogebra");
 
         assertTrue(manimPrompt.contains("Manim style reference:"));
         assertTrue(geogebraPrompt.contains("GeoGebra style reference:"));
@@ -89,9 +91,10 @@ class PromptModulesTest {
 
     @Test
     void geogebraPromptsStayFreeOfManimOnlyNarrativeContracts() {
-        String manimNarrative = NarrativePrompts.systemPrompt("Triangle", "Demo", "manim");
-        String geogebraNarrative = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
-        String geogebraVisual = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra", null);
+        String manimNarrative = narrativeSystemPrompt("Triangle", "Demo", "manim");
+        String geogebraNarrative = narrativeSystemPrompt("Triangle", "Demo", "geogebra");
+        String geogebraVisual = VisualDesignPrompts.buildFixedContextPrompt("Triangle", "Demo", "geogebra", null)
+                + VisualDesignPrompts.buildRulesPrompt("geogebra");
 
         assertTrue(manimNarrative.contains("Manim-specific storyboard validation rules"));
         assertFalse(geogebraNarrative.contains("Manim teaching philosophy"));
@@ -108,7 +111,7 @@ class PromptModulesTest {
                 "Use reflection to turn the broken route into one straight construction.",
                 true,
                 "geogebra");
-        String systemPrompt = CodeGenerationPrompts.systemPrompt("Triangle", targetDescription, "geogebra");
+        String systemPrompt = codeGenerationSystemPrompt("Triangle", targetDescription, "geogebra");
 
         assertTrue(targetDescription.contains("interactive geometry construction"));
         assertFalse(targetDescription.contains("teaching animation"));
@@ -118,8 +121,9 @@ class PromptModulesTest {
 
     @Test
     void narrativePromptsRequireObjectReferencesToUseIdsOnly() {
-        String visualPrompt = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra", null);
-        String codegenSystemPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "geogebra");
+        String visualPrompt = VisualDesignPrompts.buildFixedContextPrompt("Triangle", "Demo", "geogebra", null)
+                + VisualDesignPrompts.buildRulesPrompt("geogebra");
+        String codegenSystemPrompt = codeGenerationSystemPrompt("Triangle", "Demo", "geogebra");
         String codegenPrompt = NarrativePrompts.storyboardCodegenPrompt(
                 "{\"scenes\":[{\"entering_objects\":[{\"id\":\"angle_in\",\"kind\":\"angle\",\"content\":\"angle between AP and l at P\"}]}]}",
                 "geogebra");
@@ -132,8 +136,8 @@ class PromptModulesTest {
 
     @Test
     void narrativePromptsRequireConciseMathStyleIds() {
-        String visualPrompt = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra", null);
-        String codegenSystemPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "geogebra");
+        String visualPrompt = VisualDesignPrompts.buildFixedContextPrompt("Triangle", "Demo", "geogebra", null) + VisualDesignPrompts.buildRulesPrompt("geogebra");
+        String codegenSystemPrompt = codeGenerationSystemPrompt("Triangle", "Demo", "geogebra");
         String codegenPrompt = NarrativePrompts.storyboardCodegenPrompt(
                 "{\"scenes\":[{\"entering_objects\":[{\"id\":\"aLabel\",\"kind\":\"label\",\"content\":\"A\"}]}]}",
                 "geogebra");
@@ -147,10 +151,10 @@ class PromptModulesTest {
 
     @Test
     void promptsRequireHighContrastColorChoices() {
-        String visualPrompt = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra", null);
-        String narrativePrompt = NarrativePrompts.systemPrompt("Triangle", "Demo", "geogebra");
-        String geogebraCodegenPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "geogebra");
-        String manimCodegenPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "Demo", "manim");
+        String visualPrompt = VisualDesignPrompts.buildFixedContextPrompt("Triangle", "Demo", "geogebra", null) + VisualDesignPrompts.buildRulesPrompt("geogebra");
+        String narrativePrompt = narrativeSystemPrompt("Triangle", "Demo", "geogebra");
+        String geogebraCodegenPrompt = codeGenerationSystemPrompt("Triangle", "Demo", "geogebra");
+        String manimCodegenPrompt = codeGenerationSystemPrompt("Triangle", "Demo", "manim");
 
         assertTrue(visualPrompt.contains("visually distinct from their background"));
         assertTrue(visualPrompt.contains("yellow on white"));
@@ -162,7 +166,7 @@ class PromptModulesTest {
 
     @Test
     void narrativePromptEnforcesStrictJsonLexicalRulesAcrossFields() {
-        String visualPrompt = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "manim", null);
+        String visualPrompt = VisualDesignPrompts.buildFixedContextPrompt("Triangle", "Demo", "manim", null) + VisualDesignPrompts.buildRulesPrompt("manim");
 
         assertTrue(visualPrompt.contains("JSON lexical contract"));
         assertTrue(visualPrompt.contains("Do not output markdown fences"));
@@ -177,7 +181,7 @@ class PromptModulesTest {
         String storyboardPrompt = NarrativePrompts.storyboardCodegenPrompt(
                 "{\"scenes\":[{\"entering_objects\":[{\"id\":\"B'\",\"kind\":\"point\",\"content\":\"reflected point\"}]}]}",
                 "geogebra");
-        String codegenPrompt = CodeGenerationPrompts.systemPrompt("Triangle", "GeoGebra demo", "geogebra");
+        String codegenPrompt = codeGenerationSystemPrompt("Triangle", "GeoGebra demo", "geogebra");
 
         assertTrue(storyboardPrompt.contains("GeoGebra code block"));
         assertFalse(storyboardPrompt.contains("Python code block"));
@@ -190,7 +194,7 @@ class PromptModulesTest {
 
     @Test
     void geogebraNarrativePromptGuidesFixedOverlayTowardTextualOverlays() {
-        String geogebraVisualPrompt = VisualDesignPrompts.systemPrompt("Triangle", "Demo", "geogebra", null);
+        String geogebraVisualPrompt = VisualDesignPrompts.buildFixedContextPrompt("Triangle", "Demo", "geogebra", null) + VisualDesignPrompts.buildRulesPrompt("geogebra");
 
         assertTrue(geogebraVisualPrompt.contains("Use `fixed_overlay` mainly for explanatory text"));
         assertTrue(geogebraVisualPrompt.contains("bullseye-style highlights"));
@@ -223,10 +227,25 @@ class PromptModulesTest {
                 null
         );
 
-        assertTrue(prompt.startsWith("Manim render failure detected.\nError type: TYPE_VALUE"));
+        assertTrue(prompt.startsWith("[CURRENT_REQUEST]\nManim render failure detected.\nError type: TYPE_VALUE"));
         assertTrue(prompt.contains("Primary error signature: ValueError: invalid point data"));
         assertTrue(prompt.indexOf("Error type: TYPE_VALUE") < prompt.indexOf("```python"));
         assertTrue(prompt.indexOf("Error summary:") < prompt.indexOf("```python"));
         assertTrue(prompt.contains("Treat the error summary as a routing hint"));
+    }
+
+    private String narrativeSystemPrompt(String targetConcept, String targetDescription, String outputTarget) {
+        return NarrativePrompts.buildFixedContextPrompt(targetConcept, targetDescription, outputTarget)
+                + NarrativePrompts.buildRulesPrompt(outputTarget);
+    }
+
+    private String codeGenerationSystemPrompt(String targetConcept, String targetDescription, String outputTarget) {
+        return CodeGenerationPrompts.buildFixedContextPrompt(targetConcept, targetDescription, outputTarget)
+                + CodeGenerationPrompts.buildRulesPrompt(outputTarget);
+    }
+
+    private String codeEvaluationSystemPrompt(String targetConcept, String targetDescription, String outputTarget) {
+        return CodeEvaluationPrompts.buildReviewFixedContextPrompt(targetConcept, targetDescription, outputTarget)
+                + CodeEvaluationPrompts.buildReviewRulesPrompt(outputTarget);
     }
 }

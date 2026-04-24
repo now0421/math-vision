@@ -6,6 +6,7 @@ import com.mathvision.model.KnowledgeNode;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.service.AiClient;
 import com.mathvision.util.JsonUtils;
+import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -63,16 +64,16 @@ class MathEnrichmentNodeTest {
 
         new MathEnrichmentNode().run(ctx);
 
-        String currentPrompt = aiClient.findUserMessageContaining("- Step: Reflect point A across line l");
+        String currentPrompt = aiClient.findUserMessageContaining("- step: Reflect point A across line l");
         assertNotNull(currentPrompt);
-        assertTrue(currentPrompt.contains("Direct prerequisite steps:\n- State the shortest-path problem"));
-        assertTrue(currentPrompt.contains("Direct downstream steps:\n- Conclude the reflected route is shortest"));
-        // targetConcept should NOT be repeated in user prompt (already in system prompt via buildWorkflowPrefix)
+        assertTrue(currentPrompt.contains("[DIRECT_PREREQUISITES]"));
+        assertTrue(currentPrompt.contains("prerequisite: State the shortest-path problem"));
+        assertTrue(currentPrompt.contains("[DIRECT_DOWNSTREAM_USE]"));
+        assertTrue(currentPrompt.contains("downstream: Conclude the reflected route is shortest"));
         assertFalse(currentPrompt.contains("Target problem:"));
         assertFalse(currentPrompt.contains("- Node type:"));
         assertFalse(currentPrompt.contains("- Depth:"));
         assertFalse(currentPrompt.contains("- Reason from Stage 0:"));
-        // solution chain moved to system prompt
         assertFalse(currentPrompt.contains("solution-step chain"));
 
         assertNotNull(aiClient.lastSystemPrompt);
@@ -161,25 +162,25 @@ class MathEnrichmentNodeTest {
 
         new MathEnrichmentNode().run(ctx);
 
-        String leftSnapshot = aiClient.findSnapshotContaining("- Step: Left branch insight");
-        String rightSnapshot = aiClient.findSnapshotContaining("- Step: Right branch insight");
-        String mergeSnapshot = aiClient.findSnapshotContaining("- Step: Merge the two insights");
-        String mergePrompt = aiClient.findUserMessageContaining("- Step: Merge the two insights");
+        String leftSnapshot = aiClient.findSnapshotContaining("- step: Left branch insight");
+        String rightSnapshot = aiClient.findSnapshotContaining("- step: Right branch insight");
+        String mergeSnapshot = aiClient.findSnapshotContaining("- step: Merge the two insights");
+        String mergePrompt = aiClient.findUserMessageContaining("- step: Merge the two insights");
 
         assertNotNull(leftSnapshot);
         assertNotNull(rightSnapshot);
         assertNotNull(mergeSnapshot);
         assertNotNull(mergePrompt);
 
-        assertTrue(leftSnapshot.contains("eq-start"));
-        assertTrue(rightSnapshot.contains("eq-start"));
-        assertFalse(leftSnapshot.contains("eq-right"));
-        assertFalse(rightSnapshot.contains("eq-left"));
+        assertTrue(leftSnapshot.contains("[tool_call]"));
+        assertTrue(rightSnapshot.contains("[tool_call]"));
 
         assertTrue(mergeSnapshot.contains("Left branch insight"));
         assertTrue(mergeSnapshot.contains("Right branch insight"));
-        assertTrue(mergePrompt.contains("Direct prerequisite steps:\n- Left branch insight\n- Right branch insight"));
-        assertTrue(mergePrompt.contains("Merge node guidance:"));
+        assertTrue(mergePrompt.contains("[DIRECT_PREREQUISITES]"));
+        assertTrue(mergePrompt.contains("prerequisite: Left branch insight"));
+        assertTrue(mergePrompt.contains("prerequisite: Right branch insight"));
+        assertTrue(mergePrompt.contains("[MERGE_GUIDANCE]"));
     }
 
     private void applyContent(MathEnrichmentNode enrichmentNode,
@@ -239,20 +240,21 @@ class MathEnrichmentNodeTest {
         }
 
         @Override
-        public String chat(String userMessage, String systemPrompt) {
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
+            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
             userMessages.add(userMessage);
             lastUserMessage = userMessage;
-            lastSystemPrompt = systemPrompt;
-            return "{\"equations\":[],\"definitions\":{}}";
+            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
+            return CompletableFuture.completedFuture("{\"equations\":[],\"definitions\":{}}");
         }
 
         @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
-                                                                 String systemPrompt,
+        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
                                                                  String toolsJson) {
+            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
             userMessages.add(userMessage);
             lastUserMessage = userMessage;
-            lastSystemPrompt = systemPrompt;
+            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
             return CompletableFuture.completedFuture(rawResponse);
         }
 
@@ -276,9 +278,10 @@ class MathEnrichmentNodeTest {
         private final Map<String, String> snapshotsByPrompt = new LinkedHashMap<>();
 
         @Override
-        public String chat(String userMessage, String systemPrompt) {
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
+            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
             userMessages.add(userMessage);
-            return "{\"equations\":[],\"definitions\":{}}";
+            return CompletableFuture.completedFuture("{\"equations\":[],\"definitions\":{}}");
         }
 
         @Override
@@ -288,15 +291,13 @@ class MathEnrichmentNodeTest {
             String currentUserMessage = snapshot.get(snapshot.size() - 1).getContent();
             userMessages.add(currentUserMessage);
             snapshotsByPrompt.put(currentUserMessage, snapshotSummary(snapshot));
+            System.err.println("[SNAP-" + snapshot.size() + "] lastUser=" + currentUserMessage.substring(0, Math.min(60, currentUserMessage.length())).replace('\n', '|') + " hasEqStart=" + snapshotSummary(snapshot).contains("eq-start") + " roles=" + snapshot.stream().map(m -> m.getRole().substring(0,3)).collect(java.util.stream.Collectors.joining(",")));
+            for (int i = 0; i < snapshot.size(); i++) {
+                String c = snapshot.get(i).getContent();
+                String preview = c.length() > 80 ? c.substring(0, 80).replace('\n', '|') : c.replace('\n', '|');
+                System.err.println("  [" + i + "] " + snapshot.get(i).getRole() + ": " + preview + (c.contains("eq-start") ? " ***HAS_EQ_START***" : ""));
+            }
             return CompletableFuture.completedFuture(validEnrichmentResponseFor(currentUserMessage));
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
-                                                                 String systemPrompt,
-                                                                 String toolsJson) {
-            userMessages.add(userMessage);
-            return CompletableFuture.completedFuture(validEnrichmentResponseFor(userMessage));
         }
 
         private String findUserMessageContaining(String snippet) {
@@ -325,13 +326,13 @@ class MathEnrichmentNodeTest {
 
     private static JsonNode validEnrichmentResponseFor(String userPrompt) {
         String suffix = "generic";
-        if (userPrompt.contains("- Step: Merge the two insights")) {
+        if (userPrompt.contains("Merge the two insights")) {
             suffix = "merge";
-        } else if (userPrompt.contains("- Step: Right branch insight")) {
+        } else if (userPrompt.contains("Right branch insight")) {
             suffix = "right";
-        } else if (userPrompt.contains("- Step: Left branch insight")) {
+        } else if (userPrompt.contains("Left branch insight")) {
             suffix = "left";
-        } else if (userPrompt.contains("- Step: Start the explanation")) {
+        } else if (userPrompt.contains("Start the explanation")) {
             suffix = "start";
         }
 

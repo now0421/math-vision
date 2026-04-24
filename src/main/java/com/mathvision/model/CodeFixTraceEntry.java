@@ -20,8 +20,9 @@ public class CodeFixTraceEntry {
     private int staticAuditIssueCount;
     private String staticAuditSummary;
     private List<String> fixHistory = new ArrayList<>();
-    private String systemPrompt;
-    private String userPrompt;
+    private String rulesPrompt;
+    private String fixedContextPrompt;
+    private String currentRequestPrompt;
     private boolean applied;
     private String failureReason;
     private int postFixStaticAuditIssueCount;
@@ -70,11 +71,14 @@ public class CodeFixTraceEntry {
         this.fixHistory = fixHistory != null ? new ArrayList<>(fixHistory) : new ArrayList<>();
     }
 
-    public String getSystemPrompt() { return systemPrompt; }
-    public void setSystemPrompt(String systemPrompt) { this.systemPrompt = systemPrompt; }
+    public String getRulesPrompt() { return rulesPrompt; }
+    public void setRulesPrompt(String rulesPrompt) { this.rulesPrompt = rulesPrompt; }
 
-    public String getUserPrompt() { return userPrompt; }
-    public void setUserPrompt(String userPrompt) { this.userPrompt = userPrompt; }
+    public String getFixedContextPrompt() { return fixedContextPrompt; }
+    public void setFixedContextPrompt(String fixedContextPrompt) { this.fixedContextPrompt = fixedContextPrompt; }
+
+    public String getCurrentRequestPrompt() { return currentRequestPrompt; }
+    public void setCurrentRequestPrompt(String currentRequestPrompt) { this.currentRequestPrompt = currentRequestPrompt; }
 
     public boolean isApplied() { return applied; }
     public void setApplied(boolean applied) { this.applied = applied; }

@@ -13,6 +13,7 @@ import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.JsonUtils;
+import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -35,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CodeGenerationNodeRoutingTest {
 
     @Test
-    void routesValidationFixThroughSharedCodeFixNode() {
+    void doesNotRouteValidationFixFromGenerationStageAnymore() {
         QueueAiClient aiClient = new QueueAiClient();
         aiClient.toolResponses.add(codegenResponse(String.join("\n",
                 "from manim import *",
@@ -43,13 +44,6 @@ class CodeGenerationNodeRoutingTest {
                 "class DemoScene(Scene):",
                 "    def construct(self):",
                 "        self.bad = Text(\"bad\")")));
-        aiClient.chatResponses.add(wrapCodeResponse(String.join("\n",
-                "from manim import *",
-                "",
-                "class MainScene(Scene):",
-                "    def construct(self):",
-                "        label = Text(\"ok\")",
-                "        self.play(Write(label))")));
 
         Map<String, Object> ctx = new LinkedHashMap<>();
         ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
@@ -65,10 +59,9 @@ class CodeGenerationNodeRoutingTest {
 
         CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
         assertNotNull(codeResult);
-        assertEquals("MainScene", codeResult.getSceneName());
-        assertTrue(codeResult.getGeneratedCode().contains("label = Text"));
-        assertFalse(codeResult.getGeneratedCode().contains("self.bad"));
-        assertEquals(2, codeResult.getToolCalls());
+        assertEquals("DemoScene", codeResult.getSceneName());
+        assertTrue(codeResult.getGeneratedCode().contains("self.bad"));
+        assertEquals(1, codeResult.getToolCalls());
     }
 
     @Test
@@ -179,7 +172,7 @@ class CodeGenerationNodeRoutingTest {
         assertEquals(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA, codeResult.getOutputTarget());
         assertEquals("commands", codeResult.getArtifactFormat());
         assertTrue(codeResult.getGeneratedCode().contains("lineAB = Line(A, B)"));
-        assertEquals(ToolSchemas.GEOGEBRA_CODE, aiClient.lastToolsJson);
+        assertEquals(com.mathvision.prompt.ToolSchemas.GEOGEBRA_CODE, aiClient.lastToolsJson);
         assertTrue(aiClient.lastSystemPrompt.contains("GeoGebra"));
         assertTrue(aiClient.lastUserMessage.contains("Figure name: GeoGebraFigure"));
         assertFalse(aiClient.lastUserMessage.contains("Scene class name:"));
@@ -212,14 +205,10 @@ class CodeGenerationNodeRoutingTest {
     }
 
     @Test
-    void geogebraValidationRoutesFixThroughSharedCodeFixNode() {
+    void geogebraGenerationDoesNotTriggerStaticValidationFix() {
         QueueAiClient aiClient = new QueueAiClient();
         aiClient.toolResponses.add(geogebraCodegenResponse(String.join("\n",
                 "const A = (0, 0)",
-                "B = (4, 0)",
-                "lineAB = Line(A, B)")));
-        aiClient.chatResponses.add(wrapGeoGebraResponse(String.join("\n",
-                "A = (0, 0)",
                 "B = (4, 0)",
                 "lineAB = Line(A, B)")));
 
@@ -241,9 +230,8 @@ class CodeGenerationNodeRoutingTest {
         CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
         assertNotNull(codeResult);
         assertEquals(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA, codeResult.getOutputTarget());
-        assertTrue(codeResult.getGeneratedCode().contains("A = (0, 0)"));
-        assertFalse(codeResult.getGeneratedCode().contains("const A"));
-        assertEquals(2, codeResult.getToolCalls());
+        assertTrue(codeResult.getGeneratedCode().contains("const A = (0, 0)"));
+        assertEquals(1, codeResult.getToolCalls());
         assertTrue(aiClient.lastSystemPrompt.contains("GeoGebra"));
     }
 
@@ -320,14 +308,14 @@ class CodeGenerationNodeRoutingTest {
     }
 
     private static JsonNode codegenResponse(String code) {
-        ObjectNode response = JsonUtils.mapper().createObjectNode();
+        ObjectNode response = com.mathvision.util.JsonUtils.mapper().createObjectNode();
         ArrayNode choices = response.putArray("choices");
         ObjectNode message = choices.addObject().putObject("message");
         ArrayNode toolCalls = message.putArray("tool_calls");
         ObjectNode function = toolCalls.addObject().putObject("function");
         function.put("name", "write_manim_code");
 
-        ObjectNode arguments = JsonUtils.mapper().createObjectNode();
+        ObjectNode arguments = com.mathvision.util.JsonUtils.mapper().createObjectNode();
         arguments.put("manimCode", code);
         arguments.put("scene_name", "DemoScene");
         arguments.put("description", "demo");
@@ -336,14 +324,14 @@ class CodeGenerationNodeRoutingTest {
     }
 
     private static JsonNode codegenMetadataOnlyResponse(String sceneName) {
-        ObjectNode response = JsonUtils.mapper().createObjectNode();
+        ObjectNode response = com.mathvision.util.JsonUtils.mapper().createObjectNode();
         ArrayNode choices = response.putArray("choices");
         ObjectNode message = choices.addObject().putObject("message");
         ArrayNode toolCalls = message.putArray("tool_calls");
         ObjectNode function = toolCalls.addObject().putObject("function");
         function.put("name", "write_manim_code");
 
-        ObjectNode arguments = JsonUtils.mapper().createObjectNode();
+        ObjectNode arguments = com.mathvision.util.JsonUtils.mapper().createObjectNode();
         arguments.put("scene_name", sceneName);
         arguments.put("description", "metadata only");
         function.set("arguments", arguments);
@@ -351,16 +339,16 @@ class CodeGenerationNodeRoutingTest {
     }
 
     private static JsonNode geogebraCodegenResponse(String code) {
-        ObjectNode response = JsonUtils.mapper().createObjectNode();
+        ObjectNode response = com.mathvision.util.JsonUtils.mapper().createObjectNode();
         ArrayNode choices = response.putArray("choices");
         ObjectNode message = choices.addObject().putObject("message");
         ArrayNode toolCalls = message.putArray("tool_calls");
         ObjectNode function = toolCalls.addObject().putObject("function");
         function.put("name", "write_geogebra_code");
 
-        ObjectNode arguments = JsonUtils.mapper().createObjectNode();
+        ObjectNode arguments = com.mathvision.util.JsonUtils.mapper().createObjectNode();
         arguments.put("geogebraCode", code);
-        arguments.put("figure_name", GeoGebraCodeUtils.EXPECTED_FIGURE_NAME);
+        arguments.put("figure_name", com.mathvision.util.GeoGebraCodeUtils.EXPECTED_FIGURE_NAME);
         arguments.put("description", "demo");
         arguments.put("artifact_format", "commands");
         function.set("arguments", arguments);
@@ -376,7 +364,7 @@ class CodeGenerationNodeRoutingTest {
     }
 
     private static JsonNode textResponse(String text) {
-        ObjectNode response = JsonUtils.mapper().createObjectNode();
+        ObjectNode response = com.mathvision.util.JsonUtils.mapper().createObjectNode();
         ArrayNode choices = response.putArray("choices");
         ObjectNode message = choices.addObject().putObject("message");
         message.put("content", text);
@@ -391,19 +379,21 @@ class CodeGenerationNodeRoutingTest {
         private String lastToolsJson;
 
         @Override
-        public String chat(String userMessage, String systemPrompt) {
-            lastUserMessage = userMessage;
-            lastSystemPrompt = systemPrompt;
-            return chatResponses.removeFirst();
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
+            lastUserMessage = snapshot.get(snapshot.size() - 1).getContent();
+            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
+            return CompletableFuture.completedFuture(chatResponses.removeFirst());
         }
 
         @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
-                                                                 String systemPrompt,
+        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
                                                                  String toolsJson) {
-            lastUserMessage = userMessage;
-            lastSystemPrompt = systemPrompt;
+            lastUserMessage = snapshot.get(snapshot.size() - 1).getContent();
+            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
             lastToolsJson = toolsJson;
+            if (toolResponses.isEmpty()) {
+                return CompletableFuture.failedFuture(new RuntimeException("tools not queued"));
+            }
             return CompletableFuture.completedFuture(toolResponses.removeFirst());
         }
 

@@ -1,6 +1,7 @@
 package com.mathvision.service;
 
 import com.mathvision.config.ModelConfig;
+import com.mathvision.util.NodeConversationContext;
 import com.mathvision.util.JsonUtils;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -12,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -82,7 +84,10 @@ class AbstractOpenAiCompatibleAiClientTest {
             AbstractOpenAiCompatibleAiClient client = new TestOpenAiCompatibleAiClient(
                     testModelConfig(server));
 
-            assertEquals("ok after retry", client.chat("hello", "system"));
+            assertEquals("ok after retry", client.chatAsync(List.of(
+                    new NodeConversationContext.Message("system", "system"),
+                    new NodeConversationContext.Message("user", "hello")
+            )).join());
             assertEquals(3, attempts.get());
         } finally {
             server.stop(0);
@@ -103,7 +108,10 @@ class AbstractOpenAiCompatibleAiClientTest {
                     testModelConfig(server));
 
             RuntimeException error = assertThrows(RuntimeException.class,
-                    () -> client.chat("hello", "system"));
+                    () -> client.chatAsync(List.of(
+                            new NodeConversationContext.Message("system", "system"),
+                            new NodeConversationContext.Message("user", "hello")
+                    )).join());
 
             assertTrue(error.getMessage().contains("HTTP 400"));
             assertEquals(1, attempts.get());

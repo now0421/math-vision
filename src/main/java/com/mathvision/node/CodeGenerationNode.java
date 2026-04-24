@@ -1,9 +1,6 @@
 package com.mathvision.node;
 
 import com.mathvision.config.WorkflowConfig;
-import com.mathvision.model.CodeFixRequest;
-import com.mathvision.model.CodeFixResult;
-import com.mathvision.model.CodeFixSource;
 import com.mathvision.model.CodeResult;
 import com.mathvision.model.Narrative;
 import com.mathvision.model.Narrative.Storyboard;
@@ -13,13 +10,12 @@ import com.mathvision.model.Narrative.StoryboardPlacement;
 import com.mathvision.model.Narrative.StoryboardPlacementAxis;
 import com.mathvision.model.Narrative.StoryboardStyle;
 import com.mathvision.model.SceneCodeEntry;
-import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
-import com.mathvision.node.support.FixRetryState;
 import com.mathvision.node.support.NodeSupport;
 import com.mathvision.prompt.CodeGenerationPrompts;
 import com.mathvision.prompt.NarrativePrompts;
 import com.mathvision.prompt.StoryboardJsonBuilder;
+import com.mathvision.prompt.SystemPrompts;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
 import com.mathvision.service.FileOutputService;
@@ -32,7 +28,6 @@ import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
 import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TargetDescriptionBuilder;
-import com.mathvision.util.TextHealthDiagnostics;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
@@ -55,7 +50,6 @@ import java.util.concurrent.CompletionException;
 public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeGenerationInput, CodeResult, String> {
 
     private static final Logger log = LoggerFactory.getLogger(CodeGenerationNode.class);
-    private static final int MAX_VALIDATION_FIX_ATTEMPTS = 1;
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
@@ -69,23 +63,15 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     public static class CodeGenerationInput {
         private final Narrative narrative;
         private final CodeResult existingCodeResult;
-        private final CodeFixResult previousFixResult;
-        private final FixRetryState fixState;
 
         public CodeGenerationInput(Narrative narrative,
-                                   CodeResult existingCodeResult,
-                                   CodeFixResult previousFixResult,
-                                   FixRetryState fixState) {
+                                   CodeResult existingCodeResult) {
             this.narrative = narrative;
             this.existingCodeResult = existingCodeResult;
-            this.previousFixResult = previousFixResult;
-            this.fixState = fixState;
         }
 
         public Narrative narrative() { return narrative; }
         public CodeResult existingCodeResult() { return existingCodeResult; }
-        public CodeFixResult previousFixResult() { return previousFixResult; }
-        public FixRetryState fixState() { return fixState; }
     }
 
     private static final class CodeDraft {
@@ -103,22 +89,9 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
         this.workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
 
-        FixRetryState fixState = (FixRetryState) ctx.get(WorkflowKeys.CODE_GENERATION_FIX_STATE);
-        if (fixState == null) {
-            fixState = new FixRetryState();
-            ctx.put(WorkflowKeys.CODE_GENERATION_FIX_STATE, fixState);
-        }
-
-        CodeFixResult previousFixResult = NodeSupport.consumeFixResult(ctx, CodeFixSource.GENERATION_VALIDATION);
-        if (previousFixResult != null) {
-            fixState.addFixToolCalls(previousFixResult.getToolCalls());
-        }
-
         return new CodeGenerationInput(
                 (Narrative) ctx.get(WorkflowKeys.NARRATIVE),
-                (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT),
-                previousFixResult,
-                fixState
+                (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT)
         );
     }
 
@@ -134,8 +107,6 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         }
 
         Narrative narrative = input.narrative();
-        FixRetryState fixState = input.fixState();
-        fixState.setRequestFix(false);
 
         if (narrative == null && input.existingCodeResult() == null) {
             log.warn("Narrative is empty, cannot generate code");
@@ -149,16 +120,15 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         String targetDescription = narrative != null ? narrative.getTargetDescription()
                 : input.existingCodeResult().getTargetDescription();
         this.conversationContext.setSystemMessage(
-                CodeGenerationPrompts.systemPrompt(
+                CodeGenerationPrompts.buildRulesPrompt(NodeSupport.resolveOutputTarget(workflowConfig)));
+        this.conversationContext.setFixedContextMessage(
+                CodeGenerationPrompts.buildFixedContextPrompt(
                         targetConcept, targetDescription, NodeSupport.resolveOutputTarget(workflowConfig)));
 
         String generatedCode;
         String artifactName = defaultArtifactName();
         CodeResult sceneResult = null;
-        if (input.previousFixResult() != null) {
-            log.info("  Re-validating code returned from shared CodeFixNode");
-            generatedCode = extractRetriedCode(input);
-        } else if (narrative != null && narrative.hasStoryboard()
+        if (narrative != null && narrative.hasStoryboard()
                 && narrative.getStoryboard().getScenes() != null
                 && narrative.getStoryboard().getScenes().size() > 1) {
             // Per-scene generation for both Manim and GeoGebra
@@ -171,7 +141,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                 generatedCode = "";
             }
         } else {
-            String userPrompt = buildGenerationPrompt(narrative, artifactName);
+                String userPrompt = buildGenerationPrompt(narrative, artifactName);
             if (userPrompt.isBlank()) {
                 log.warn("Narrative prompt is empty, cannot generate code");
                 CodeResult emptyResult = new CodeResult(
@@ -202,32 +172,6 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                     generatedCode,
                     narrative != null ? narrative.getStoryboard() : null);
         }
-        List<String> violations = validateGeneratedCode(generatedCode);
-
-        if (input.previousFixResult() != null) {
-            if (!violations.isEmpty()) {
-                if (fixState.getOriginalGeneratedCodeBeforeFix() != null
-                        && violations.size() >= fixState.getOriginalIssueCount()) {
-                    log.warn("  Shared code fix did not improve validation violations ({} -> {}),"
-                                    + " keeping original generated code",
-                            fixState.getOriginalIssueCount(), violations.size());
-                    generatedCode = fixState.getOriginalGeneratedCodeBeforeFix();
-                    violations = validateGeneratedCode(generatedCode);
-                } else {
-                    log.info("  Shared code fix reduced violations from {} to {}",
-                            fixState.getOriginalIssueCount(), violations.size());
-                }
-            }
-            fixState.clearPending();
-        } else if (shouldRouteValidationFix()
-                && !violations.isEmpty()
-                && fixState.getAttempts() < MAX_VALIDATION_FIX_ATTEMPTS
-                && generatedCode != null
-                && !generatedCode.isBlank()) {
-            log.warn("  Code validation found {} violations, routing to shared CodeFixNode",
-                    violations.size());
-            fixState.recordFixRequest(generatedCode, violations);
-        }
 
         CodeResult result = new CodeResult(
                 generatedCode,
@@ -242,7 +186,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         }
         result.setOutputTarget(NodeSupport.resolveOutputTarget(workflowConfig));
         result.setArtifactFormat(resolveArtifactFormat());
-        result.setToolCalls(toolCalls + fixState.totalToolCalls());
+        result.setToolCalls(toolCalls);
         result.setExecutionTimeSeconds(TimeUtils.secondsSince(start));
 
         log.info("Code generated: {} lines, artifact={}", result.codeLineCount(), artifactName);
@@ -374,14 +318,6 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         if (outputDir != null) {
             FileOutputService.saveCodeResult(outputDir, codeResult);
         }
-
-        if (input.fixState().isRequestFix()) {
-            input.fixState().addCarryoverToolCalls(toolCalls);
-            ctx.put(WorkflowKeys.CODE_FIX_REQUEST, buildValidationFixRequest(input.narrative(), codeResult, input.fixState()));
-            return WorkflowActions.FIX_CODE;
-        }
-
-        input.fixState().reset();
         return null;
     }
 
@@ -402,48 +338,14 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         String registryBlock = registrySummary.isBlank() ? "" : "\n\n" + registrySummary;
 
         if (workflowConfig != null && workflowConfig.isGeoGebraTarget()) {
-            return basePrompt + registryBlock
+            return SystemPrompts.buildCurrentRequestSection((basePrompt + registryBlock
                     + "\n\nFigure name: " + expectedSceneName
-                    + "\nUse this as the primary GeoGebra figure name when naming the construction.";
+                    + "\nUse this as the primary GeoGebra figure name when naming the construction.").replaceFirst("^\\[CURRENT_REQUEST\\]\\n", ""));
         }
 
-        return basePrompt + registryBlock
+        return SystemPrompts.buildCurrentRequestSection((basePrompt + registryBlock
                 + "\n\nScene class name: " + expectedSceneName
-                + "\nUse this exact scene class name verbatim in the generated code.";
-    }
-
-    private CodeFixRequest buildValidationFixRequest(Narrative narrative,
-                                                     CodeResult codeResult,
-                                                     FixRetryState fixState) {
-        CodeFixRequest request = new CodeFixRequest();
-        request.setSource(CodeFixSource.GENERATION_VALIDATION);
-        request.setReturnAction(WorkflowActions.RETRY_CODE_GENERATION);
-        request.setGeneratedCode(codeResult.getGeneratedCode());
-        request.setErrorReason(String.join("\n", fixState.getCurrentIssues()));
-        request.setTargetConcept(codeResult.getTargetConcept());
-        request.setTargetDescription(codeResult.getTargetDescription());
-        request.setSceneName(codeResult.getSceneName());
-        request.setExpectedSceneName(resolveExpectedArtifactName(codeResult));
-        request.setStoryboardJson(narrative != null && narrative.hasStoryboard()
-                ? StoryboardJsonBuilder.buildForCodegen(narrative.getStoryboard())
-                : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
-        request.setErrorContextMode("validation_findings");
-        request.setInputTextHealth(TextHealthDiagnostics.summarize(request.getStoryboardJson()));
-        request.setStaticAuditIssueCount(fixState.getCurrentIssues() != null ? fixState.getCurrentIssues().size() : 0);
-        request.setStaticAuditSummary(String.join(" | ", fixState.getCurrentIssues()));
-        return request;
-    }
-
-    private String extractRetriedCode(CodeGenerationInput input) {
-        if (input.existingCodeResult() != null
-                && input.existingCodeResult().getGeneratedCode() != null
-                && !input.existingCodeResult().getGeneratedCode().isBlank()) {
-            return input.existingCodeResult().getGeneratedCode();
-        }
-        if (input.previousFixResult() != null) {
-            return input.previousFixResult().getFixedGeneratedCode();
-        }
-        return "";
+                + "\nUse this exact scene class name verbatim in the generated code.").replaceFirst("^\\[CURRENT_REQUEST\\]\\n", ""));
     }
 
     private CodeDraft toCodeDraft(JsonNode payload, String generatedCode, String expectedArtifactName) {
@@ -609,18 +511,6 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                 : ManimCodeUtils.enforceMainSceneName(generatedCode);
     }
 
-    private List<String> validateGeneratedCode(String generatedCode) {
-        return NodeSupport.isGeoGebraTarget(workflowConfig)
-                ? GeoGebraCodeUtils.validateFull(generatedCode)
-                : ManimCodeUtils.validateFull(generatedCode);
-    }
-
-    private boolean shouldRouteValidationFix() {
-        return workflowConfig == null
-                || workflowConfig.isManimTarget()
-                || workflowConfig.isGeoGebraTarget();
-    }
-
     private String resolveToolSchema() {
         return NodeSupport.isGeoGebraTarget(workflowConfig)
                 ? ToolSchemas.GEOGEBRA_CODE
@@ -651,16 +541,6 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         return NodeSupport.isGeoGebraTarget(workflowConfig)
                 ? "GeoGebra construction for " + targetConcept
                 : "Manim animation for " + targetConcept;
-    }
-
-    private String resolveExpectedArtifactName(CodeResult codeResult) {
-        if (codeResult != null && codeResult.isGeoGebraTarget()) {
-            if (codeResult.getSceneName() != null && !codeResult.getSceneName().isBlank()) {
-                return codeResult.getSceneName();
-            }
-            return GeoGebraCodeUtils.EXPECTED_FIGURE_NAME;
-        }
-        return ManimCodeUtils.EXPECTED_SCENE_NAME;
     }
 
 }

@@ -7,6 +7,7 @@ import com.mathvision.model.WorkflowKeys;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
 import com.mathvision.util.JsonUtils;
+import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -383,14 +384,13 @@ class ExplorationNodeTest {
         private int chatCallCount = 0;
 
         @Override
-        public String chat(String userMessage, String systemPrompt) {
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
             chatCallCount++;
-            return "{}";
+            return CompletableFuture.completedFuture("{}");
         }
 
         @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
-                                                                 String systemPrompt,
+        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
                                                                  String toolsJson) {
             toolCallCount++;
             requestedTools.add(toolsJson);

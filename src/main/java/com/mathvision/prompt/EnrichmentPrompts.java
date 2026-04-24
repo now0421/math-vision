@@ -2,6 +2,10 @@ package com.mathvision.prompt;
 
 /**
  * Prompts for Stage 1a: math enrichment.
+ *
+ * Split into two parts:
+ * - buildRulesPrompt(): hard rules (role, output format, LaTeX, schema, operation rules)
+ * - buildFixedContextPrompt(): workflow prefix + solution chain (fixed background)
  */
 public final class EnrichmentPrompts {
 
@@ -37,18 +41,30 @@ public final class EnrichmentPrompts {
 
     private EnrichmentPrompts() {}
 
-    public static String systemPrompt(String targetConcept, String targetDescription,
-                                       String solutionChain) {
-        String base = SystemPrompts.buildWorkflowPrefix(
+    /**
+     * Returns hard rules for enrichment: role, output format, LaTeX rules,
+     * schema constraints, operation rules.
+     */
+    public static String buildRulesPrompt() {
+        return SystemPrompts.buildRulesSection(SYSTEM);
+    }
+
+    /**
+     * Returns fixed background context: workflow prefix + solution chain.
+     */
+    public static String buildFixedContextPrompt(String targetConcept,
+                                                  String targetDescription,
+                                                  String solutionChain) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(SystemPrompts.buildWorkflowPrefix(
                 "Stage 1a / Mathematical Enrichment",
                 "Mathematical content enrichment",
                 targetConcept,
                 targetDescription,
-                (String) null
-        ) + SYSTEM;
+                (String) null));
         if (solutionChain != null && !solutionChain.isBlank()) {
-            base += "\n\n" + solutionChain;
+            sb.append("\n\n").append(solutionChain);
         }
-        return base;
+        return SystemPrompts.buildFixedContextSection(sb.toString());
     }
 }

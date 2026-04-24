@@ -92,13 +92,16 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
                 ? workflowConfig.resolveMaxInputTokens()
                 : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
         NodeConversationContext conversationContext = new NodeConversationContext(maxInputTokens);
-        String systemPrompt = selectSystemPrompt(request);
-        conversationContext.setSystemMessage(systemPrompt);
-        result.setSystemPrompt(systemPrompt);
+        String rulesPrompt = selectRulesPrompt(request);
+        String fixedContextPrompt = selectFixedContextPrompt(request);
+        conversationContext.setSystemMessage(rulesPrompt);
+        conversationContext.setFixedContextMessage(fixedContextPrompt);
+        result.setRulesPrompt(rulesPrompt);
+        result.setFixedContextPrompt(fixedContextPrompt);
 
-        String userPrompt = selectUserPrompt(request);
-        result.setUserPrompt(userPrompt);
-        if (userPrompt == null || userPrompt.isBlank()) {
+        String currentRequestPrompt = selectCurrentRequestPrompt(request);
+        result.setCurrentRequestPrompt(currentRequestPrompt);
+        if (currentRequestPrompt == null || currentRequestPrompt.isBlank()) {
             result.setFailureReason("Code fix prompt was empty");
             result.setExecutionTimeSeconds(TimeUtils.secondsSince(start));
             return result;
@@ -111,7 +114,7 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
                             log,
                             "code-fix",
                             conversationContext,
-                            userPrompt,
+                            currentRequestPrompt,
                             resolveToolSchema(),
                             () -> toolCalls++,
                             List.of(resolveGeneratedCodeFieldName()),
@@ -221,8 +224,9 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             entry.setFixOutcome(result.getOutcome());
             entry.setToolCalls(result.getToolCalls());
             entry.setExecutionTimeSeconds(result.getExecutionTimeSeconds());
-            entry.setSystemPrompt(result.getSystemPrompt());
-            entry.setUserPrompt(result.getUserPrompt());
+            entry.setRulesPrompt(result.getRulesPrompt());
+            entry.setFixedContextPrompt(result.getFixedContextPrompt());
+            entry.setCurrentRequestPrompt(result.getCurrentRequestPrompt());
         }
 
         entries.add(entry);
@@ -235,34 +239,51 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         }
     }
 
-    private String selectSystemPrompt(CodeFixRequest request) {
+    private String selectRulesPrompt(CodeFixRequest request) {
+        if (request.getSource() == CodeFixSource.EVALUATION_REVIEW) {
+            return CodeEvaluationPrompts.buildRevisionRulesPrompt(
+                    NodeSupport.resolveOutputTarget(workflowConfig));
+        }
+        if (request.getSource() == CodeFixSource.GENERATION_VALIDATION) {
+            return NodeSupport.isGeoGebraTarget(workflowConfig)
+                    ? CodeGenerationPrompts.buildGeoGebraValidationFixRulesPrompt()
+                    : CodeGenerationPrompts.buildValidationFixRulesPrompt();
+        }
+        if (request.getSource() == CodeFixSource.SCENE_LAYOUT_EVALUATION) {
+            return SceneEvaluationPrompts.buildLayoutFixRulesPrompt(
+                    NodeSupport.resolveOutputTarget(workflowConfig));
+        }
+        return RenderFixPrompts.buildRulesPrompt(NodeSupport.resolveOutputTarget(workflowConfig));
+    }
+
+    private String selectFixedContextPrompt(CodeFixRequest request) {
         String targetConcept = TextUtils.firstNonBlank(
                 request.getTargetConcept(), request.getSceneName(), "Unknown target");
         String targetDescription = TextUtils.firstNonBlank(request.getTargetDescription(), "");
-        String systemPrompt;
-
         if (request.getSource() == CodeFixSource.EVALUATION_REVIEW) {
-            systemPrompt = CodeEvaluationPrompts.revisionSystemPrompt(
+            return CodeEvaluationPrompts.buildRevisionFixedContextPrompt(
                     targetConcept,
                     targetDescription,
                     NodeSupport.resolveOutputTarget(workflowConfig));
-        } else if (request.getSource() == CodeFixSource.GENERATION_VALIDATION) {
-            systemPrompt = NodeSupport.isGeoGebraTarget(workflowConfig)
-                    ? CodeGenerationPrompts.geoGebraValidationFixSystemPrompt(targetConcept, targetDescription)
-                    : CodeGenerationPrompts.validationFixSystemPrompt(targetConcept, targetDescription);
-        } else if (request.getSource() == CodeFixSource.SCENE_LAYOUT_EVALUATION) {
-            systemPrompt = NodeSupport.isGeoGebraTarget(workflowConfig)
-                    ? SceneEvaluationPrompts.geoGebraLayoutFixSystemPrompt(targetConcept, targetDescription)
-                    : SceneEvaluationPrompts.layoutFixSystemPrompt(targetConcept, targetDescription);
-        } else {
-            systemPrompt = NodeSupport.isGeoGebraTarget(workflowConfig)
-                    ? RenderFixPrompts.geoGebraSystemPrompt(targetConcept, targetDescription)
-                    : RenderFixPrompts.systemPrompt(targetConcept, targetDescription);
         }
-        return systemPrompt;
+        if (request.getSource() == CodeFixSource.GENERATION_VALIDATION) {
+            return NodeSupport.isGeoGebraTarget(workflowConfig)
+                    ? CodeGenerationPrompts.buildGeoGebraValidationFixFixedContextPrompt(targetConcept, targetDescription)
+                    : CodeGenerationPrompts.buildValidationFixFixedContextPrompt(targetConcept, targetDescription);
+        }
+        if (request.getSource() == CodeFixSource.SCENE_LAYOUT_EVALUATION) {
+            return SceneEvaluationPrompts.buildLayoutFixFixedContextPrompt(
+                    targetConcept,
+                    targetDescription,
+                    NodeSupport.resolveOutputTarget(workflowConfig));
+        }
+        return RenderFixPrompts.buildFixedContextPrompt(
+                targetConcept,
+                targetDescription,
+                NodeSupport.resolveOutputTarget(workflowConfig));
     }
 
-    private String selectUserPrompt(CodeFixRequest request) {
+    private String selectCurrentRequestPrompt(CodeFixRequest request) {
         if (request.getSource() == CodeFixSource.EVALUATION_REVIEW) {
             String artifactName = TextUtils.firstNonBlank(
                     request.getSceneName(),

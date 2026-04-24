@@ -46,24 +46,26 @@ public final class SceneEvaluationPrompts {
 
     private SceneEvaluationPrompts() {}
 
-    public static String layoutFixSystemPrompt(String targetConcept, String targetDescription) {
-        return SystemPrompts.ensureManimSyntaxManual(SystemPrompts.buildWorkflowPrefix(
-                "Stage 5 / Scene Evaluation Fix",
-                "Revise Manim code after geometry-based scene evaluation",
-                targetConcept,
-                targetDescription,
-                "manim"
-        ) + MANIM_SYSTEM);
+    public static String buildLayoutFixRulesPrompt(String outputTarget) {
+        if ("geogebra".equalsIgnoreCase(outputTarget)) {
+            return SystemPrompts.buildRulesSection(
+                    SystemPrompts.ensureGeoGebraSyntaxManual(GEOGEBRA_SYSTEM));
+        }
+        return SystemPrompts.buildRulesSection(
+                SystemPrompts.ensureManimSyntaxManual(MANIM_SYSTEM));
     }
 
-    public static String geoGebraLayoutFixSystemPrompt(String targetConcept, String targetDescription) {
-        return SystemPrompts.ensureGeoGebraSyntaxManual(SystemPrompts.buildWorkflowPrefix(
+    public static String buildLayoutFixFixedContextPrompt(String targetConcept,
+                                                          String targetDescription,
+                                                          String outputTarget) {
+        return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 5 / Scene Evaluation Fix",
-                "Revise GeoGebra commands after geometry-based scene evaluation",
+                "Revise " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra commands" : "Manim code")
+                        + " after geometry-based scene evaluation",
                 targetConcept,
                 targetDescription,
-                "geogebra"
-        ) + GEOGEBRA_SYSTEM);
+                outputTarget
+        ));
     }
 
     public static String layoutFixUserPrompt(String storyboardJson,
@@ -95,7 +97,7 @@ public final class SceneEvaluationPrompts {
                 .append("Remember: Return ONLY the single Python code block containing the full file. No explanation.\n");
 
         PromptUtils.appendFixHistory(sb, fixHistory);
-        return sb.toString();
+        return SystemPrompts.buildCurrentRequestSection(sb.toString());
     }
 
     public static String geoGebraLayoutFixUserPrompt(String storyboardJson,
@@ -123,6 +125,6 @@ public final class SceneEvaluationPrompts {
                 .append("Remember: Return ONLY the single fenced `geogebra` code block. No explanation.\n");
 
         PromptUtils.appendFixHistory(sb, fixHistory);
-        return sb.toString();
+        return SystemPrompts.buildCurrentRequestSection(sb.toString());
     }
 }

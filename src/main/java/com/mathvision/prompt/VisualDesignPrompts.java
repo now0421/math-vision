@@ -3,6 +3,10 @@ package com.mathvision.prompt;
 /**
  * Prompts for Stage 1b: visual design (scene-level output).
  *
+ * Split into two parts:
+ * - buildRulesPrompt(): hard rules (visual design rules, output schema, backend rules)
+ * - buildFixedContextPrompt(): workflow prefix + solution chain + backend style reference
+ *
  * Each knowledge node produces a full StoryboardScene plus new_objects
  * for the global object registry.
  */
@@ -155,26 +159,42 @@ public final class VisualDesignPrompts {
 
     private VisualDesignPrompts() {}
 
-    public static String systemPrompt(String targetConcept,
-                                      String targetDescription,
-                                      String outputTarget,
-                                      String solutionChain) {
-        String prompt = SystemPrompts.buildWorkflowPrefix(
+    /**
+     * Returns hard rules for visual design: visual design rules, output schema,
+     * backend-specific rules, examples.
+     */
+    public static String buildRulesPrompt(String outputTarget) {
+        return SystemPrompts.buildRulesSection("geogebra".equalsIgnoreCase(outputTarget)
+                ? GEOGEBRA_SYSTEM
+                : MANIM_SYSTEM);
+    }
+
+    /**
+     * Returns fixed background context: workflow prefix + backend intro +
+     * solution chain + backend style reference.
+     */
+    public static String buildFixedContextPrompt(String targetConcept,
+                                                  String targetDescription,
+                                                  String outputTarget,
+                                                  String solutionChain) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(SystemPrompts.buildWorkflowPrefix(
                 "Stage 1b / Visual Design",
                 "Scene visual design",
                 targetConcept,
                 targetDescription,
-                outputTarget
-        ) + ("geogebra".equalsIgnoreCase(outputTarget)
-                ? "Design for GeoGebra as an interactive construction medium.\n\n" + GEOGEBRA_SYSTEM
-                : "Design for Manim as a teaching animation medium rather than a backend-neutral compromise.\n\n"
-                + MANIM_SYSTEM);
+                outputTarget));
+        sb.append("geogebra".equalsIgnoreCase(outputTarget)
+                ? "Design for GeoGebra as an interactive construction medium.\n\n"
+                : "Design for Manim as a teaching animation medium rather than a backend-neutral compromise.\n\n");
         if (solutionChain != null && !solutionChain.isBlank()) {
-            prompt += "\n\n" + solutionChain;
+            sb.append("\n\n").append(solutionChain);
         }
         if ("geogebra".equalsIgnoreCase(outputTarget)) {
-            return SystemPrompts.ensureGeoGebraStyleReference(prompt);
+            sb.append("\n\n").append(SystemPrompts.ensureGeoGebraStyleReference(""));
+        } else {
+            sb.append("\n\n").append(SystemPrompts.ensureManimStyleReference(""));
         }
-        return SystemPrompts.ensureManimStyleReference(prompt);
+        return SystemPrompts.buildFixedContextSection(sb.toString());
     }
 }

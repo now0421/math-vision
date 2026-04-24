@@ -10,6 +10,7 @@ import com.mathvision.service.AiClient;
 import com.mathvision.service.GeoGebraRenderService;
 import com.mathvision.service.ManimRendererService;
 import com.mathvision.util.GeoGebraCodeUtils;
+import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
 import org.junit.jupiter.api.Test;
@@ -384,19 +385,18 @@ class RenderNodeCodeGateTest {
 
     private static final class GeoGebraFixAiClient implements AiClient {
         @Override
-        public String chat(String userMessage, String systemPrompt) {
-            return String.join("\n",
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
+            return CompletableFuture.completedFuture(String.join("\n",
                     "```geogebra",
                     "A = (0, 0)",
                     "B = (4, 0)",
                     "lineAB = Line(A, B)",
                     "mid = Midpoint(A, B)",
-                    "```");
+                    "```"));
         }
 
         @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
-                                                                 String systemPrompt,
+        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
                                                                  String toolsJson) {
             CompletableFuture<JsonNode> future = new CompletableFuture<>();
             future.completeExceptionally(new UnsupportedOperationException("tools not used"));

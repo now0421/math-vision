@@ -7,10 +7,12 @@ import com.mathvision.model.CodeResult;
 import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.service.AiClient;
+import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -101,15 +103,14 @@ class CodeFixNodeTest {
         }
 
         @Override
-        public String chat(String userMessage, String systemPrompt) {
-            return response;
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
+            return CompletableFuture.completedFuture(response);
         }
 
         @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
-                                                                 String systemPrompt,
+        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
                                                                  String toolsJson) {
-            throw new UnsupportedOperationException("Tools are not used in this test");
+            return CompletableFuture.failedFuture(new UnsupportedOperationException("Tools are not used in this test"));
         }
 
         @Override

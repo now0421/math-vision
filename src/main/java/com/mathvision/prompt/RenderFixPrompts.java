@@ -48,24 +48,25 @@ public final class RenderFixPrompts {
 
     private RenderFixPrompts() {}
 
-    public static String systemPrompt(String targetConcept, String targetDescription) {
-        return SystemPrompts.ensureManimSyntaxManual(SystemPrompts.buildWorkflowPrefix(
-                "Stage 4 / Code Rendering",
-                "Repair Manim code after render failure",
-                targetConcept,
-                targetDescription,
-                "manim"
-        ) + MANIM_SYSTEM);
+    public static String buildRulesPrompt(String outputTarget) {
+        if ("geogebra".equalsIgnoreCase(outputTarget)) {
+            return SystemPrompts.buildRulesSection(
+                    SystemPrompts.ensureGeoGebraSyntaxManual(GEOGEBRA_SYSTEM));
+        }
+        return SystemPrompts.buildRulesSection(
+                SystemPrompts.ensureManimSyntaxManual(MANIM_SYSTEM));
     }
 
-    public static String geoGebraSystemPrompt(String targetConcept, String targetDescription) {
-        return SystemPrompts.ensureGeoGebraSyntaxManual(SystemPrompts.buildWorkflowPrefix(
+    public static String buildFixedContextPrompt(String targetConcept,
+                                                 String targetDescription,
+                                                 String outputTarget) {
+        return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 4 / Code Rendering",
-                "Repair GeoGebra commands after render validation failure",
+                "Repair " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra commands" : "Manim code") + " after render failure",
                 targetConcept,
                 targetDescription,
-                "geogebra"
-        ) + GEOGEBRA_SYSTEM);
+                outputTarget
+        ));
     }
 
     public static String userPrompt(String generatedCode, String error) {
@@ -109,7 +110,7 @@ public final class RenderFixPrompts {
                 .append("Remember: Return ONLY the single Python code block containing the full file. No explanation.\n");
 
         PromptUtils.appendFixHistory(sb, fixHistory);
-        return sb.toString();
+        return SystemPrompts.buildCurrentRequestSection(sb.toString());
     }
 
     public static String geoGebraUserPrompt(String generatedCode,
@@ -138,7 +139,7 @@ public final class RenderFixPrompts {
                 .append("Remember: Return ONLY the single fenced `geogebra` code block. No explanation.\n");
 
         PromptUtils.appendFixHistory(sb, fixHistory);
-        return sb.toString();
+        return SystemPrompts.buildCurrentRequestSection(sb.toString());
     }
 
     private static String formatErrorType(String error) {

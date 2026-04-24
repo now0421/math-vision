@@ -312,6 +312,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         }
 
         addCodeDrivenFindings(analysis);
+        addStaticValidationFindings(analysis, generatedCode);
         return analysis;
     }
 
@@ -362,7 +363,10 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
 
         this.reviewConversationContext = new NodeConversationContext(maxInputTokens);
         this.reviewConversationContext.setSystemMessage(
-                CodeEvaluationPrompts.reviewSystemPrompt(
+                CodeEvaluationPrompts.buildReviewRulesPrompt(
+                        NodeSupport.resolveOutputTarget(workflowConfig)));
+        this.reviewConversationContext.setFixedContextMessage(
+                CodeEvaluationPrompts.buildReviewFixedContextPrompt(
                         targetConcept,
                         targetDescription,
                         NodeSupport.resolveOutputTarget(workflowConfig)));
@@ -524,6 +528,9 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
 
     private boolean passesGate(ReviewSnapshot review, StaticAnalysis analysis) {
         if (review == null) {
+            return false;
+        }
+        if (hasStaticValidationBlockingFindings(analysis)) {
             return false;
         }
         if (review.getContinuityScore() < MIN_CONTINUITY_SCORE
@@ -742,6 +749,20 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         analysis.getFindings().add(new StaticFinding(ruleId, severity, summary, evidence));
     }
 
+    private void addStaticValidationFindings(StaticAnalysis analysis, String generatedCode) {
+        List<String> violations = NodeSupport.isGeoGebraTarget(workflowConfig)
+                ? GeoGebraCodeUtils.validateFull(generatedCode)
+                : ManimCodeUtils.validateFull(generatedCode);
+
+        for (String violation : violations) {
+            if (violation == null || violation.isBlank()) {
+                continue;
+            }
+            String trimmed = violation.trim();
+            addFinding(analysis, "static_validation", "fail", trimmed, trimmed);
+        }
+    }
+
     private boolean hasRule(StaticAnalysis analysis, String ruleId) {
         if (analysis == null || analysis.getFindings() == null) {
             return false;
@@ -757,6 +778,15 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         return analysis.getFindings().stream()
                 .anyMatch(finding -> ruleId.equalsIgnoreCase(finding.getRuleId())
                         && severity.equalsIgnoreCase(finding.getSeverity()));
+    }
+
+    private boolean hasStaticValidationBlockingFindings(StaticAnalysis analysis) {
+        if (analysis == null || analysis.getFindings() == null) {
+            return false;
+        }
+        return analysis.getFindings().stream()
+                .anyMatch(finding -> "static_validation".equalsIgnoreCase(finding.getRuleId())
+                        && "fail".equalsIgnoreCase(finding.getSeverity()));
     }
 
     private int countFindingsBySeverity(StaticAnalysis analysis, String severity) {

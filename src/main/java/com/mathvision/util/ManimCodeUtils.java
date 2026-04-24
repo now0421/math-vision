@@ -24,31 +24,21 @@ public final class ManimCodeUtils {
     private static final Pattern SCENE_CLASS = Pattern.compile(
             "class\\s+(\\w+)\\s*\\(.*?Scene.*?\\)");
 
-    private static final Pattern RULE1_VIOLATION = Pattern.compile(
-            "self\\.\\w+\\s*=\\s*(?:MathTex|Text|VGroup|Circle|Square|Line|Dot|Arrow|Axes|NumberPlane)");
-
-    private static final Pattern RULE3_VIOLATION = Pattern.compile(
+    private static final Pattern STATIC_INDEXING_VIOLATION = Pattern.compile(
             "\\w+\\[\\d+\\]\\[\\d+:\\d+\\]");
+
     private static final Pattern TEXT_CONSTRUCTOR_PATTERN = Pattern.compile(
             "\\b(Text|Tex|MathTex)\\s*\\(\\s*(?:r|rf|fr)?([\"'])(.*?)\\2",
             Pattern.DOTALL
     );
 
-    /**
-     * Matches {@code .method_name(} where the method name is snake_case
-     * (contains at least one underscore). Used to detect undocumented Manim
-     * instance method calls.
-     */
-    private static final Pattern SNAKE_CASE_METHOD_CALL = Pattern.compile(
-            "\\.(([a-z][a-z0-9]*_[a-z0-9_]*))\\s*\\(");
+    private static final Pattern MANIM_METHOD_CALL_PATTERN = Pattern.compile(
+            "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\("
+    );
 
-    /** Python / NumPy builtins with underscores that are not Manim methods. */
-    private static final Set<String> PYTHON_BUILTIN_SNAKE_METHODS = Set.of(
-            "is_integer", "as_integer_ratio", "from_bytes", "to_bytes",
-            "read_text", "write_text", "join_path",
-            "set_default", "from_iterable",
-            "named_children", "named_parameters",
-            "start_with", "ends_with"
+    private static final Set<String> SKIPPED_RECEIVERS = Set.of(
+            "self",
+            "cls"
     );
 
     public static String extractCode(String response) {
@@ -131,23 +121,16 @@ public final class ManimCodeUtils {
             return violations;
         }
 
-        String rule1Evidence = CodeValidationSupport.findFirstMatchEvidence(manimCode, RULE1_VIOLATION);
-        if (rule1Evidence != null) {
-            violations.add("Rule 1 violation: stores mobjects on instance fields across scenes"
-                    + " (" + rule1Evidence + ")");
+        String staticIndexingEvidence = CodeValidationSupport.findFirstMatchEvidence(manimCode, STATIC_INDEXING_VIOLATION);
+        if (staticIndexingEvidence != null) {
+            violations.add("Static rule violation: hardcoded MathTex subobject indexing"
+                    + " (" + staticIndexingEvidence + ")");
         }
 
-        String rule3Evidence = CodeValidationSupport.findFirstMatchEvidence(manimCode, RULE3_VIOLATION);
-        if (rule3Evidence != null) {
-            violations.add("Rule 3 violation: hardcoded MathTex subobject indexing"
-                    + " (" + rule3Evidence + ")");
-        }
-
-        // Rule 4: undocumented Manim instance method calls
-        String rule4Evidence = findUndocumentedMethodCall(manimCode);
-        if (rule4Evidence != null) {
-            violations.add("Rule 4 violation: undocumented Manim API call"
-                    + " (" + rule4Evidence + ")");
+        String undocumentedApiEvidence = findUndocumentedManimMethodCall(manimCode);
+        if (undocumentedApiEvidence != null) {
+            violations.add("Static rule violation: undocumented Manim API call"
+                    + " (" + undocumentedApiEvidence + ")");
         }
 
         violations.addAll(validateTextConstructorSemantics(manimCode));
@@ -175,25 +158,32 @@ public final class ManimCodeUtils {
     }
 
     /**
-     * Scans code for snake_case method calls not in the documented whitelist.
-     * Returns evidence string for the first violation, or null if clean.
+     * Scans code for undocumented snake_case method calls while ignoring
+     * user-defined helpers on {@code self} or class-level receivers.
      */
-    static String findUndocumentedMethodCall(String manimCode) {
+    static String findUndocumentedManimMethodCall(String manimCode) {
         Set<String> documented = ManimValidationSupport.documentedInstanceMethodNames();
         String[] lines = manimCode.split("\\R");
         for (int i = 0; i < lines.length; i++) {
-            String line = lines[i].trim();
-            // Skip comments and string-only lines
-            if (line.startsWith("#")) {
+            String line = lines[i];
+            if (line == null || line.isBlank()) {
                 continue;
             }
-            Matcher matcher = SNAKE_CASE_METHOD_CALL.matcher(line);
+            String trimmed = line.trim();
+            if (trimmed.startsWith("#")) {
+                continue;
+            }
+
+            Matcher matcher = MANIM_METHOD_CALL_PATTERN.matcher(line);
             while (matcher.find()) {
-                String methodName = matcher.group(1);
-                if (!documented.contains(methodName)
-                        && !PYTHON_BUILTIN_SNAKE_METHODS.contains(methodName)) {
-                    String fragment = line.length() > 80 ? line.substring(0, 80) + "..." : line;
-                    return "line " + (i + 1) + ": ." + methodName + "() — " + fragment;
+                String receiver = matcher.group(1);
+                String methodName = matcher.group(2);
+                if (receiver == null || SKIPPED_RECEIVERS.contains(receiver)) {
+                    continue;
+                }
+                if (!documented.contains(methodName)) {
+                    String fragment = trimmed.length() > 80 ? trimmed.substring(0, 80) + "..." : trimmed;
+                    return "line " + (i + 1) + ": " + receiver + "." + methodName + "() — " + fragment;
                 }
             }
         }
@@ -256,20 +246,21 @@ public final class ManimCodeUtils {
     }
 
     private static boolean looksLikeMathModeContent(String content) {
-        // Structural math notation: superscripts, subscripts
-        if (content.contains("^") || content.contains("_")) return true;
-        // LaTeX control sequences: \ + alphabetic chars (matches ALL LaTeX commands)
-        // Exclude Python escape sequences ONLY when the backslash is followed by exactly
-        // one of the escape chars and NOT more letters (e.g. \n is Python, \name is LaTeX)
-        if (content.matches(".*\\\\[a-zA-Z]{2,}.*")) return true;
-        if (content.matches(".*\\\\[a-zA-Z].*") && !content.matches(".*\\\\[ntrfu0](?![a-zA-Z]).*")) return true;
-        // Math-mode delimiter
-        if (content.contains("$")) return true;
-        // Unicode math symbol ranges:
-        // U+2200-U+22FF = Mathematical Operators
-        // U+0391-U+03C9 = Greek letters
-        // U+2070-U+209F = Superscripts and Subscripts
-        if (content.matches(".*[\\u2200-\\u22FF\\u0391-\\u03C9\\u2070-\\u209F].*")) return true;
+        if (content.contains("^") || content.contains("_")) {
+            return true;
+        }
+        if (content.matches(".*\\\\[a-zA-Z]{2,}.*")) {
+            return true;
+        }
+        if (content.matches(".*\\\\[a-zA-Z].*") && !content.matches(".*\\\\[ntrfu0](?![a-zA-Z]).*")) {
+            return true;
+        }
+        if (content.contains("$")) {
+            return true;
+        }
+        if (content.matches(".*[\\u2200-\\u22FF\\u0391-\\u03C9\\u2070-\\u209F].*")) {
+            return true;
+        }
         return false;
     }
 
@@ -278,20 +269,25 @@ public final class ManimCodeUtils {
      * for LaTeX offending token extraction.
      */
     public static boolean containsMathIndicator(String token) {
-        if (token.contains("^") || token.contains("_") || token.contains("*")) return true;
-        // LaTeX command (2+ letters after backslash), or 1 letter that's not a Python escape
-        if (token.matches(".*\\\\[a-zA-Z]{2,}.*")) return true;
-        if (token.matches(".*\\\\[a-zA-Z].*") && !token.matches(".*\\\\[ntrfu0](?![a-zA-Z]).*")) return true;
-        if (token.matches(".*[\\u2200-\\u22FF\\u0391-\\u03C9].*")) return true;
-        if (token.contains("′") || token.contains("'")) return true;
-        return false;
+        if (token.contains("^") || token.contains("_") || token.contains("*")) {
+            return true;
+        }
+        if (token.matches(".*\\\\[a-zA-Z]{2,}.*")) {
+            return true;
+        }
+        if (token.matches(".*\\\\[a-zA-Z].*") && !token.matches(".*\\\\[ntrfu0](?![a-zA-Z]).*")) {
+            return true;
+        }
+        if (token.matches(".*[\\u2200-\\u22FF\\u0391-\\u03C9].*")) {
+            return true;
+        }
+        return token.contains("鈥") || token.contains("'");
     }
 
     private static boolean looksLikePlainSentence(String content) {
         if (looksLikeMathModeContent(content)) {
             return false;
         }
-        // Brace grouping is a strong LaTeX structural indicator
         if (content.contains("{")) {
             return false;
         }

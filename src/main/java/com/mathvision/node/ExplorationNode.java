@@ -6,6 +6,7 @@ import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.prompt.ExplorationPrompts;
+import com.mathvision.prompt.SystemPrompts;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
 import com.mathvision.service.FileOutputService;
@@ -14,7 +15,6 @@ import com.mathvision.util.ConceptUtils;
 import com.mathvision.util.ConcurrencyUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
-import com.mathvision.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
@@ -79,9 +79,9 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         int maxInputTokens = workflowConfig != null
                 ? workflowConfig.resolveMaxInputTokens()
                 : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
-        initializeRoutingContext(maxInputTokens, concept);
+        initializeRoutingContext(maxInputTokens);
         String resolvedMode = resolveInputMode(concept);
-        initializeGraphContexts(maxInputTokens, concept, resolvedMode);
+        initializeGraphContexts(maxInputTokens, resolvedMode);
 
         log.info("=== Stage 0: {} Graph Planning ===",
                 WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode) ? "Problem" : "Concept");
@@ -115,8 +115,9 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
     private KnowledgeGraph buildConceptGraph(String concept) {
         String normalizedConcept = concept == null ? "" : concept.trim();
-        String prompt = "Math concept:\n" + normalizedConcept + "\n\n"
-                + "Presentation target: " + outputTarget + ".";
+        String prompt = SystemPrompts.buildCurrentRequestSection(
+                "Math concept:\n" + normalizedConcept + "\n\n"
+                        + "Presentation target: " + outputTarget + ".");
 
         JsonNode payload = requestDirectGraphPayload(
                 normalizedConcept,
@@ -130,8 +131,9 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
     private KnowledgeGraph buildProblemGraph(String problemStatement) {
         String normalizedProblem = problemStatement == null ? "" : problemStatement.trim();
-        String prompt = "Math problem:\n" + normalizedProblem + "\n\n"
-                + "Presentation target: " + outputTarget + ".";
+        String prompt = SystemPrompts.buildCurrentRequestSection(
+                "Math problem:\n" + normalizedProblem + "\n\n"
+                        + "Presentation target: " + outputTarget + ".");
 
         JsonNode payload = requestDirectGraphPayload(
                 normalizedProblem,
@@ -533,8 +535,9 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
     private String classifyInputModeWithLlm(String input) {
         String normalizedInput = input == null ? "" : input.trim();
-        String prompt = "User input:\n" + normalizedInput + "\n\n"
-                + "Classify the routing mode for this workflow input.";
+        String prompt = SystemPrompts.buildCurrentRequestSection(
+                "User input:\n" + normalizedInput + "\n\n"
+                        + "Classify the routing mode for this workflow input.");
 
         try {
             String extractedText = AiRequestUtils.requestExtractedTextAsync(
@@ -589,31 +592,39 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         return looksLikeProblem ? WorkflowConfig.INPUT_MODE_PROBLEM : WorkflowConfig.INPUT_MODE_CONCEPT;
     }
 
-    private void initializeRoutingContext(int maxInputTokens, String input) {
+    private void initializeRoutingContext(int maxInputTokens) {
         routingContext = new NodeConversationContext(maxInputTokens);
-        routingContext.setSystemMessage(ExplorationPrompts.inputModeSystemPrompt(input));
+        routingContext.setSystemMessage(ExplorationPrompts.buildInputModeRulesPrompt());
+        routingContext.setFixedContextMessage(ExplorationPrompts.buildInputModeFixedContextPrompt());
     }
 
-    private void initializeGraphContexts(int maxInputTokens, String input, String resolvedMode) {
-        String targetDescription = buildGraphTargetDescription(input, resolvedMode);
+    private void initializeGraphContexts(int maxInputTokens, String resolvedMode) {
+        String targetDescription = buildGraphTargetDescription(resolvedMode);
 
         conceptGraphContext = new NodeConversationContext(maxInputTokens);
         conceptGraphContext.setSystemMessage(
-                ExplorationPrompts.conceptGraphSystemPrompt(input, targetDescription, maxDepth, minDepth));
+                ExplorationPrompts.buildConceptGraphRulesPrompt(maxDepth, minDepth));
+        conceptGraphContext.setFixedContextMessage(
+                ExplorationPrompts.buildConceptGraphFixedContextPrompt(targetDescription));
 
         problemGraphContext = new NodeConversationContext(maxInputTokens);
         problemGraphContext.setSystemMessage(
-                ExplorationPrompts.problemGraphSystemPrompt(input, targetDescription, maxDepth, minDepth));
+                ExplorationPrompts.buildProblemGraphRulesPrompt(maxDepth, minDepth));
+        problemGraphContext.setFixedContextMessage(
+                ExplorationPrompts.buildProblemGraphFixedContextPrompt(targetDescription));
     }
 
-    private String buildGraphTargetDescription(String input, String resolvedMode) {
-        String trimmedInput = input == null ? "" : input.trim();
+    private String buildGraphTargetDescription(String resolvedMode) {
+        boolean geogebra = WorkflowConfig.OUTPUT_TARGET_GEOGEBRA.equalsIgnoreCase(outputTarget);
+        String medium = geogebra ? "interactive geometry construction" : "teaching animation";
         if (WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)) {
-            return TargetDescriptionBuilder.workflowTargetDescription(
-                    trimmedInput, trimmedInput, trimmedInput, true, outputTarget);
+            return "Solve the user-provided math problem through a coherent "
+                    + medium
+                    + " that explains the reasoning and conclusion clearly.";
         }
-        return TargetDescriptionBuilder.workflowTargetDescription(
-                trimmedInput, trimmedInput, "", false, outputTarget);
+        return "Explain the user-provided math concept through a coherent "
+                + medium
+                + " with a clear, learner-facing teaching flow.";
     }
 
     private String normalizeInputModeDecision(String response) {

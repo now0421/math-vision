@@ -93,17 +93,17 @@ class ManimCodeUtilsTest {
     }
 
     @Test
-    void validateManimRules_detectsInstanceFieldViolation() {
-        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n        self.my_text = Text('hello')";
-        List<String> violations = ManimCodeUtils.validateManimRules(code);
-        assertTrue(violations.stream().anyMatch(v -> v.contains("Rule 1 violation")));
-    }
-
-    @Test
     void validateManimRules_detectsHardcodedIndexing() {
         String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n        eq[0][11:13].set_color(RED)";
         List<String> violations = ManimCodeUtils.validateManimRules(code);
-        assertTrue(violations.stream().anyMatch(v -> v.contains("Rule 3 violation")));
+        assertTrue(violations.stream().anyMatch(v -> v.contains("Static rule violation")));
+    }
+
+    @Test
+    void validateManimRules_allowsSelfSceneHelperMethods() {
+        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n        self.scene_1_intro()\n\n    def scene_1_intro(self):\n        pass";
+        List<String> violations = ManimCodeUtils.validateManimRules(code);
+        assertTrue(violations.stream().noneMatch(v -> v.contains("Static rule violation")));
     }
 
     @Test
@@ -133,7 +133,7 @@ class ManimCodeUtilsTest {
                 + "        path = VMobject()\n"
                 + "        path.set_points([A.get_center(), P.get_center()])";
         List<String> violations = ManimCodeUtils.validateManimRules(code);
-        assertTrue(violations.stream().anyMatch(v -> v.contains("Rule 4 violation")
+        assertTrue(violations.stream().anyMatch(v -> v.contains("Static rule violation")
                 && v.contains("set_points")));
     }
 
@@ -144,7 +144,7 @@ class ManimCodeUtilsTest {
                 + "        path.set_points_as_corners([LEFT, UP, RIGHT])\n"
                 + "        path.set_points_smoothly([LEFT, UP, RIGHT])";
         List<String> violations = ManimCodeUtils.validateManimRules(code);
-        assertTrue(violations.stream().noneMatch(v -> v.contains("Rule 4 violation")));
+        assertTrue(violations.stream().noneMatch(v -> v.contains("Static rule violation")));
     }
 
     @Test
@@ -156,7 +156,7 @@ class ManimCodeUtilsTest {
                 + "        dot.next_to(other, RIGHT)\n"
                 + "        dot.add_updater(lambda m: m.move_to(UP))";
         List<String> violations = ManimCodeUtils.validateManimRules(code);
-        assertTrue(violations.stream().noneMatch(v -> v.contains("Rule 4 violation")));
+        assertTrue(violations.stream().noneMatch(v -> v.contains("Static rule violation")));
     }
 
     @Test
@@ -164,7 +164,7 @@ class ManimCodeUtilsTest {
         String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
                 + "        mob.apply_over_attr_arrays(func)";
         List<String> violations = ManimCodeUtils.validateManimRules(code);
-        assertTrue(violations.stream().anyMatch(v -> v.contains("Rule 4 violation")
+        assertTrue(violations.stream().anyMatch(v -> v.contains("Static rule violation")
                 && v.contains("apply_over_attr_arrays")));
     }
 
@@ -174,7 +174,7 @@ class ManimCodeUtilsTest {
                 + "        # path.set_points([LEFT, RIGHT])  <- wrong\n"
                 + "        path.set_points_as_corners([LEFT, RIGHT])";
         List<String> violations = ManimCodeUtils.validateManimRules(code);
-        assertTrue(violations.stream().noneMatch(v -> v.contains("Rule 4 violation")));
+        assertTrue(violations.stream().noneMatch(v -> v.contains("Static rule violation")));
     }
 
     @Test

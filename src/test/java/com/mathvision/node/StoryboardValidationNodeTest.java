@@ -81,7 +81,7 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
-    void ignoresNonTextOnlyOverlapLikeSceneEvaluation() {
+    void reportsNonTextOverlapWhenBoundsCollide() {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(
                 List.of(
@@ -95,7 +95,10 @@ class StoryboardValidationNodeTest {
 
         List<String> issues = node.validate(storyboard);
 
-        assertTrue(issues.isEmpty(), () -> String.join("\n", issues));
+        assertEquals(1, issues.size());
+        assertTrue(issues.get(0).contains("left_box"));
+        assertTrue(issues.get(0).contains("right_box"));
+        assertTrue(issues.get(0).contains("overlap"));
     }
 
     @Test

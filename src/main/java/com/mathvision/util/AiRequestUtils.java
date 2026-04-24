@@ -109,159 +109,6 @@ public final class AiRequestUtils {
         }
     }
 
-    public static CompletableFuture<JsonNode> requestJsonObjectAsync(AiClient aiClient,
-                                                                     Logger log,
-                                                                     String subject,
-                                                                     String userPrompt,
-                                                                     String systemPrompt,
-                                                                     String toolsJson,
-                                                                     Runnable onApiCall) {
-        return requestJsonObjectAsync(
-                aiClient,
-                log,
-                subject,
-                userPrompt,
-                systemPrompt,
-                toolsJson,
-                onApiCall,
-                AiRequestUtils::parsePlainTextJsonObject,
-                AiRequestUtils::isUsablePayload
-        );
-    }
-
-    public static CompletableFuture<JsonNode> requestJsonObjectAsync(AiClient aiClient,
-                                                                     Logger log,
-                                                                     String subject,
-                                                                     String userPrompt,
-                                                                     String systemPrompt,
-                                                                     String toolsJson,
-                                                                     Runnable onApiCall,
-                                                                     Function<String, JsonNode> plainTextParser) {
-        return requestJsonObjectAsync(
-                aiClient,
-                log,
-                subject,
-                userPrompt,
-                systemPrompt,
-                toolsJson,
-                onApiCall,
-                plainTextParser,
-                AiRequestUtils::isUsablePayload
-        );
-    }
-
-    public static CompletableFuture<JsonNode> requestJsonObjectAsync(AiClient aiClient,
-                                                                     Logger log,
-                                                                     String subject,
-                                                                     String userPrompt,
-                                                                     String systemPrompt,
-                                                                     String toolsJson,
-                                                                     Runnable onApiCall,
-                                                                     Function<String, JsonNode> plainTextParser,
-                                                                     Predicate<JsonNode> payloadValidator) {
-        Predicate<JsonNode> validator = payloadValidator != null
-                ? payloadValidator
-                : AiRequestUtils::isUsablePayload;
-        return withRateLimitRetry(
-                        () -> aiClient.chatWithToolsRawAsync(userPrompt, systemPrompt, toolsJson),
-                        log, subject, onApiCall)
-                .thenApply(rawResponse -> {
-                    onApiCall.run();
-                    return extractJsonObject(rawResponse, plainTextParser, validator);
-                })
-                .exceptionally(error -> {
-                    Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
-                    log.debug("  Tool calling failed for '{}', falling back to plain chat: {}",
-                            subject, cause.getMessage());
-                    return null;
-                })
-                .thenCompose(data -> {
-                    if (data != null) {
-                        return CompletableFuture.completedFuture(data);
-                    }
-                    return withRateLimitRetry(
-                                    () -> aiClient.chatAsync(userPrompt, systemPrompt),
-                                    log, subject, onApiCall)
-                            .thenApply(response -> {
-                                onApiCall.run();
-                                return extractFromTextContent(response, plainTextParser, validator);
-                            });
-                });
-    }
-
-    public static CompletableFuture<String> requestExtractedTextAsync(AiClient aiClient,
-                                                                      Logger log,
-                                                                      String subject,
-                                                                      String userPrompt,
-                                                                      String systemPrompt,
-                                                                      String toolsJson,
-                                                                      Runnable onApiCall,
-                                                                      List<String> preferredPayloadFields,
-                                                                      Function<String, String> textExtractor,
-                                                                      Predicate<String> textValidator) {
-        return requestExtractedTextResultAsync(
-                aiClient,
-                log,
-                subject,
-                userPrompt,
-                systemPrompt,
-                toolsJson,
-                onApiCall,
-                preferredPayloadFields,
-                textExtractor,
-                textValidator
-        ).thenApply(ExtractedTextResult::getExtractedText);
-    }
-
-    public static CompletableFuture<ExtractedTextResult> requestExtractedTextResultAsync(AiClient aiClient,
-                                                                                         Logger log,
-                                                                                         String subject,
-                                                                                         String userPrompt,
-                                                                                         String systemPrompt,
-                                                                                         String toolsJson,
-                                                                                         Runnable onApiCall,
-                                                                                         List<String> preferredPayloadFields,
-                                                                                         Function<String, String> textExtractor,
-                                                                                         Predicate<String> textValidator) {
-        Predicate<String> validator = textValidator != null
-                ? textValidator
-                : AiRequestUtils::isUsableExtractedText;
-        Function<String, String> extractor = textExtractor != null
-                ? textExtractor
-                : AiRequestUtils::defaultTextExtractor;
-
-        return withRateLimitRetry(
-                        () -> aiClient.chatWithToolsRawAsync(userPrompt, systemPrompt, toolsJson),
-                        log, subject, onApiCall)
-                .thenApply(rawResponse -> {
-                    onApiCall.run();
-                    ExtractedTextResult result = extractTextResult(rawResponse, preferredPayloadFields, extractor, validator);
-                    logExtractedTextDiagnostics("tool-call:" + subject, result);
-                    return result;
-                })
-                .exceptionally(error -> {
-                    Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
-                    log.debug("  Tool calling failed for '{}', falling back to plain chat: {}",
-                            subject, cause.getMessage());
-                    return null;
-                })
-                .thenCompose(result -> {
-                    if (result != null) {
-                        return CompletableFuture.completedFuture(result);
-                    }
-                    return withRateLimitRetry(
-                                    () -> aiClient.chatAsync(userPrompt, systemPrompt),
-                                    log, subject, onApiCall)
-                            .thenApply(response -> {
-                                onApiCall.run();
-                                String extractedText = extractExtractedText(response, extractor, validator);
-                                ExtractedTextResult fallbackResult = new ExtractedTextResult(null, extractedText, response);
-                                logExtractedTextDiagnostics("plain-chat:" + subject, fallbackResult);
-                                return fallbackResult;
-                            });
-                });
-    }
-
     /**
      * Context-aware variant that uses a {@link NodeConversationContext} for
      * multi-turn conversations.
@@ -653,7 +500,8 @@ public final class AiRequestUtils {
         JsonNode payload = JsonUtils.extractToolCallPayload(rawResponse);
         String extractedFromPayload = extractPreferredPayloadText(payload, payloadFields, textExtractor, textValidator);
         if (extractedFromPayload != null) {
-            return new ExtractedTextResult(payload, extractedFromPayload, extractedFromPayload);
+            String assistantTranscript = buildToolAssistantTranscript(rawResponse, payload);
+            return new ExtractedTextResult(payload, extractedFromPayload, assistantTranscript);
         }
 
         String textContent = JsonUtils.extractBestEffortTextFromResponse(rawResponse);
@@ -813,27 +661,22 @@ public final class AiRequestUtils {
         if (result == null) {
             return;
         }
-        AiTraceLogger.logTextSample(source, "assistant_transcript", result.getAssistantTranscript());
-        AiTraceLogger.logTextSample(source, "extracted_text", result.getExtractedText());
+        String assistantTranscript = result.getAssistantTranscript();
+        String extractedText = result.getExtractedText();
+        if (normalizeForDiagnosticCompare(assistantTranscript)
+                .equals(normalizeForDiagnosticCompare(extractedText))) {
+            AiTraceLogger.logTextSample(source, "extracted_text", extractedText);
+            return;
+        }
+        AiTraceLogger.logTextSample(source, "assistant_transcript", assistantTranscript);
+        AiTraceLogger.logTextSample(source, "extracted_text", extractedText);
     }
 
-    /**
-     * Simple chat request with rate-limit retry. For nodes that only need a
-     * plain text response (no tool calling / JSON parsing).
-     */
-    public static CompletableFuture<String> requestChatAsync(AiClient aiClient,
-                                                              Logger log,
-                                                              String subject,
-                                                              String userPrompt,
-                                                              String systemPrompt,
-                                                              Runnable onApiCall) {
-        return withRateLimitRetry(
-                        () -> aiClient.chatAsync(userPrompt, systemPrompt),
-                        log, subject, onApiCall)
-                .thenApply(response -> {
-                    onApiCall.run();
-                    return response;
-                });
+    private static String normalizeForDiagnosticCompare(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.trim();
     }
 
     /**

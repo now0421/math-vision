@@ -10,6 +10,7 @@ import com.mathvision.model.Narrative.StoryboardScene;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.prompt.VisualDesignPrompts;
+import com.mathvision.prompt.SystemPrompts;
 import com.mathvision.service.AiClient;
 import com.mathvision.service.FileOutputService;
 import com.mathvision.util.AiRequestUtils;
@@ -107,7 +108,8 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         String workflowTarget = graph != null ? graph.getTargetConcept() : "";
         this.conversationContext = new NodeConversationContext(maxInputTokens);
         String solutionChain = TargetDescriptionBuilder.buildSolutionChain(graph, null);
-        this.conversationContext.setSystemMessage(VisualDesignPrompts.systemPrompt(
+        this.conversationContext.setSystemMessage(VisualDesignPrompts.buildRulesPrompt(outputTarget));
+        this.conversationContext.setFixedContextMessage(VisualDesignPrompts.buildFixedContextPrompt(
                 workflowTarget,
                 TargetDescriptionBuilder.build(graph, null),
                 outputTarget,
@@ -232,7 +234,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                 : "Colors already used: " + String.join(", ", paletteSnapshot)
                   + ". Prefer harmonious contrast and avoid unnecessary repetition.";
         userPrompt.append("\n").append(paletteContext);
-        String userPromptText = userPrompt.toString();
+        String userPromptText = SystemPrompts.buildCurrentRequestSection(userPrompt.toString());
 
         return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonObjectResultAsync(
                         aiClient,

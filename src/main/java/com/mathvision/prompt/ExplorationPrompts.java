@@ -82,36 +82,46 @@ public final class ExplorationPrompts {
 
     private ExplorationPrompts() {}
 
-    public static String inputModeSystemPrompt(String inputText) {
-        return SystemPrompts.buildWorkflowPrefix(
+    public static String buildInputModeRulesPrompt() {
+        return SystemPrompts.buildRulesSection(INPUT_MODE_CLASSIFIER_SYSTEM);
+    }
+
+    public static String buildInputModeFixedContextPrompt() {
+        return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 0 / Exploration",
                 "Input mode classification",
-                inputText,
+                "User-provided math input",
                 "Decide whether this input should follow the concept-explanation workflow or the problem-solving workflow.",
                 (String) null
-        ) + INPUT_MODE_CLASSIFIER_SYSTEM;
+        ));
     }
 
-    public static String conceptGraphSystemPrompt(String targetTitle, String targetDescription,
-                                                   int maxDepth, int minDepth) {
-        return SystemPrompts.buildWorkflowPrefix(
+    public static String buildConceptGraphRulesPrompt(int maxDepth, int minDepth) {
+        return SystemPrompts.buildRulesSection(CONCEPT_GRAPH_SYSTEM + depthBudgetInstruction(maxDepth, minDepth));
+    }
+
+    public static String buildConceptGraphFixedContextPrompt(String targetDescription) {
+        return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 0 / Exploration",
                 "Concept teaching-graph planning",
-                targetTitle,
+                "Concept explanation workflow target",
                 targetDescription,
                 (String) null
-        ) + CONCEPT_GRAPH_SYSTEM + depthBudgetInstruction(maxDepth, minDepth);
+        ));
     }
 
-    public static String problemGraphSystemPrompt(String targetTitle, String targetDescription,
-                                                   int maxDepth, int minDepth) {
-        return SystemPrompts.buildWorkflowPrefix(
+    public static String buildProblemGraphRulesPrompt(int maxDepth, int minDepth) {
+        return SystemPrompts.buildRulesSection(PROBLEM_GRAPH_SYSTEM + depthBudgetInstruction(maxDepth, minDepth));
+    }
+
+    public static String buildProblemGraphFixedContextPrompt(String targetDescription) {
+        return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 0 / Exploration",
                 "Problem solution-step graph planning",
-                targetTitle,
+                "Problem-solving workflow target",
                 targetDescription,
                 (String) null
-        ) + PROBLEM_GRAPH_SYSTEM + depthBudgetInstruction(maxDepth, minDepth);
+        ));
     }
 
     private static String depthBudgetInstruction(int maxDepth, int minDepth) {

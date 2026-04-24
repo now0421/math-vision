@@ -12,29 +12,15 @@ import java.util.concurrent.CompletionException;
  */
 public interface AiClient {
 
-    /**
-     * Send a chat message and get a response.
-     */
-    String chat(String userMessage, String systemPrompt);
+    CompletableFuture<String> chatAsync(java.util.List<NodeConversationContext.Message> snapshot);
 
-    /**
-     * Send a chat message asynchronously and get a future for the response.
-     */
-    default CompletableFuture<String> chatAsync(String userMessage, String systemPrompt) {
-        return CompletableFuture.supplyAsync(() -> chat(userMessage, systemPrompt));
-    }
+    CompletableFuture<JsonNode> chatWithToolsRawAsync(
+            java.util.List<NodeConversationContext.Message> snapshot, String toolsJson);
 
-    /**
-     * Send a chat message with function/tool calling support and get the raw
-     * API response asynchronously.
-     */
-    CompletableFuture<JsonNode> chatWithToolsRawAsync(String userMessage,
-                                                      String systemPrompt,
-                                                      String toolsJson);
-
-    default JsonNode chatWithToolsRaw(String userMessage, String systemPrompt, String toolsJson) {
+    default JsonNode chatWithToolsRaw(
+            java.util.List<NodeConversationContext.Message> snapshot, String toolsJson) {
         try {
-            return chatWithToolsRawAsync(userMessage, systemPrompt, toolsJson).join();
+            return chatWithToolsRawAsync(snapshot, toolsJson).join();
         } catch (CompletionException e) {
             Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
             if (cause instanceof RuntimeException) {
@@ -44,64 +30,15 @@ public interface AiClient {
         }
     }
 
-    /**
-     * Send a multi-turn conversation and get a response synchronously.
-     */
-    default String chat(NodeConversationContext context) {
-        return chat(context.getLastUserContent(), context.getSystemContent());
-    }
-
-    /**
-     * Send a multi-turn conversation asynchronously.
-     */
     default CompletableFuture<String> chatAsync(NodeConversationContext context) {
-        return chatAsync(context.getLastUserContent(), context.getSystemContent());
+        context.trimToFitBudget();
+        return chatAsync(context.getMessages());
     }
 
-    /**
-     * Send a multi-turn conversation with tool calling support asynchronously.
-     */
     default CompletableFuture<JsonNode> chatWithToolsRawAsync(
             NodeConversationContext context, String toolsJson) {
-        return chatWithToolsRawAsync(
-                context.getLastUserContent(), context.getSystemContent(), toolsJson);
-    }
-
-    /**
-     * Send a snapshot of messages (not the live context) asynchronously.
-     * Used by concurrent callers to avoid mutating the shared context.
-     */
-    default CompletableFuture<String> chatAsync(
-            java.util.List<NodeConversationContext.Message> snapshot) {
-        NodeConversationContext context = new NodeConversationContext(Integer.MAX_VALUE);
-        for (NodeConversationContext.Message message : snapshot) {
-            if ("system".equals(message.getRole())) {
-                context.setSystemMessage(message.getContent());
-            } else if ("user".equals(message.getRole())) {
-                context.addUserMessage(message.getContent());
-            } else if ("assistant".equals(message.getRole())) {
-                context.addAssistantMessage(message.getContent());
-            }
-        }
-        return chatAsync(context);
-    }
-
-    /**
-     * Send a snapshot of messages with tool calling support asynchronously.
-     */
-    default CompletableFuture<JsonNode> chatWithToolsRawAsync(
-            java.util.List<NodeConversationContext.Message> snapshot, String toolsJson) {
-        NodeConversationContext context = new NodeConversationContext(Integer.MAX_VALUE);
-        for (NodeConversationContext.Message message : snapshot) {
-            if ("system".equals(message.getRole())) {
-                context.setSystemMessage(message.getContent());
-            } else if ("user".equals(message.getRole())) {
-                context.addUserMessage(message.getContent());
-            } else if ("assistant".equals(message.getRole())) {
-                context.addAssistantMessage(message.getContent());
-            }
-        }
-        return chatWithToolsRawAsync(context, toolsJson);
+        context.trimToFitBudget();
+        return chatWithToolsRawAsync(context.getMessages(), toolsJson);
     }
 
     /**

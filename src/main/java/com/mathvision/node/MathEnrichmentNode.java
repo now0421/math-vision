@@ -5,6 +5,7 @@ import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.prompt.EnrichmentPrompts;
+import com.mathvision.prompt.SystemPrompts;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
 import com.mathvision.util.AiRequestUtils;
@@ -76,7 +77,8 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         String workflowTarget = graph != null ? graph.getTargetConcept() : "";
         this.conversationContext = new NodeConversationContext(maxInputTokens);
         String solutionChain = TargetDescriptionBuilder.buildSolutionChain(graph, null);
-        this.conversationContext.setSystemMessage(EnrichmentPrompts.systemPrompt(
+        this.conversationContext.setSystemMessage(EnrichmentPrompts.buildRulesPrompt());
+        this.conversationContext.setFixedContextMessage(EnrichmentPrompts.buildFixedContextPrompt(
                 workflowTarget,
                 TargetDescriptionBuilder.build(graph, null),
                 solutionChain));
@@ -243,19 +245,37 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
 
     private String buildCurrentStepPrompt(KnowledgeNode node) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Current step:\n");
-        sb.append("- Step: ").append(node.getStep()).append("\n");
+        sb.append("[CURRENT_STEP]\n");
+        sb.append("- step: ").append(node.getStep()).append("\n");
+        sb.append("- node_role: ").append(
+                node.getNodeType() != null ? node.getNodeType() : "concept").append("\n");
 
         if (graph != null) {
             List<KnowledgeNode> prerequisites = graph.getPrerequisites(node.getId());
             if (!prerequisites.isEmpty()) {
-                sb.append("Direct prerequisite steps:\n");
+                sb.append("[DIRECT_PREREQUISITES]\n");
                 for (KnowledgeNode prerequisite : prerequisites) {
-                    sb.append("- ").append(prerequisite.getStep()).append("\n");
+                    sb.append("- prerequisite: ").append(prerequisite.getStep());
+                    if (prerequisite.isEnriched()) {
+                        if (prerequisite.getInterpretation() != null
+                                && !prerequisite.getInterpretation().isBlank()) {
+                            sb.append("\n  inherited takeaway: ").append(prerequisite.getInterpretation());
+                        }
+                        if (prerequisite.getEquations() != null
+                                && !prerequisite.getEquations().isEmpty()) {
+                            sb.append("\n  reusable equations: ").append(prerequisite.getEquations().get(0));
+                        }
+                        if (prerequisite.getDefinitions() != null
+                                && !prerequisite.getDefinitions().isEmpty()) {
+                            Map.Entry<String, String> firstDef = prerequisite.getDefinitions().entrySet().iterator().next();
+                            sb.append("\n  reusable definitions: ").append(firstDef.getKey()).append(": ").append(firstDef.getValue());
+                        }
+                    }
+                    sb.append("\n");
                 }
             }
             if (prerequisites.size() > 1) {
-                sb.append("Merge node guidance:\n");
+                sb.append("[MERGE_GUIDANCE]\n");
                 sb.append("- This step merges multiple prerequisite branches.\n");
                 sb.append("- Integrate the prerequisite conclusions into one continuation.\n");
                 sb.append("- Preserve established naming instead of restarting the explanation.\n");
@@ -263,16 +283,19 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
 
             List<KnowledgeNode> dependents = graph.getDependents(node.getId());
             if (!dependents.isEmpty()) {
-                sb.append("Direct downstream steps:\n");
+                sb.append("[DIRECT_DOWNSTREAM_USE]\n");
                 for (KnowledgeNode dependent : dependents) {
-                    sb.append("- ").append(dependent.getStep()).append("\n");
+                    sb.append("- downstream: ").append(dependent.getStep()).append("\n");
+                    sb.append("  this step should prepare: content needed by the above downstream step\n");
                 }
             }
         }
 
-        sb.append("Return only the mathematical content needed for this current step");
-        sb.append(", keeping it concise and useful for the presentation output.");
-        return sb.toString();
+        sb.append("[RESPONSE_SCOPE]\n");
+        sb.append("Return only the mathematical content needed for this step.\n");
+        sb.append("Do not restate the whole solution.\n");
+        sb.append("Keep it concise and presentation-oriented.");
+        return SystemPrompts.buildCurrentRequestSection(sb.toString());
     }
 
     private void applyContent(KnowledgeNode node, JsonNode data) {
