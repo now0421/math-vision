@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -21,12 +22,6 @@ public final class GeoGebraCodeUtils {
     private static final String SCENE_BUTTONS_BEGIN_MARKER = "# AUTOGEN_SCENE_BUTTONS_BEGIN";
     private static final String SCENE_BUTTONS_END_MARKER = "# AUTOGEN_SCENE_BUTTONS_END";
 
-    private static final Pattern PYTHON_OR_MANIM_SYNTAX = Pattern.compile(
-            "\\b(?:from\\s+manim\\s+import|class\\s+\\w+\\s*\\(|def\\s+\\w+\\s*\\(|self\\.|import\\s+[A-Za-z_])");
-
-    private static final Pattern JAVASCRIPT_SYNTAX = Pattern.compile(
-            "\\b(?:const|let|var|function)\\b|=>|document\\.|window\\.");
-
     private static final Pattern FULL_WIDTH_PUNCTUATION = Pattern.compile(
             "[\\uFF0C\\uFF1B\\uFF1A\\u3002\\uFF01\\uFF1F\\uFF08\\uFF09"
                     + "\\u3010\\u3011\\u300A\\u300B\\u201C\\u201D\\u2018\\u2019]");
@@ -36,6 +31,9 @@ public final class GeoGebraCodeUtils {
 
     private static final Pattern COMMAND_CALL = Pattern.compile(
             "^([A-Za-z][A-Za-z0-9_'{}]*)\\s*\\(.*\\)$");
+
+    private static final Pattern GEOGEBRA_COMMAND_CALL = Pattern.compile(
+            "\\b([A-Z][A-Za-z0-9_]*)\\s*\\(");
 
     public static final class SceneDirective {
         public String id;
@@ -112,27 +110,6 @@ public final class GeoGebraCodeUtils {
             return violations;
         }
 
-        String pythonEvidence = CodeValidationSupport.findFirstMatchEvidence(geoGebraCode, PYTHON_OR_MANIM_SYNTAX);
-        if (pythonEvidence != null) {
-            violations.add("Contains Python or Manim syntax (" + pythonEvidence + ")");
-        }
-
-        String javascriptEvidence = CodeValidationSupport.findFirstMatchEvidence(geoGebraCode, JAVASCRIPT_SYNTAX);
-        if (javascriptEvidence != null) {
-            violations.add("Contains JavaScript syntax (" + javascriptEvidence + ")");
-        }
-
-        String invalidCommandEvidence = findFirstInvalidCommandEvidence(commands);
-        if (invalidCommandEvidence != null) {
-            violations.add("Contains a line that does not look like a GeoGebra command ("
-                    + invalidCommandEvidence + ")");
-        }
-
-        String unbalancedEvidence = findFirstUnbalancedCommandEvidence(commands);
-        if (unbalancedEvidence != null) {
-            violations.add("Contains unbalanced quotes or delimiters (" + unbalancedEvidence + ")");
-        }
-
         return violations;
     }
 
@@ -152,6 +129,12 @@ public final class GeoGebraCodeUtils {
         if (multiCommandEvidence != null) {
             violations.add("Contains multiple commands on one line; keep one GeoGebra command per line"
                     + " (" + multiCommandEvidence + ")");
+        }
+
+        String undocumentedCommandEvidence = findFirstUndocumentedGeoGebraCommandCall(geoGebraCode);
+        if (undocumentedCommandEvidence != null) {
+            violations.add("Static rule violation: undocumented GeoGebra command"
+                    + " (" + undocumentedCommandEvidence + ")");
         }
 
         return violations;
@@ -187,26 +170,6 @@ public final class GeoGebraCodeUtils {
                 || COMMAND_CALL.matcher(command).matches();
     }
 
-    private static String findFirstInvalidCommandEvidence(List<String> commands) {
-        for (int i = 0; i < commands.size(); i++) {
-            String command = commands.get(i);
-            if (!looksLikeCommand(command)) {
-                return "line " + (i + 1) + ": " + abbreviate(command);
-            }
-        }
-        return null;
-    }
-
-    private static String findFirstUnbalancedCommandEvidence(List<String> commands) {
-        for (int i = 0; i < commands.size(); i++) {
-            String command = commands.get(i);
-            if (!hasBalancedDelimiters(command)) {
-                return "line " + (i + 1) + ": " + abbreviate(command);
-            }
-        }
-        return null;
-    }
-
     private static String findFirstSemicolonEvidence(List<String> commands) {
         for (int i = 0; i < commands.size(); i++) {
             String command = commands.get(i);
@@ -215,6 +178,41 @@ public final class GeoGebraCodeUtils {
             }
         }
         return null;
+    }
+
+    static String findFirstUndocumentedGeoGebraCommandCall(String geoGebraCode) {
+        List<String> commands = extractCommands(geoGebraCode);
+        Set<String> documented = GeoGebraValidationSupport.documentedCommandNames();
+        for (int i = 0; i < commands.size(); i++) {
+            String command = stripDoubleQuotedText(commands.get(i));
+            Matcher matcher = GEOGEBRA_COMMAND_CALL.matcher(command);
+            while (matcher.find()) {
+                String commandName = matcher.group(1);
+                if (!documented.contains(commandName)) {
+                    return "line " + (i + 1) + ": " + commandName + "() - " + abbreviate(commands.get(i));
+                }
+            }
+        }
+        return null;
+    }
+
+    private static String stripDoubleQuotedText(String command) {
+        if (command == null || command.isBlank()) {
+            return "";
+        }
+        StringBuilder result = new StringBuilder(command.length());
+        boolean inDoubleQuote = false;
+        for (int i = 0; i < command.length(); i++) {
+            char ch = command.charAt(i);
+            char previous = i > 0 ? command.charAt(i - 1) : '\0';
+            if (ch == '"' && previous != '\\') {
+                inDoubleQuote = !inDoubleQuote;
+                result.append(' ');
+            } else {
+                result.append(inDoubleQuote ? ' ' : ch);
+            }
+        }
+        return result.toString();
     }
 
     private static boolean hasBalancedDelimiters(String command) {

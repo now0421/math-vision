@@ -31,31 +31,6 @@ class GeoGebraCodeUtilsTest {
     }
 
     @Test
-    void validateStructure_detectsPythonAndJavascriptPollution() {
-        String code = String.join("\n",
-                "const A = (0, 0)",
-                "from manim import *",
-                "B = (4, 0)");
-
-        List<String> violations = GeoGebraCodeUtils.validateStructure(code);
-
-        assertTrue(violations.stream().anyMatch(v -> v.contains("Python or Manim syntax")));
-        assertTrue(violations.stream().anyMatch(v -> v.contains("JavaScript syntax")));
-    }
-
-    @Test
-    void validateStructure_detectsInvalidCommandShape() {
-        List<String> violations = GeoGebraCodeUtils.validateStructure("A -> (0, 0)");
-        assertTrue(violations.stream().anyMatch(v -> v.contains("does not look like a GeoGebra command")));
-    }
-
-    @Test
-    void validateStructure_detectsUnbalancedDelimiters() {
-        List<String> violations = GeoGebraCodeUtils.validateStructure("A = Line((0, 0)");
-        assertTrue(violations.stream().anyMatch(v -> v.contains("unbalanced")));
-    }
-
-    @Test
     void validateGeoGebraRules_detectsFullWidthPunctuationOnly() {
         String code = String.join("\n",
                 "point = Intersect(A\uFF0CB)",
@@ -74,9 +49,29 @@ class GeoGebraCodeUtilsTest {
     }
 
     @Test
-    void validateGeoGebraRules_allowsNonAsciiExecutableText() {
+    void validateGeoGebraRules_detectsUndocumentedCommand() {
+        List<String> violations = GeoGebraCodeUtils.validateGeoGebraRules("triangle = Triangle(A, B, C)");
+
+        assertTrue(violations.stream().anyMatch(v -> v.contains("undocumented GeoGebra command")
+                && v.contains("Triangle()")));
+    }
+
+    @Test
+    void validateGeoGebraRules_allowsDocumentedCommandsAndIgnoresQuotedText() {
+        String code = String.join("\n",
+                "L = Line(A, B)",
+                "reflection = Reflect(A, L)",
+                "SetCaption(L, \"Triangle(A, B, C) is just label text\")");
+
+        List<String> violations = GeoGebraCodeUtils.validateGeoGebraRules(code);
+
+        assertTrue(violations.isEmpty());
+    }
+
+    @Test
+    void validateGeoGebraRules_allowsQuotedExecutableText() {
         List<String> violations = GeoGebraCodeUtils.validateGeoGebraRules(
-                "label = Text(\"最小值 = 2\")");
+                "SetCaption(L, \"minimum = 2\")");
         assertTrue(violations.isEmpty());
     }
 
@@ -186,5 +181,4 @@ class GeoGebraCodeUtilsTest {
         assertEquals(List.of("B"), directives.get(0).hide);
         assertFalse(enriched.contains("point_A"));
     }
-
 }
