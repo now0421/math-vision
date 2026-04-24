@@ -13,33 +13,9 @@ public final class CodeGenerationPrompts {
                     + "Treat the provided storyboard JSON as an execution specification, not loose inspiration.\n\n"
                     + "Mandatory rules:\n"
                     + "- Use `from manim import *`.\n"
-                    + SystemPrompts.MANIM_MANUAL_ONLY_RULES
-                    + SystemPrompts.NARRATIVE_PHILOSOPHY
-                    + SystemPrompts.VISUAL_PLANNING_RULES
-                    + SystemPrompts.MANIM_MOTION_AND_PACING_RULES
-                    + SystemPrompts.COMPOSITION_RULES
-                    + SystemPrompts.MANIM_TEXT_AND_READABILITY_RULES
-                    + SystemPrompts.MANIM_ANIMATION_SELECTION_RULES
-                    + SystemPrompts.OBJECT_LIFECYCLE_RULES
-                    + SystemPrompts.MANIM_CODE_HYGIENE_RULES
-                    + SystemPrompts.MANIM_TYPOGRAPHY_SCALE
-                    + SystemPrompts.OPACITY_LEVELS
-                    + SystemPrompts.MANIM_TIMING_REFERENCE
-                    + SystemPrompts.MANIM_SCENE_TRANSITION_RULES
-                    + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
-                    + SystemPrompts.MANIM_NAMING_RULES
-                    + "- Preserve scene continuity instead of clearing the scene between beats.\n"
-                    + "- Do not store mobjects on `self` just to reuse them across scene methods.\n"
-                    + "- Do not hardcode numeric MathTex subobject indexing.\n"
-                    + "- Use `ThreeDScene` only when needed and keep overlays fixed in frame when appropriate.\n"
-                    + "- Keep content inside the readable safe frame and prefer stable anchors plus `arrange`/`next_to`.\n"
                     + "- Do not invent learner-visible objects that are not declared in the storyboard.\n"
-                    + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES
-                    + "- " + SystemPrompts.ANGLE_MARKER_RULES
-                    + "- Do not place a free-floating arc by shifting/rotating it near the vertex, and do not accidentally mark a large exterior angle when the scene intends two small equal angles.\n"
+                    + "- Preserve scene continuity instead of clearing the scene between beats.\n"
                     + "- Treat storyboard `geometry_constraints` and object `constraint_note` fields as hard mathematical invariants.\n"
-                    + "- " + SystemPrompts.MANIM_TEXT_CONSTRUCTOR_MAPPING
-                    + "- " + SystemPrompts.GEOMETRY_CONSTRAINT_RULES + "\n"
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_FULL + "\n"
                     + "Additional code generation rules:\n"
                     + "- `entering_objects[].content` tells you what must be shown.\n"
@@ -51,6 +27,31 @@ public final class CodeGenerationPrompts {
                     + "- Keep a persistent base diagram stable while adding, highlighting, or updating only the necessary layer.\n"
                     + "- When an action targets an existing id, animate that existing object instead of silently creating a duplicate.\n"
                     + "- Use clean exits for temporary annotations, comparisons, and overlays rather than leaving them to accumulate.\n\n"
+                    + SystemPrompts.OBJECT_LIFECYCLE_RULES
+                    + SystemPrompts.GEOMETRY_CONSTRAINT_RULES + "\n"
+                    + SystemPrompts.MANIM_MANUAL_ONLY_RULES
+                    + "- Implement the visual plan with documented Manim constructs and no hidden assumptions.\n"
+                    + "- " + SystemPrompts.MANIM_TEXT_CONSTRUCTOR_MAPPING
+                    + "- " + SystemPrompts.ANGLE_MARKER_RULES
+                    + SystemPrompts.NARRATIVE_PHILOSOPHY
+                    + SystemPrompts.VISUAL_PLANNING_RULES
+                    + SystemPrompts.MANIM_MOTION_AND_PACING_RULES
+                    + SystemPrompts.COMPOSITION_RULES
+                    + SystemPrompts.MANIM_TEXT_AND_READABILITY_RULES
+                    + SystemPrompts.MANIM_ANIMATION_SELECTION_RULES
+                    + SystemPrompts.MANIM_CODE_HYGIENE_RULES
+                    + SystemPrompts.MANIM_TYPOGRAPHY_SCALE
+                    + SystemPrompts.OPACITY_LEVELS
+                    + SystemPrompts.MANIM_TIMING_REFERENCE
+                    + SystemPrompts.MANIM_SCENE_TRANSITION_RULES
+                    + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
+                    + SystemPrompts.MANIM_NAMING_RULES
+                    + "- Do not store mobjects on `self` just to reuse them across scene methods.\n"
+                    + "- Do not hardcode numeric MathTex subobject indexing.\n"
+                    + "- Use `ThreeDScene` only when needed and keep overlays fixed in frame when appropriate.\n"
+                    + "- Keep content inside the readable safe frame and prefer stable anchors plus `arrange`/`next_to`.\n"
+                    + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES
+                    + "- Do not place a free-floating arc by shifting/rotating it near the vertex, and do not accidentally mark a large exterior angle when the scene intends two small equal angles.\n"
                     + "Layout and camera rules:\n"
                     + "- Convert structured `placement`, `camera_anchor`, `camera_plan`, `safe_area_plan`, and `screen_overlay_plan` into concrete Manim layout and camera code.\n"
                     + "- Choose readable absolute coordinates that preserve continuity and keep important content inside the safe frame with at least 0.5 units of clearance from every edge.\n"
@@ -90,17 +91,15 @@ public final class CodeGenerationPrompts {
                     + "Treat the storyboard as the source of truth for object identity, geometry meaning, layout intent, and teaching order.\n\n"
                     + "Mandatory rules:\n"
                     + "- Return GeoGebra commands, not Python and not JavaScript.\n"
-                    + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
-                    + SystemPrompts.NARRATIVE_PHILOSOPHY
-                    + SystemPrompts.VISUAL_PLANNING_RULES
-                    + SystemPrompts.COMPOSITION_RULES
-                    + SystemPrompts.OPACITY_LEVELS
-                    + SystemPrompts.GEOGEBRA_NAMING_RULES
-                    + "- Prefer common, stable GeoGebra Classic commands over obscure tricks.\n"
                     + "- Build from base objects to derived objects in a clear dependency chain.\n"
                     + "- Preserve geometric meaning: intersections, reflections, midpoints, perpendiculars, parallels, equal-radius points, and similar constructions must stay dependency-driven.\n"
                     + "- Treat storyboard `geometry_constraints` and object `constraint_note` fields as hard mathematical invariants.\n"
                     + SystemPrompts.GEOMETRY_CONSTRAINT_RULES
+                    + SystemPrompts.STORYBOARD_FIELD_GUIDE_GEOGEBRA + "\n"
+                    + SystemPrompts.OBJECT_LIFECYCLE_RULES
+                    + "Additional storyboard field rules:\n"
+                    + "- When `content`, `dependency_note`, or other object fields mention another object, treat those mentions as object ids only. Do not reinterpret kind words from prose and do not invent a second object type for the same id.\n"
+                    + "- Treat storyboard object ids as the naming source for generated GeoGebra variables. Preserve those ids in code, and when you must introduce a helper name, use concise camelCase or math-style identifiers.\n\n"
                     + "- Interpret storyboard `behavior` by dependency semantics, not by motion permission: `static` means independently defined base object, not automatically a free point.\n"
                     + "- If a point is constrained to a path or object, construct it as a point on that object or with an equivalent dependency-safe definition. Do not replace it with a free coordinate point.\n"
                     + "- If a point is described as fixed and no dependency is stated, define it as an independent anchor and keep it fixed unless the storyboard explicitly asks for dragging.\n"
@@ -108,16 +107,19 @@ public final class CodeGenerationPrompts {
                     + "- If the storyboard implies a bounded range, encode the bound in the construction itself with a segment, ray, restricted path, or slider domain rather than leaving the object unconstrained.\n"
                     + "- Do not invent unsupported convenience syntax such as `Point(line, x, y)` or similar guessed overloads.\n"
                     + "- When initial structured placement is requested for a constrained point, choose a dependency-safe construction that starts near that location or inside the requested range; never break the constraint just to match the coordinates.\n"
+                    + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
+                    + "- Prefer common, stable GeoGebra Classic commands over obscure tricks.\n"
                     + "- Ignore timing-only details such as scene duration, but preserve the same teaching order and object-state progression.\n"
                     + "- Use style and visibility commands sparingly and semantically, and apply scripting commands after construction commands.\n"
                     + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES
                     + "- Keep the script organized in scene order so downstream scene buttons can toggle the right visible objects.\n"
                     + "- If a requested visual effect would require a command not documented in the manual, re-express it with documented commands or omit that unsupported decoration.\n\n"
-                    + SystemPrompts.STORYBOARD_FIELD_GUIDE_GEOGEBRA + "\n"
-                    + SystemPrompts.OBJECT_LIFECYCLE_RULES
-                    + "Additional storyboard field rules:\n"
-                    + "- When `content`, `dependency_note`, or other object fields mention another object, treat those mentions as object ids only. Do not reinterpret kind words from prose and do not invent a second object type for the same id.\n"
-                    + "- Treat storyboard object ids as the naming source for generated GeoGebra variables. Preserve those ids in code, and when you must introduce a helper name, use concise camelCase or math-style identifiers.\n\n"
+                    + "- Do not add specific GeoGebra command names from storyboard notes unless they are documented in the active syntax manual; implement unsupported effects generically with documented commands instead.\n"
+                    + SystemPrompts.NARRATIVE_PHILOSOPHY
+                    + SystemPrompts.VISUAL_PLANNING_RULES
+                    + SystemPrompts.COMPOSITION_RULES
+                    + SystemPrompts.OPACITY_LEVELS
+                    + SystemPrompts.GEOGEBRA_NAMING_RULES
                     + SystemPrompts.GEOGEBRA_CODE_OUTPUT_FORMAT.replace("corrected command script", "GeoGebra command script");
 
     private CodeGenerationPrompts() {}

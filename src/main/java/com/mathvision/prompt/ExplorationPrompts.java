@@ -38,6 +38,7 @@ public final class ExplorationPrompts {
                     + "1. Add an edge only for truly necessary prerequisites, not helpful background.\n"
                     + "2. Avoid synonyms, near-duplicates, and parent-child duplication across nodes.\n"
                     + "3. Include prerequisite observations or misconceptions when they are needed to make the later insight feel earned.\n\n"
+                    + SystemPrompts.ASCII_TEXT_RULES
                     + "Output format:\n"
                     + "Return a JSON object with this shape:\n"
                     + "{\n"
@@ -65,6 +66,7 @@ public final class ExplorationPrompts {
                     + "The start must be the hook or problem-framing node at depth 0, and later beats should progress toward the final conclusion.\n"
                     + "Prefer 4 to 7 strong beats unless the problem truly needs more.\n"
                     + "The graph should be compact, acyclic, and easy to present in topological order.\n\n"
+                    + SystemPrompts.ASCII_TEXT_RULES
                     + "Output format:\n"
                     + "Return a JSON object with this shape:\n"
                     + "{\n"

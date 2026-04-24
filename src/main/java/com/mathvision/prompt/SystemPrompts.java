@@ -161,6 +161,14 @@ public final class SystemPrompts {
     public static final String HIGH_CONTRAST_COLOR_RULES_BULLETS =
             "- " + HIGH_CONTRAST_COLOR_RULES.replace("\n", "\n- ").trim() + "\n";
 
+    /** ASCII-only text rules for generated workflow artifacts. */
+    public static final String ASCII_TEXT_RULES =
+            "ASCII text rules:\n"
+                    + "- Use ASCII characters only in generated JSON text fields, math symbols, labels, ids, equations, notes, and narration.\n"
+                    + "- Do not use Chinese punctuation, curly quotes, em dashes, en dashes, arrows, prime/star glyphs, checkmarks, circled numbers, full-width spaces, or Unicode math operators.\n"
+                    + "- Replace Unicode symbols with ASCII equivalents: `A->P->B` not `A→P→B`; `B'` not `B′`; `Pstar` or `P_star` not `P⋆`; `>=` or `\\geq` not `≥`; `<=` or `\\leq` not `≤`; `\"` or `'` not curly quotes; `-` not `—`; `1.` not `①`; `done` not `✓`.\n"
+                    + "- If the user input contains non-ASCII symbols, normalize them to ASCII before placing them in workflow outputs.\n";
+
     /** Opacity hierarchy for visual layering, applicable to all output targets. */
     public static final String OPACITY_LEVELS =
             "Opacity hierarchy:\n"

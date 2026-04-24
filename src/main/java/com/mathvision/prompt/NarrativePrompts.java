@@ -35,7 +35,15 @@ public final class NarrativePrompts {
                     + "Storyboard-level rules:\n"
                     + "- Prefer 3 to 5 strong scenes for problem-solving unless more are truly needed\n"
                     + "- Plan per-scene variation: vary the dominant visual focus, spatial layout pattern, and visual density across scenes. Avoid identical composition for consecutive scenes\n"
-                    + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES + "\n";
+                    + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES + "\n"
+                    + "Storyboard style cleanup rules:\n"
+                    + "- Preserve intentional scene-level placement, style, color, and visual hierarchy from the visual design pass unless they cause global consistency, overlap, or readability problems.\n"
+                    + "- Once a color is assigned to a concept, it keeps that meaning across the entire storyboard. Record color-to-concept assignments in `global_visual_rules`.\n"
+                    + "- Prefer structured `style` arrays over vague prose. Each style entry should describe one visual layer or role, such as text, background, border, glow, or emphasis.\n"
+                    + "- Do not use a free-text `instructions` field inside style entries. Encode visual intent directly in `properties` using concrete keys and values.\n"
+                    + "- For text cards, formulas with badges, boxed labels, counters, or callouts, encode separate text and background layers as separate entries inside `style`.\n"
+                    + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n"
+                    + SystemPrompts.ASCII_TEXT_RULES;
 
     private static final String GEOGEBRA_RULES =
             "GeoGebra-specific storyboard validation rules:\n"
@@ -46,7 +54,7 @@ public final class NarrativePrompts {
             "Manim-specific storyboard validation rules:\n"
                     + SystemPrompts.MANIM_MOTION_AND_PACING_RULES
                     + SystemPrompts.MANIM_NAMING_RULES
-                    + "- Once a color is assigned to a concept, it keeps that meaning across the entire storyboard. Record color-to-concept assignments in `global_visual_rules`.\n";
+                    + "- Prefer dark backgrounds (#1C1C1C to #2D2B55) with light content for maximum contrast and cinema feel when the storyboard does not already establish a different valid style.\n";
 
     private static final String OUTPUT_FORMAT =
             "Output format:\n"
@@ -95,9 +103,8 @@ public final class NarrativePrompts {
                     + "  ]\n"
                     + "}\n\n";
 
-    private static final String SYSTEM =
-            COMMON_RULES
-                    + OUTPUT_FORMAT
+    private static final String RESPONSE_RULES =
+            OUTPUT_FORMAT
                     + "\n"
                     + EXAMPLE_OUTPUT
                     + SystemPrompts.TOOL_CALL_HINT
@@ -106,13 +113,13 @@ public final class NarrativePrompts {
     private NarrativePrompts() {}
 
     public static String buildRulesPrompt(String outputTarget) {
-        String prompt = "";
+        String prompt = COMMON_RULES;
         if ("geogebra".equalsIgnoreCase(outputTarget)) {
             prompt += "\n" + GEOGEBRA_RULES;
         } else if ("manim".equalsIgnoreCase(outputTarget)) {
             prompt += "\n" + MANIM_RULES;
         }
-        prompt += "\n" + SYSTEM;
+        prompt += "\n" + RESPONSE_RULES;
         if ("geogebra".equalsIgnoreCase(outputTarget)) {
             return SystemPrompts.buildRulesSection(SystemPrompts.ensureGeoGebraStyleReference(prompt));
         }

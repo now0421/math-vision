@@ -133,6 +133,10 @@ public class FileOutputService {
         writeJson(outputDir.resolve("3_narrative.json"), narrative, "narrative (JSON)");
     }
 
+    public static void saveValidatedStoryboard(Path outputDir, Narrative.Storyboard storyboard) {
+        writeJson(outputDir.resolve("3_storyboard_validated.json"), storyboard, "validated storyboard");
+    }
+
     public static void saveStoryboardValidation(Path outputDir,
                                                 StoryboardValidationReport storyboardValidationReport) {
         writeJson(outputDir.resolve("3_storyboard_validation.json"),

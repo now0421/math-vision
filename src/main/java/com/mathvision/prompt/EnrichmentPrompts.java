@@ -27,6 +27,7 @@ public final class EnrichmentPrompts {
                     + "- Escape backslashes as needed.\n"
                     + "- Return multi-line formulas as separate array items.\n"
                     + "- Keep formulas compact and directly relevant to the current step.\n\n"
+                    + SystemPrompts.ASCII_TEXT_RULES
                     + "Output format:\n"
                     + "Return a JSON object with this shape:\n"
                     + "{\n"

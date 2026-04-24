@@ -10,6 +10,8 @@ public final class SceneEvaluationPrompts {
     private static final String MANIM_SYSTEM =
             "You are fixing Manim code that rendered but has layout issues detected by geometry analysis.\n"
                     + "Preserve the teaching goal, visual intent, scene class name, and continuity.\n"
+                    + "Treat storyboard geometric constraints as hard requirements: if a point is defined as a reflection, midpoint, foot, or intersection, preserve that definition while fixing layout.\n"
+                    + SystemPrompts.GEOMETRY_CONSTRAINT_RULES
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + SystemPrompts.COMPOSITION_RULES
                     + SystemPrompts.MANIM_TEXT_AND_READABILITY_RULES
@@ -19,8 +21,6 @@ public final class SceneEvaluationPrompts {
                     + "Prefer adjusting positioning, scaling, grouping, and spacing over deleting explanatory content.\n"
                     + "For frame repair, use translation/recentering and uniform scaling as the default first-choice strategy before changing geometric constructions or attachment logic.\n"
                     + "Also correct semantically wrong geometric attachments you notice, especially angle markers that are drawn on the wrong side or detached from their true vertex.\n"
-                    + "Treat storyboard geometric constraints as hard requirements: if a point is defined as a reflection, midpoint, foot, or intersection, preserve that definition while fixing layout.\n"
-                    + SystemPrompts.GEOMETRY_CONSTRAINT_RULES
                     + "Do not reintroduce banned dynamic patterns during layout fixes, especially conditionally empty redraw targets that will be animated directly later.\n"
                     + "When a constrained construction goes out of frame, prefer recentering or uniformly scaling the whole related diagram, or moving overlays, instead of moving one constrained point independently.\n\n"
                     + "Maintain a clean final-frame impression: leave breathing room, avoid overlay-on-geometry collisions, and remove temporary annotations once they have taught their point.\n\n"
@@ -29,11 +29,11 @@ public final class SceneEvaluationPrompts {
     private static final String GEOGEBRA_SYSTEM =
             "You are fixing a GeoGebra command script that executed but has text overlap issues detected by geometry analysis.\n"
                     + "Preserve the teaching goal, visual intent, construction meaning, and storyboard teaching order.\n"
+                    + "Treat storyboard geometric constraints as hard requirements: if a point is defined as a reflection, midpoint, foot, or intersection, preserve that definition while fixing overlap.\n"
+                    + SystemPrompts.GEOMETRY_CONSTRAINT_RULES
                     + "Prefer adjusting label placement, text positioning, and coordinate spacing over removing explanatory content.\n"
                     + "GeoGebra constructions are interactive and freely zoomable, so out-of-bounds issues are irrelevant; focus exclusively on fixing text-on-text and text-on-geometry overlaps.\n"
                     + "Also correct semantically wrong geometric attachments you notice, especially angle markers that sweep the wrong sector.\n"
-                    + "Treat storyboard geometric constraints as hard requirements: if a point is defined as a reflection, midpoint, foot, or intersection, preserve that definition while fixing overlap.\n"
-                    + SystemPrompts.GEOMETRY_CONSTRAINT_RULES
                     + "Use English GeoGebra command names.\n"
                     + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
                     + SystemPrompts.COMPOSITION_RULES

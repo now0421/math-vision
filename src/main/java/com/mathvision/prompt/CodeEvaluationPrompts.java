@@ -29,12 +29,12 @@ public final class CodeEvaluationPrompts {
                     + "Your job is NOT to debug runtime errors.\n"
                     + "Your primary job is storyboard-to-code alignment review before render.\n"
                     + "Predict whether the generated animation is likely to feel visually discontinuous, semantically mis-attached, hard to read in 3D, or badly paced against the storyboard narration.\n\n"
-                    + SystemPrompts.MANIM_REVIEW_CHECKLIST
                     + "The storyboard JSON is the source of truth.\n"
                     + "- Explicitly review storyboard/code alignment, not just generic code quality.\n"
                     + "- Compare the code against storyboard continuity, safe-area intent, layout goals, and scene pacing.\n"
                     + "- Compare the code against storyboard geometric invariants: reflection, symmetry, collinearity, intersections, equal-length constructions must survive layout choices.\n"
                     + "- " + SystemPrompts.STORYBOARD_FIELD_GUIDE_FULL.replace("\n", "\n- ").trim() + "\n"
+                    + SystemPrompts.MANIM_REVIEW_CHECKLIST
                     + "- A later geometry-based stage will inspect rendered frames for actual overlap/offscreen issues. Do not duplicate that stage.\n"
                     + "- Treat `maxEnteringObjects`, `maxVisibleObjects`, and `maxVisibleTextualObjects` as soft storyboard-density heuristics, not automatic blockers.\n"
                     + "- Do not block render solely because those counts are moderately above the nominal budget if the code uses staggered reveals, dimming, grouping, or pauses that keep the frame readable.\n"
@@ -75,14 +75,14 @@ public final class CodeEvaluationPrompts {
                     + "You will receive storyboard JSON, static visual findings, a structured review, and the current code.\n"
                     + "Rewrite the full code so it is visually safer before render.\n"
                     + "Reduce clutter, preserve continuity with transforms, correct semantically wrong placements, keep 3D camera plans readable, and also fix common Python/Manim runtime mistakes.\n"
+                    + SystemPrompts.STORYBOARD_FIELD_GUIDE_FULL
+                    + SystemPrompts.GEOMETRY_CONSTRAINT_RULES + "\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + SystemPrompts.COMPOSITION_RULES
                     + SystemPrompts.MANIM_TEXT_AND_READABILITY_RULES
                     + SystemPrompts.MANIM_CODE_HYGIENE_RULES
                     + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
                     + SystemPrompts.ANGLE_MARKER_RULES
-                    + SystemPrompts.STORYBOARD_FIELD_GUIDE_FULL
-                    + SystemPrompts.GEOMETRY_CONSTRAINT_RULES + "\n"
                     + SystemPrompts.PYTHON_CODE_OUTPUT_FORMAT;
 
     private static final String REVISION_SYSTEM_GEOGEBRA =
@@ -91,11 +91,11 @@ public final class CodeEvaluationPrompts {
                     + "Rewrite the full command script so it better aligns with the storyboard before render.\n"
                     + "Preserve dependency-safe geometry, object identities, scene visibility progression, and teaching intent.\n"
                     + "Fix storyboard misalignments such as missing constructions, incorrect scene visibility, incorrect substitutions for requested geometry, and captions unsupported by the actual construction.\n"
-                    + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
-                    + SystemPrompts.COMPOSITION_RULES
-                    + SystemPrompts.OBJECT_LIFECYCLE_RULES
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_GEOGEBRA_REPAIR
                     + SystemPrompts.GEOMETRY_CONSTRAINT_RULES + "\n"
+                    + SystemPrompts.OBJECT_LIFECYCLE_RULES
+                    + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
+                    + SystemPrompts.COMPOSITION_RULES
                     + SystemPrompts.GEOGEBRA_CODE_OUTPUT_FORMAT;
 
     private CodeEvaluationPrompts() {}

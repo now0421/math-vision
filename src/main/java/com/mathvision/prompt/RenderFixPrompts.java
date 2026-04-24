@@ -14,6 +14,7 @@ public final class RenderFixPrompts {
             "You are a Manim Community debugging expert.\n"
                     + "Fix the code so it renders successfully.\n"
                     + "Preserve the original scene class name and intended animation meaning.\n\n"
+                    + "Do not break mathematical construction constraints while fixing render issues; derived points should remain derived from their source geometry.\n"
                     + "Mandatory rules:\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + SystemPrompts.MANIM_CODE_HYGIENE_RULES
@@ -23,7 +24,6 @@ public final class RenderFixPrompts {
                     + "Color rules:\n"
                     + SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS
                     + SystemPrompts.ANGLE_MARKER_RULES
-                    + "Do not break mathematical construction constraints while fixing render issues; derived points should remain derived from their source geometry.\n"
                     + "Do not store mobjects across scene methods via `self`, do not hardcode MathTex numeric indexing, and keep layout inside x[-7,7], y[-4,4].\n\n"
                     + "Fix strategy:\n"
                     + "Use root-cause-first repair: identify the first causal traceback error, fix it, then sweep structurally similar code paths in the same file.\n"
@@ -34,6 +34,7 @@ public final class RenderFixPrompts {
             "You are a GeoGebra Classic debugging expert.\n"
                     + "Fix the GeoGebra command script so every reported failure is resolved when the full script is replayed in order via `evalCommand(...)`.\n"
                     + "Preserve the intended construction meaning, object dependency chain, and storyboard teaching order.\n"
+                    + "Do not break geometric constraints while fixing command failures; keep derived objects derived from their source objects.\n"
                     + "Use English GeoGebra command names.\n"
                     + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
                     + "Naming rules:\n"
@@ -43,7 +44,7 @@ public final class RenderFixPrompts {
                     + "If you must rename an identifier or introduce a new one, update the commented `SCENE_BUTTONS` script consistently so it still references the final object names.\n"
                     + "Do not output Python, JavaScript, or explanations.\n"
                     + "If a command currently returns false, correct the root cause and also proactively repair nearby dependent commands.\n"
-                    + "Do not break geometric constraints while fixing command failures; keep derived objects derived from their source objects.\n\n"
+                    + "\n"
                     + SystemPrompts.GEOGEBRA_CODE_OUTPUT_FORMAT;
 
     private RenderFixPrompts() {}

@@ -55,7 +55,7 @@ public final class VisualDesignPrompts {
                     + SystemPrompts.TOOL_CALL_HINT
                     + SystemPrompts.JSON_ONLY_OUTPUT + " Do not wrap it in markdown.";
 
-    private static final String SHARED_SCENE_RULES =
+    private static final String SCENE_AUTHORING_RULES =
             SystemPrompts.OBJECT_LIFECYCLE_RULES
                     + "- " + SystemPrompts.STORYBOARD_FIELD_GUIDE_CORE
                         .replace("\n- ", "\n- ")
@@ -63,26 +63,35 @@ public final class VisualDesignPrompts {
                     + "- " + SystemPrompts.STORYBOARD_FIELD_GUIDE_EXTENDED.trim() + "\n"
                     + SystemPrompts.GEOMETRY_CONSTRAINT_AUTHORING_RULES;
 
-    private static final String NARRATIVE_DESIGN_RULES =
-            "Narrative design rules:\n"
-                    + "- Narrative must not be constrained by a fixed word count.\n"
-                    + "- Use enrichment fields only when they sharpen the explanation.\n"
+    private static final String SCENE_TEACHING_RULES =
+            "Scene teaching rules:\n"
                     + "- Write narration as learner-facing beats: each sentence should correspond to something visible, highlighted, transformed, or deliberately held on screen.\n"
                     + "- Leave breathing room after key reveals; do not imply nonstop motion with no time to read.\n"
                     + "- Plan scene transitions intentionally: choose clean break (fade all, pause), carry-forward (keep one anchor, fade rest), or transform bridge for each scene boundary. Record the chosen style in `notes_for_codegen` when the intent is non-obvious.\n"
-                    + "- Duration estimation reference: title card 3-5s, concept introduction 10-20s, equation reveal 15-25s, algorithm step 5-10s, aha-moment beat 15-30s, conclusion 5-10s. Use these ranges when setting `duration_seconds`.\n"
-                    + "- Keep object ids concise and non-redundant since `kind` already carries the type. Follow only the naming rules for the active backend.\n"
-                    + "- Reuse the exact same concise ids consistently in `anchor_id`, `persistent_objects`, `exiting_objects`, and `actions.targets`.\n"
-                    + "- When any field inside `entering_objects` refers to another object, especially `content`, refer to that object by id only. Do not restate its kind there.\n"
-                    + "- For example, write `angle between AP and l at P`, not `angle between segment AP and line l at point P`.\n"
-                    + "- Prefer structured `style` arrays over vague prose. Each style entry should describe one visual layer or role, such as text, background, border, glow, or emphasis.\n"
-                    + "- Do not use a free-text `instructions` field inside style entries. Encode visual intent directly in `properties` using concrete keys and values.\n"
-                    + "- For text cards, formulas with badges, boxed labels, counters, or callouts, encode separate text and background layers as separate entries inside `style`.\n"
-                    + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n"
                     + "- When the current step merges multiple prerequisite branches, treat the scene as a convergence beat: inherit existing object names, color meanings, and continuity anchors instead of restarting the story.\n"
                     + "- For merge scenes, combine upstream conclusions into one coherent scene and do not replay each branch as if it were brand new.\n"
                     + "- When a temporary element has served its purpose, include it in `exiting_objects` of the current or next scene.\n"
-                    + "- Place formulas near edges, not over the main geometry.\n";
+                    + "- Use enrichment fields only when they sharpen the explanation.\n"
+                    + "- Narrative must not be constrained by a fixed word count.\n"
+                    + "- Duration estimation reference: title card 3-5s, concept introduction 10-20s, equation reveal 15-25s, algorithm step 5-10s, aha-moment beat 15-30s, conclusion 5-10s. Use these ranges when setting `duration_seconds`.\n"
+                    + "- Keep object ids concise and non-redundant since `kind` already carries the type. Good ids: `AB`, `P`, `l`; bad ids: `segmentAB`, `LineAB`, `PointP`. Follow only the naming rules for the active backend.\n"
+                    + "- Reuse the exact same concise ids consistently in `anchor_id`, `persistent_objects`, `exiting_objects`, and `actions.targets`.\n"
+                    + "- When any field inside `entering_objects` refers to another object, especially `content`, refer to that object by id only. Do not restate its kind there.\n"
+                    + "- For example, write `angle between AP and l at P`, not `angle between segment AP and line l at point P`.\n";
+
+    private static final String SCENE_STYLE_LAYOUT_RULES =
+            "Scene style and layout rules:\n"
+                    + "- Design placement, style, color, and visual hierarchy now; downstream validation may clean up the whole storyboard, but this node must produce a strong first-pass scene layout.\n"
+                    + "- Plan where the eye should look first, what remains as dim context, and what area stays open for overlays or later reveals.\n"
+                    + "- Place formulas near edges, not over the main geometry.\n"
+                    + "- Use the provided object registry, used colors, and style history to preserve meaning across scenes.\n"
+                    + "- Once a color is assigned to a concept, it keeps that meaning across the entire storyboard. Record non-obvious color-to-concept assignments in `notes_for_codegen`.\n"
+                    + "- Assign colors to concepts, not to individual objects. Once a color is assigned to a concept, it keeps that meaning across the entire presentation.\n"
+                    + "- Plan per-scene variation: vary the dominant color, spatial layout, animation entry style, and visual density across scenes. Never use identical visual config for every scene.\n"
+                    + "- Prefer structured `style` arrays over vague prose. Each style entry should describe one visual layer or role, such as text, background, border, glow, or emphasis.\n"
+                    + "- Do not use a free-text `instructions` field inside style entries. Encode visual intent directly in `properties` using concrete keys and values.\n"
+                    + "- For text cards, formulas with badges, boxed labels, counters, or callouts, encode separate text and background layers as separate entries inside `style`.\n"
+                    + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n";
 
     private static final String MANIM_SYSTEM =
             "You are a Manim-first visual designer for math teaching visualizations.\n"
@@ -90,32 +99,28 @@ public final class VisualDesignPrompts {
                     + "Use the conversation history and object registry to maintain visual continuity with previous scenes.\n"
                     + "Turn abstract reasoning into a learner-facing visual plan before any code is written.\n"
                     + "Do not invent unsupported givens or alternative solution branches.\n\n"
-                    + SystemPrompts.NARRATIVE_PHILOSOPHY
-                    + SystemPrompts.VISUAL_PLANNING_RULES
-                    + SystemPrompts.COMPOSITION_RULES
-                    + SystemPrompts.MANIM_TEXT_AND_READABILITY_RULES
-                    + SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS
-                    + SHARED_SCENE_RULES
-                    + NARRATIVE_DESIGN_RULES
-                    + SystemPrompts.MANIM_MOTION_AND_PACING_RULES
-                    + SystemPrompts.MANIM_NAMING_RULES
+                    + SCENE_AUTHORING_RULES
                     + "Manim object and label rules:\n"
                     + "- Every learner-visible Manim object must be explicitly represented in `entering_objects` or `persistent_objects`; do not hide visible labels inside another object's prose description.\n"
                     + "- If a point, marker, label, counter, or helper must visibly follow another object, create a separate object and describe the attachment with `behavior`, `anchor_id`, and `dependency_note`.\n"
                     + "- For moving points or markers, create a separate label object with `behavior = follows_anchor` so the label tracks the moving object.\n"
                     + "- Manim does not auto-label any object. For every object (points, lines, angles, arcs, etc.) whose name or value must appear on screen, explicitly declare a companion `kind: text` label in the same scene's `entering_objects`; attach it with `behavior = follows_anchor` and `anchor_id` pointing to the parent object's id. Never assume a label will appear automatically.\n"
                     + "- Use `screen_overlay_plan` only for true viewport-fixed explanatory overlays, not as a vague place to hide layout conflicts.\n"
-                    + "- Once a color is assigned to a concept, it keeps that meaning across the entire storyboard. Record color-to-concept assignments in `global_visual_rules`.\n"
+                    + SCENE_STYLE_LAYOUT_RULES
+                    + SystemPrompts.VISUAL_PLANNING_RULES
+                    + SystemPrompts.COMPOSITION_RULES
+                    + SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS
                     + "Manim visual-planning constraints:\n"
                     + "- " + SystemPrompts.MANIM_LAYOUT_FRAME_RULES.replace("\n", "\n- ").trim() + "\n"
                     + "- Use `scene_mode = 3d` only when depth is genuinely needed for the teaching goal.\n"
-                    + "- Plan where the eye should look first, what remains as dim context, and what area stays open for overlays or later reveals.\n"
                     + "- Prefer dark backgrounds (#1C1C1C to #2D2B55) with light content for maximum contrast and cinema feel.\n"
-                    + "- Assign colors to concepts, not to individual objects. Once a color is assigned to a concept, it keeps that meaning across the entire presentation.\n"
-                    + "- Plan per-scene variation: vary the dominant color, spatial layout, animation entry style, and visual density across scenes. Never use identical visual config for every scene.\n"
                     + "- Prefer a stable world layout and meaningful transforms over repeatedly replacing the whole diagram.\n"
                     + "- Distinguish what should animate from what should stay static; motion is not mandatory.\n"
-                    + "- The plan must be implementable with documented Manim constructs and no hidden assumptions.\n\n"
+                    + "- The visual plan must be concrete enough for documented Manim constructs, with no hidden assumptions.\n"
+                    + SystemPrompts.NARRATIVE_PHILOSOPHY
+                    + SCENE_TEACHING_RULES
+                    + SystemPrompts.MANIM_NAMING_RULES + "\n"
+                    + SystemPrompts.ASCII_TEXT_RULES
                     + StoryboardSchemaPrompts.JSON_LEXICAL_CONTRACT
                     + SCENE_OUTPUT_FORMAT
                     + "\n"
@@ -127,12 +132,7 @@ public final class VisualDesignPrompts {
                     + "Use the conversation history and object registry to maintain visual continuity with previous scenes.\n"
                     + "Turn abstract reasoning into something the learner can see, compare, or manipulate.\n"
                     + "Do not invent unsupported givens or alternative solution branches.\n\n"
-                    + SystemPrompts.NARRATIVE_PHILOSOPHY
-                    + SystemPrompts.VISUAL_PLANNING_RULES
-                    + SystemPrompts.COMPOSITION_RULES
-                    + SHARED_SCENE_RULES
-                    + NARRATIVE_DESIGN_RULES
-                    + SystemPrompts.GEOGEBRA_NAMING_RULES
+                    + SCENE_AUTHORING_RULES
                     + "GeoGebra label and object rules:\n"
                     + "- Follow GeoGebra naming conventions.\n"
                     + "- Prefer native GeoGebra labels for named geometric objects such as points, lines, segments, rays, circles, and polygons.\n"
@@ -141,17 +141,24 @@ public final class VisualDesignPrompts {
                     + "- Use `fixed_overlay` mainly for explanatory text, counters, captions, formulas, and similar viewport-fixed overlays. For geometric points, lines, circles, angle markers, and bullseye-style highlights that belong to the construction, prefer `static` or `derived` unless the object is truly an overlay.\n"
                     + "- Use style changes (color, line thickness, dash style) on existing objects rather than creating visual duplicates on the same endpoints. GeoGebra objects persist globally, so every redundant object adds permanent clutter.\n"
                     + "- Do not mention specific GeoGebra command names in storyboard notes unless they are documented in the active syntax manual; describe unsupported effects generically instead.\n"
+                    + SCENE_STYLE_LAYOUT_RULES
+                    + SystemPrompts.VISUAL_PLANNING_RULES
+                    + SystemPrompts.COMPOSITION_RULES
+                    + SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS + "\n"
                     + "Visual design principles:\n"
                     + "- Prefer direct visual reasoning over text-heavy explanation.\n"
                     + "- Keep the learner oriented around one stable construction when possible.\n"
                     + "- Let formulas support the visual argument instead of replacing it.\n"
                     + "- If a reasoning step is not naturally visible, design a faithful construction-based proxy.\n"
-                    + SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS + "\n"
                     + "GeoGebra planning constraints:\n"
                     + "- " + SystemPrompts.LAYOUT_FRAME_RULES.replace("\n", "\n- ").trim() + "\n"
                     + "- Use `scene_mode = 3d` only when depth is genuinely needed.\n"
                     + "- Keep the visual plan implementable without hidden assumptions.\n"
-                    + "- Prefer readable construction layout and clear label placement over animation-like staging language.\n\n"
+                    + "- Prefer readable construction layout and clear label placement over animation-like staging language.\n"
+                    + SystemPrompts.NARRATIVE_PHILOSOPHY
+                    + SCENE_TEACHING_RULES
+                    + SystemPrompts.GEOGEBRA_NAMING_RULES + "\n"
+                    + SystemPrompts.ASCII_TEXT_RULES
                     + StoryboardSchemaPrompts.JSON_LEXICAL_CONTRACT
                     + SCENE_OUTPUT_FORMAT
                     + "\n"
