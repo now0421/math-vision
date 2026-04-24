@@ -147,7 +147,8 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
 
         Path outputDir = (Path) ctx.get(WorkflowKeys.OUTPUT_DIR);
         if (outputDir != null) {
-            FileOutputService.saveNarrative(outputDir, narrative);
+            FileOutputService.saveValidatedStoryboard(outputDir,
+                    narrative != null ? narrative.getStoryboard() : null);
             StoryboardValidationReport reportToSave = storyboardValidationReport != null
                     ? storyboardValidationReport
                     : buildSkippedReport("Storyboard validation report was not produced");
@@ -186,7 +187,92 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             }
         }
 
+        issues.addAll(validateAsciiText(storyboard));
+
         return issues;
+    }
+
+    private List<String> validateAsciiText(Storyboard storyboard) {
+        List<String> issues = new ArrayList<>();
+        List<String> nonAsciiTokens = findNonAsciiTextTokens(storyboard);
+        if (!nonAsciiTokens.isEmpty()) {
+            issues.add("Storyboard contains non-ASCII text tokens that must be replaced with ASCII equivalents: "
+                    + nonAsciiTokens);
+        }
+        return issues;
+    }
+
+    private List<String> findNonAsciiTextTokens(Storyboard storyboard) {
+        LinkedHashSet<String> tokens = new LinkedHashSet<>();
+        if (storyboard == null) {
+            return new ArrayList<>();
+        }
+        JsonNode root = JsonUtils.mapper().valueToTree(storyboard);
+        collectNonAsciiTextTokens(root, tokens);
+        return new ArrayList<>(tokens);
+    }
+
+    private void collectNonAsciiTextTokens(JsonNode node, Set<String> tokens) {
+        if (node == null || node.isNull()) {
+            return;
+        }
+        if (node.isTextual()) {
+            addNonAsciiTokens(node.asText(), tokens);
+            return;
+        }
+        if (node.isArray()) {
+            for (JsonNode item : node) {
+                collectNonAsciiTextTokens(item, tokens);
+            }
+            return;
+        }
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry ->
+                    collectNonAsciiTextTokens(entry.getValue(), tokens));
+        }
+    }
+
+    private void addNonAsciiTokens(String text, Set<String> tokens) {
+        if (isBlank(text) || !containsNonAscii(text)) {
+            return;
+        }
+        for (String rawToken : text.split("\\s+")) {
+            String token = trimAsciiBoundaryPunctuation(rawToken);
+            if (!token.isBlank() && containsNonAscii(token)) {
+                tokens.add(token);
+            }
+        }
+    }
+
+    private boolean containsNonAscii(String text) {
+        if (text == null) {
+            return false;
+        }
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) > 0x7F) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String trimAsciiBoundaryPunctuation(String token) {
+        if (token == null || token.isBlank()) {
+            return "";
+        }
+        int start = 0;
+        int end = token.length();
+        while (start < end && isAsciiBoundaryPunctuation(token.charAt(start))) {
+            start++;
+        }
+        while (end > start && isAsciiBoundaryPunctuation(token.charAt(end - 1))) {
+            end--;
+        }
+        return token.substring(start, end);
+    }
+
+    private boolean isAsciiBoundaryPunctuation(char ch) {
+        return ch <= 0x7F && !Character.isLetterOrDigit(ch);
     }
 
     private void validateSceneLayout(String sceneLabel,
@@ -679,6 +765,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             StringBuilder userPrompt = new StringBuilder();
             userPrompt.append("Please clean up this storyboard so it is coherent, and ensure that all coordinate-based elements stay within bounds and do not visibly overlap.\n");
             userPrompt.append("Preserve the original narrative order, object identity, and teaching intent as much as possible; only adjust the layout and wording where necessary.\n");
+            userPrompt.append("Replace every non-ASCII text token reported below with an ASCII equivalent across the full storyboard.\n");
             userPrompt.append("If you find issues, fix them directly. If there are no issues, still perform a full cleanup to make the storyboard more stable and readable.\n");
             if (issues != null && !issues.isEmpty()) {
                 userPrompt.append("Static validation findings:\n");

@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StoryboardValidationNodeTest {
@@ -171,7 +172,11 @@ class StoryboardValidationNodeTest {
         Narrative resultNarrative = node.exec(prepNarrative);
         node.post(ctx, prepNarrative, resultNarrative);
 
+        String validatedStoryboardJson = Files.readString(tempDir.resolve("3_storyboard_validated.json"));
         String reportJson = Files.readString(tempDir.resolve("3_storyboard_validation.json"));
+        assertFalse(Files.exists(tempDir.resolve("3_narrative.json")));
+        assertTrue(validatedStoryboardJson.contains("\"scenes\""));
+        assertTrue(validatedStoryboardJson.contains("Layout validation"));
         assertTrue(reportJson.contains("\"initial_issue_count\""));
         assertTrue(reportJson.contains("\"initial_issues\""));
         assertTrue(reportJson.contains("extends outside the frame bounds"));
