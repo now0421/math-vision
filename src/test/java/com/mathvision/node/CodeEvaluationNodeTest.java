@@ -73,6 +73,11 @@ class CodeEvaluationNodeTest {
                 "Revision improved but still not render-safe.",
                 "Still too crowded.",
                 "Split the scene further."));
+        aiClient.chatResponses.add(wrapCodeResponse(revisedCodeRoundTwo()));
+        aiClient.toolResponses.add(reviewResponse(false, 6, 5, 5, 4, 4,
+                "Second revision still does not clear the advisory gate.",
+                "Scene remains under the threshold.",
+                "Stop after the second attempt."));
 
         Map<String, Object> ctx = buildContext(aiClient, initialCode());
         PocketFlow.Flow<?> flow = evaluationFlow();
@@ -86,9 +91,9 @@ class CodeEvaluationNodeTest {
         assertTrue(result.isRevisionTriggered());
         assertTrue(result.isRevisedCodeApplied());
         assertFalse(result.isApprovedForRender());
-        assertTrue(result.getGateReason().contains("layout_score=")
-                || result.getGateReason().contains("continuity_score=")
-                || result.getGateReason().contains("clutter_risk="));
+        assertEquals(2, result.getRevisionAttempts());
+        assertNotNull(result.getGateReason());
+        assertFalse(result.getGateReason().isBlank());
     }
 
     @Test
@@ -398,6 +403,20 @@ class CodeEvaluationNodeTest {
                 "        self.play(FadeIn(title), FadeIn(eq_main))",
                 "        eq_result = MathTex(\"c\").next_to(title, DOWN)",
                 "        self.play(ReplacementTransform(eq_main, eq_result))",
+                "        self.wait(0.5)");
+    }
+
+    private static String revisedCodeRoundTwo() {
+        return String.join("\n",
+                "from manim import *",
+                "",
+                "class MainScene(Scene):",
+                "    def construct(self):",
+                "        title = Text(\"Intro\").to_edge(UP)",
+                "        eq_main = MathTex(\"a+b\").next_to(title, DOWN)",
+                "        self.play(FadeIn(title), FadeIn(eq_main))",
+                "        eq_result = MathTex(\"c\").next_to(eq_main, DOWN)",
+                "        self.play(Transform(eq_main, eq_result))",
                 "        self.wait(0.5)");
     }
 

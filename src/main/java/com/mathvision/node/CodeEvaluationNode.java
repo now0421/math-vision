@@ -31,7 +31,6 @@ import com.mathvision.util.JsonUtils;
 import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
 import com.mathvision.util.StoryboardPatchResolver;
-import com.mathvision.util.TargetDescriptionBuilder;
 import com.mathvision.util.TimeUtils;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
@@ -40,19 +39,17 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletionException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Stage 3: Code evaluation - checks storyboard/code alignment for likely
- * crowding, drift, continuity, and pacing problems before render.
+ * Stage 3: Code evaluation - checks generated code for static validity,
+ * storyboard/code alignment, semantic continuity, and Manim-specific 3D
+ * readability issues before render.
  */
 public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeEvaluationInput,
         CodeEvaluationResult, String> {
@@ -62,22 +59,8 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     private static final int MIN_LAYOUT_SCORE = 7;
     private static final int MIN_CONTINUITY_SCORE = 6;
     private static final int MIN_PACING_SCORE = 6;
-    private static final int MAX_CLUTTER_RISK = 4;
-    private static final int MAX_OFFSCREEN_RISK = 4;
     private static final int MAX_REVISION_ATTEMPTS = 2;
-    private static final int SCENE_OBJECT_OVERLOAD_WARN_THRESHOLD = 11;
-    private static final int SCENE_OBJECT_OVERLOAD_FAIL_THRESHOLD = 14;
-    private static final int VISIBLE_OBJECT_OVERLOAD_WARN_THRESHOLD = 16;
-    private static final int VISIBLE_OBJECT_OVERLOAD_FAIL_THRESHOLD = 20;
-    private static final int TEXT_STACK_CLUTTER_WARN_THRESHOLD = 6;
-    private static final int TEXT_STACK_CLUTTER_FAIL_THRESHOLD = 8;
 
-    private static final Pattern TO_EDGE_PATTERN = Pattern.compile("\\.to_edge\\(");
-    private static final Pattern SHIFT_PATTERN = Pattern.compile("\\.shift\\(");
-    private static final Pattern HORIZONTAL_LARGE_SHIFT_PATTERN =
-            Pattern.compile("(?:LEFT|RIGHT)\\s*\\*\\s*(?:4(?:\\.\\d+)?|[5-9](?:\\.\\d+)?|\\d{2,}(?:\\.\\d+)?)");
-    private static final Pattern VERTICAL_LARGE_SHIFT_PATTERN =
-            Pattern.compile("(?:UP|DOWN)\\s*\\*\\s*(?:3(?:\\.\\d+)?|[4-9](?:\\.\\d+)?|\\d{2,}(?:\\.\\d+)?)");
     private static final Pattern FADE_IN_PATTERN = Pattern.compile("\\bFadeIn\\s*\\(");
     private static final Pattern FADE_OUT_PATTERN = Pattern.compile("\\bFadeOut\\s*\\(");
     private static final Pattern TRANSFORM_PATTERN =
@@ -209,13 +192,14 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         result.setFinalReview(initialReview);
 
         boolean approved = passesGate(initialReview, initialStatic);
-        if (!approved && input.previousFixResult() == null && fixState.getAttempts() < MAX_REVISION_ATTEMPTS) {
+        if (!approved && fixState.getAttempts() < MAX_REVISION_ATTEMPTS) {
             fixState.setRequestFix(true);
             fixState.setAttempts(fixState.getAttempts() + 1);
-            log.warn("Code evaluation flagged scene {}, routing to shared CodeFixNode (attempt {}/{})",
+            log.warn("Code evaluation advisory review still failed for scene {}, routing to shared CodeFixNode (attempt {}/{})",
                     sceneName, fixState.getAttempts(), MAX_REVISION_ATTEMPTS);
-        } else if (!approved && input.previousFixResult() != null && !input.previousFixResult().isApplied()) {
-            log.warn("Code evaluation re-run received code identical to the source from CodeFixNode");
+        } else if (!approved) {
+            log.warn("Code evaluation advisory review still failed for scene {}, max revision attempts reached ({})",
+                    sceneName, MAX_REVISION_ATTEMPTS);
         }
 
         result.setApprovedForRender(approved);
@@ -281,37 +265,40 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                                                 CodeResult codeResult,
                                                 String generatedCode) {
         StaticAnalysis analysis = new StaticAnalysis();
+        boolean geoGebraTarget = NodeSupport.isGeoGebraTarget(workflowConfig);
         analysis.setCodeLines(codeResult.codeLineCount());
-        analysis.setToEdgeCount(countMatches(generatedCode, TO_EDGE_PATTERN));
-        analysis.setShiftCount(countMatches(generatedCode, SHIFT_PATTERN));
-        analysis.setLargeShiftCount(countLargeShiftMatches(generatedCode));
-        analysis.setFadeInCount(countMatches(generatedCode, FADE_IN_PATTERN));
-        analysis.setFadeOutCount(countMatches(generatedCode, FADE_OUT_PATTERN));
-        analysis.setTransformCount(countMatches(generatedCode, TRANSFORM_PATTERN) + countMatches(generatedCode, ANIMATE_PATTERN));
-        analysis.setReplacementTransformCount(countMatches(generatedCode, REPLACEMENT_TRANSFORM_PATTERN));
-        analysis.setFadeTransformCount(countMatches(generatedCode, FADE_TRANSFORM_PATTERN));
-        analysis.setArrangeCount(countMatches(generatedCode, ARRANGE_PATTERN));
-        analysis.setNextToCount(countMatches(generatedCode, NEXT_TO_PATTERN));
-        analysis.setMathTexCount(countMatches(generatedCode, MATH_TEX_PATTERN));
-        analysis.setTextCount(countMatches(generatedCode, TEXT_PATTERN));
-        analysis.setThreeDScene(THREE_D_SCENE_PATTERN.matcher(generatedCode).find());
-        analysis.setThreeDObjectCount(countMatches(generatedCode, THREE_D_OBJECT_PATTERN));
-        analysis.setCameraOrientationCount(countMatches(generatedCode, CAMERA_ORIENTATION_PATTERN));
-        analysis.setCameraMotionCount(countMatches(generatedCode, CAMERA_MOTION_PATTERN));
-        analysis.setFixedInFrameCount(countMatches(generatedCode, FIXED_IN_FRAME_PATTERN));
-        analysis.setFixedOrientationCount(countMatches(generatedCode, FIXED_ORIENTATION_PATTERN));
+        if (!geoGebraTarget) {
+            analysis.setFadeInCount(countMatches(generatedCode, FADE_IN_PATTERN));
+            analysis.setFadeOutCount(countMatches(generatedCode, FADE_OUT_PATTERN));
+            analysis.setTransformCount(countMatches(generatedCode, TRANSFORM_PATTERN) + countMatches(generatedCode, ANIMATE_PATTERN));
+            analysis.setReplacementTransformCount(countMatches(generatedCode, REPLACEMENT_TRANSFORM_PATTERN));
+            analysis.setFadeTransformCount(countMatches(generatedCode, FADE_TRANSFORM_PATTERN));
+            analysis.setArrangeCount(countMatches(generatedCode, ARRANGE_PATTERN));
+            analysis.setNextToCount(countMatches(generatedCode, NEXT_TO_PATTERN));
+            analysis.setMathTexCount(countMatches(generatedCode, MATH_TEX_PATTERN));
+            analysis.setTextCount(countMatches(generatedCode, TEXT_PATTERN));
+            analysis.setThreeDScene(THREE_D_SCENE_PATTERN.matcher(generatedCode).find());
+            analysis.setThreeDObjectCount(countMatches(generatedCode, THREE_D_OBJECT_PATTERN));
+            analysis.setCameraOrientationCount(countMatches(generatedCode, CAMERA_ORIENTATION_PATTERN));
+            analysis.setCameraMotionCount(countMatches(generatedCode, CAMERA_MOTION_PATTERN));
+            analysis.setFixedInFrameCount(countMatches(generatedCode, FIXED_IN_FRAME_PATTERN));
+            analysis.setFixedOrientationCount(countMatches(generatedCode, FIXED_ORIENTATION_PATTERN));
+        }
 
         Storyboard storyboard = narrative != null
                 ? StoryboardPatchResolver.buildMergedStoryboard(narrative.getStoryboard())
                 : null;
         if (storyboard != null && storyboard.getScenes() != null) {
             analysis.setSceneCount(storyboard.getScenes().size());
-            analysis.setThreeDStoryboardSceneCount(countThreeDStoryboardScenes(storyboard));
-            populateStoryboardMetrics(analysis, storyboard);
-            addStoryboardDrivenFindings(analysis, storyboard);
+            if (!geoGebraTarget) {
+                analysis.setThreeDStoryboardSceneCount(countThreeDStoryboardScenes(storyboard));
+                addStoryboardDrivenFindings(analysis, storyboard);
+            }
         }
 
-        addCodeDrivenFindings(analysis);
+        if (!geoGebraTarget) {
+            addCodeDrivenFindings(analysis);
+        }
         addStaticValidationFindings(analysis, generatedCode);
         return analysis;
     }
@@ -483,23 +470,6 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     private List<Pattern> patternsForRule(String ruleId) {
         List<Pattern> patterns = new ArrayList<>();
         switch (ruleId) {
-            case "scene_object_overload":
-            case "visible_object_overload":
-                patterns.add(FADE_IN_PATTERN);
-                patterns.add(Pattern.compile("\\bCreate\\s*\\("));
-                patterns.add(Pattern.compile("\\bWrite\\s*\\("));
-                break;
-            case "text_stack_clutter":
-            case "spacing_strategy_missing":
-                patterns.add(TEXT_PATTERN);
-                patterns.add(MATH_TEX_PATTERN);
-                patterns.add(ARRANGE_PATTERN);
-                patterns.add(NEXT_TO_PATTERN);
-                break;
-            case "edge_push_abuse":
-                patterns.add(TO_EDGE_PATTERN);
-                patterns.add(SHIFT_PATTERN);
-                break;
             case "weak_transform_continuity":
                 patterns.add(FADE_IN_PATTERN);
                 patterns.add(FADE_OUT_PATTERN);
@@ -530,24 +500,17 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         if (review == null) {
             return false;
         }
-        if (hasStaticValidationBlockingFindings(analysis)) {
-            return false;
-        }
         if (review.getContinuityScore() < MIN_CONTINUITY_SCORE
                 || review.getPacingScore() < MIN_PACING_SCORE) {
             return false;
         }
-        return review.getLayoutScore() >= MIN_LAYOUT_SCORE
-                || qualifiesForDensityHeuristicPass(review, analysis);
+        return review.getLayoutScore() >= MIN_LAYOUT_SCORE;
     }
 
     private String buildGateReason(boolean approved,
                                    StaticAnalysis analysis,
                                    ReviewSnapshot review) {
         if (approved) {
-            if (qualifiesForDensityHeuristicPass(review, analysis)) {
-                return "Advisory review passed; moderate storyboard density heuristics are deferred to Stage 5 scene evaluation.";
-            }
             return "Advisory review passed";
         }
 
@@ -581,25 +544,9 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         }
 
         if (reasons.isEmpty()) {
-            if (review != null
-                    && (review.getClutterRisk() > MAX_CLUTTER_RISK
-                    || review.getLikelyOffscreenRisk() > MAX_OFFSCREEN_RISK)) {
-                return "Semantic review passed; layout-risk heuristics are advisory and deferred to Stage 5 scene evaluation.";
-            }
             return "Advisory review suggests visual refinements before render.";
         }
         return String.join("; ", reasons.subList(0, Math.min(3, reasons.size())));
-    }
-
-    private int countTextualObjects(Set<String> visibleIds, Map<String, StoryboardObject> objectRegistry) {
-        int count = 0;
-        for (String id : visibleIds) {
-            StoryboardObject object = objectRegistry.get(id);
-            if (object != null && isTextualObject(object)) {
-                count++;
-            }
-        }
-        return count;
     }
 
     private boolean isTextualObject(StoryboardObject object) {
@@ -688,59 +635,6 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         return false;
     }
 
-    private double narrationWordsPerSecond(StoryboardScene scene) {
-        if (scene == null || scene.getNarration() == null || scene.getNarration().isBlank()) {
-            return 0.0;
-        }
-        int duration = Math.max(1, scene.getDurationSeconds());
-        String trimmed = scene.getNarration().trim();
-        int wordCount = trimmed.isEmpty() ? 0 : trimmed.split("\\s+").length;
-        return wordCount / (double) duration;
-    }
-
-    /**
-     * Stage 3 should not force a rewrite when the only issue is a moderate
-     * storyboard object-count heuristic. Actual overlap/offscreen validation is
-     * handled later by Stage 5 on sampled rendered frames.
-     */
-    private boolean qualifiesForDensityHeuristicPass(ReviewSnapshot review, StaticAnalysis analysis) {
-        if (review == null || analysis == null) {
-            return false;
-        }
-        if (review.getLikelyOffscreenRisk() > MAX_OFFSCREEN_RISK) {
-            return false;
-        }
-        if (analysis.getFindings() == null || analysis.getFindings().isEmpty()) {
-            return false;
-        }
-
-        boolean sawDensityFinding = false;
-        for (StaticFinding finding : analysis.getFindings()) {
-            if (finding == null
-                    || finding.getRuleId() == null
-                    || finding.getRuleId().isBlank()
-                    || finding.getSeverity() == null
-                    || finding.getSeverity().isBlank()) {
-                continue;
-            }
-            if (!"fail".equalsIgnoreCase(finding.getSeverity())
-                    && !"warn".equalsIgnoreCase(finding.getSeverity())) {
-                continue;
-            }
-            if (!isDensityHeuristicRule(finding.getRuleId())) {
-                return false;
-            }
-            sawDensityFinding = true;
-        }
-        return sawDensityFinding;
-    }
-
-    private boolean isDensityHeuristicRule(String ruleId) {
-        return "scene_object_overload".equalsIgnoreCase(ruleId)
-                || "visible_object_overload".equalsIgnoreCase(ruleId)
-                || "text_stack_clutter".equalsIgnoreCase(ruleId);
-    }
-
     private void addFinding(StaticAnalysis analysis,
                             String ruleId,
                             String severity,
@@ -759,7 +653,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                 continue;
             }
             String trimmed = violation.trim();
-            addFinding(analysis, "static_validation", "fail", trimmed, trimmed);
+            addFinding(analysis, "static_validation", "warn", trimmed, trimmed);
         }
     }
 
@@ -771,33 +665,6 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                 .anyMatch(finding -> ruleId.equalsIgnoreCase(finding.getRuleId()));
     }
 
-    private boolean hasRuleWithSeverity(StaticAnalysis analysis, String ruleId, String severity) {
-        if (analysis == null || analysis.getFindings() == null) {
-            return false;
-        }
-        return analysis.getFindings().stream()
-                .anyMatch(finding -> ruleId.equalsIgnoreCase(finding.getRuleId())
-                        && severity.equalsIgnoreCase(finding.getSeverity()));
-    }
-
-    private boolean hasStaticValidationBlockingFindings(StaticAnalysis analysis) {
-        if (analysis == null || analysis.getFindings() == null) {
-            return false;
-        }
-        return analysis.getFindings().stream()
-                .anyMatch(finding -> "static_validation".equalsIgnoreCase(finding.getRuleId())
-                        && "fail".equalsIgnoreCase(finding.getSeverity()));
-    }
-
-    private int countFindingsBySeverity(StaticAnalysis analysis, String severity) {
-        if (analysis == null || analysis.getFindings() == null) {
-            return 0;
-        }
-        return (int) analysis.getFindings().stream()
-                .filter(finding -> severity.equalsIgnoreCase(finding.getSeverity()))
-                .count();
-    }
-
     private int countMatches(String text, Pattern pattern) {
         if (text == null || text.isBlank()) {
             return 0;
@@ -806,24 +673,6 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         int count = 0;
         while (matcher.find()) {
             count++;
-        }
-        return count;
-    }
-
-    private int countLargeShiftMatches(String generatedCode) {
-        if (generatedCode == null || generatedCode.isBlank()) {
-            return 0;
-        }
-
-        int count = 0;
-        for (String line : generatedCode.split("\\R")) {
-            if (!line.contains(".shift(")) {
-                continue;
-            }
-            if (HORIZONTAL_LARGE_SHIFT_PATTERN.matcher(line).find()
-                    || VERTICAL_LARGE_SHIFT_PATTERN.matcher(line).find()) {
-                count++;
-            }
         }
         return count;
     }
@@ -904,8 +753,6 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         snapshot.setLayoutScore(readInt(reviewNode, "layout_score", "layoutScore"));
         snapshot.setContinuityScore(readInt(reviewNode, "continuity_score", "continuityScore"));
         snapshot.setPacingScore(readInt(reviewNode, "pacing_score", "pacingScore"));
-        snapshot.setClutterRisk(readInt(reviewNode, "clutter_risk", "clutterRisk"));
-        snapshot.setLikelyOffscreenRisk(readInt(reviewNode, "likely_offscreen_risk", "likelyOffscreenRisk"));
         snapshot.setSummary(readText(reviewNode, "summary"));
         snapshot.setStrengths(readStringList(reviewNode, "strengths"));
         snapshot.setBlockingIssues(readStringList(reviewNode, "blocking_issues", "blockingIssues"));
@@ -913,9 +760,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
 
         if (snapshot.getLayoutScore() <= 0
                 && snapshot.getContinuityScore() <= 0
-                && snapshot.getPacingScore() <= 0
-                && snapshot.getClutterRisk() <= 0
-                && snapshot.getLikelyOffscreenRisk() <= 0) {
+                && snapshot.getPacingScore() <= 0) {
             return null;
         }
         return snapshot;
@@ -945,8 +790,6 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         snapshot.setLayoutScore(clampScore(snapshot.getLayoutScore(), 7));
         snapshot.setContinuityScore(clampScore(snapshot.getContinuityScore(), 6));
         snapshot.setPacingScore(clampScore(snapshot.getPacingScore(), 6));
-        snapshot.setClutterRisk(clampScore(snapshot.getClutterRisk(), 4));
-        snapshot.setLikelyOffscreenRisk(clampScore(snapshot.getLikelyOffscreenRisk(), 4));
         if (snapshot.getSummary() == null || snapshot.getSummary().isBlank()) {
             snapshot.setSummary("Structured code review completed.");
         }
@@ -968,165 +811,34 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         List<String> directives = new ArrayList<>();
 
         for (StaticFinding finding : analysis.getFindings()) {
-            if (isStage3BlockingRule(finding.getRuleId())
-                    && "fail".equalsIgnoreCase(finding.getSeverity())) {
+            if ("three_d_scene_required".equalsIgnoreCase(finding.getRuleId())
+                    || "three_d_overlay_unfixed".equalsIgnoreCase(finding.getRuleId())) {
                 blockingIssues.add(finding.getSummary());
             }
             directives.add(finding.getSummary());
         }
 
         int semanticPenalty = 0;
-        semanticPenalty += hasRuleWithSeverity(analysis, "three_d_scene_required", "fail") ? 3 : 0;
-        semanticPenalty += hasRuleWithSeverity(analysis, "three_d_overlay_unfixed", "fail") ? 2 : 0;
-        semanticPenalty += hasRuleWithSeverity(analysis, "three_d_camera_plan_missing", "warn") ? 1 : 0;
-        semanticPenalty += hasRuleWithSeverity(analysis, "three_d_camera_motion_missing", "warn") ? 1 : 0;
-        semanticPenalty += hasRuleWithSeverity(analysis, "three_d_overlay_missing", "warn") ? 1 : 0;
+        semanticPenalty += hasRule(analysis, "three_d_scene_required") ? 3 : 0;
+        semanticPenalty += hasRule(analysis, "three_d_overlay_unfixed") ? 2 : 0;
+        semanticPenalty += hasRule(analysis, "three_d_camera_plan_missing") ? 1 : 0;
+        semanticPenalty += hasRule(analysis, "three_d_camera_motion_missing") ? 1 : 0;
+        semanticPenalty += hasRule(analysis, "three_d_overlay_missing") ? 1 : 0;
         review.setLayoutScore(Math.max(2, 8 - semanticPenalty));
-        review.setContinuityScore(Math.max(2,
-                8 - (hasRuleWithSeverity(analysis, "weak_transform_continuity", "fail") ? 2 : 0)
-                        - (hasRuleWithSeverity(analysis, "weak_transform_continuity", "warn") ? 1 : 0)
-                        - (hasRuleWithSeverity(analysis, "code_bloat", "warn") ? 1 : 0)));
-        review.setPacingScore(Math.max(2,
-                8 - (hasRuleWithSeverity(analysis, "pacing_mismatch_dense", "fail") ? 2 : 0)
-                        - (hasRuleWithSeverity(analysis, "pacing_mismatch_dense", "warn") ? 1 : 0)
-                        - (hasRuleWithSeverity(analysis, "pacing_mismatch_sparse", "warn") ? 1 : 0)));
-        review.setClutterRisk(Math.min(10,
-                2 + (hasRuleWithSeverity(analysis, "scene_object_overload", "fail") ? 2 : 0)
-                        + (hasRuleWithSeverity(analysis, "scene_object_overload", "warn") ? 1 : 0)
-                        + (hasRuleWithSeverity(analysis, "text_stack_clutter", "fail") ? 2 : 0)
-                        + (hasRuleWithSeverity(analysis, "text_stack_clutter", "warn") ? 1 : 0)
-                        + (hasRuleWithSeverity(analysis, "visible_object_overload", "fail") ? 2 : 0)
-                        + (hasRuleWithSeverity(analysis, "visible_object_overload", "warn") ? 1 : 0)));
-        review.setLikelyOffscreenRisk(Math.min(10,
-                2 + (analysis.getToEdgeCount() / 3)
-                        + Math.min(2, analysis.getLargeShiftCount())
-                        + (hasRuleWithSeverity(analysis, "edge_push_abuse", "fail") ? 2 : 0)
-                        + (hasRuleWithSeverity(analysis, "edge_push_abuse", "warn") ? 1 : 0)));
+        review.setContinuityScore(8);
+        review.setPacingScore(8);
         review.setBlockingIssues(blockingIssues);
         review.setRevisionDirectives(directives);
-        review.setSummary("Fallback Stage 3 review synthesized from static semantic, continuity, pacing, and 3D-readability heuristics.");
+        review.setSummary("Fallback Stage 3 review synthesized from static validation and Manim 3D-readability heuristics.");
         review.setApprovedForRender(review.getLayoutScore() >= MIN_LAYOUT_SCORE
                 && review.getContinuityScore() >= MIN_CONTINUITY_SCORE
                 && review.getPacingScore() >= MIN_PACING_SCORE);
         return review;
     }
 
-    private boolean isStage3BlockingRule(String ruleId) {
-        return "weak_transform_continuity".equalsIgnoreCase(ruleId)
-                || "pacing_mismatch_dense".equalsIgnoreCase(ruleId)
-                || "three_d_scene_required".equalsIgnoreCase(ruleId)
-                || "three_d_overlay_unfixed".equalsIgnoreCase(ruleId);
-    }
-
-    private void populateStoryboardMetrics(StaticAnalysis analysis, Storyboard storyboard) {
-        Map<String, StoryboardObject> objectRegistry = new LinkedHashMap<>();
-        Set<String> carryOver = new LinkedHashSet<>();
-        double minWps = Double.MAX_VALUE;
-        double maxWps = 0.0;
-        boolean sawNarration = false;
-
-        if (storyboard.getObjectRegistry() != null) {
-            for (StoryboardObject object : storyboard.getObjectRegistry()) {
-                String id = StoryboardPatchResolver.objectId(object);
-                if (id != null) {
-                    objectRegistry.put(id, object);
-                }
-            }
-        }
-
-        for (StoryboardScene scene : storyboard.getScenes()) {
-            if (scene == null) {
-                continue;
-            }
-
-            List<StoryboardObject> enteringObjects = scene.getEnteringObjects() != null
-                    ? scene.getEnteringObjects()
-                    : new ArrayList<>();
-            analysis.setMaxEnteringObjects(Math.max(analysis.getMaxEnteringObjects(), enteringObjects.size()));
-
-            for (StoryboardObject object : enteringObjects) {
-                String id = StoryboardPatchResolver.objectId(object);
-                if (id != null) {
-                    objectRegistry.put(id, object);
-                }
-            }
-
-            Set<String> currentVisible = new LinkedHashSet<>(carryOver);
-            currentVisible.addAll(StoryboardPatchResolver.idsOf(enteringObjects));
-
-            analysis.setMaxVisibleObjects(Math.max(analysis.getMaxVisibleObjects(), currentVisible.size()));
-            analysis.setMaxVisibleTextualObjects(Math.max(
-                    analysis.getMaxVisibleTextualObjects(),
-                    countTextualObjects(currentVisible, objectRegistry)));
-
-            double wordsPerSecond = narrationWordsPerSecond(scene);
-            if (wordsPerSecond > 0) {
-                sawNarration = true;
-                maxWps = Math.max(maxWps, wordsPerSecond);
-                minWps = Math.min(minWps, wordsPerSecond);
-            }
-
-            Set<String> nextCarryOver = new LinkedHashSet<>();
-            if (scene.getPersistentObjects() != null && !scene.getPersistentObjects().isEmpty()) {
-                nextCarryOver.addAll(StoryboardPatchResolver.idsOf(scene.getPersistentObjects()));
-            } else {
-                nextCarryOver.addAll(currentVisible);
-            }
-            if (scene.getExitingObjects() != null && !scene.getExitingObjects().isEmpty()) {
-                nextCarryOver.removeAll(StoryboardPatchResolver.idsOf(scene.getExitingObjects()));
-            }
-            carryOver = nextCarryOver;
-        }
-
-        analysis.setMaxNarrationWordsPerSecond(maxWps);
-        analysis.setMinNarrationWordsPerSecond(sawNarration ? minWps : 0.0);
-    }
-
     private void addStoryboardDrivenFindings(StaticAnalysis analysis, Storyboard storyboard) {
-        if (analysis.getMaxEnteringObjects() >= SCENE_OBJECT_OVERLOAD_FAIL_THRESHOLD) {
-            addFinding(analysis, "scene_object_overload", "fail",
-                    "A storyboard scene introduces too many new objects at once.",
-                    "max_entering_objects=" + analysis.getMaxEnteringObjects());
-        } else if (analysis.getMaxEnteringObjects() >= SCENE_OBJECT_OVERLOAD_WARN_THRESHOLD) {
-            addFinding(analysis, "scene_object_overload", "warn",
-                    "A storyboard scene may introduce more objects than the frame can comfortably absorb.",
-                    "max_entering_objects=" + analysis.getMaxEnteringObjects());
-        }
-
-        if (analysis.getMaxVisibleObjects() >= VISIBLE_OBJECT_OVERLOAD_FAIL_THRESHOLD) {
-            addFinding(analysis, "visible_object_overload", "fail",
-                    "The storyboard likely keeps too many simultaneous elements on screen.",
-                    "max_visible_objects=" + analysis.getMaxVisibleObjects());
-        } else if (analysis.getMaxVisibleObjects() >= VISIBLE_OBJECT_OVERLOAD_WARN_THRESHOLD) {
-            addFinding(analysis, "visible_object_overload", "warn",
-                    "The storyboard approaches a cluttered simultaneous-object count.",
-                    "max_visible_objects=" + analysis.getMaxVisibleObjects());
-        }
-
-        if (analysis.getMaxVisibleTextualObjects() >= TEXT_STACK_CLUTTER_FAIL_THRESHOLD) {
-            addFinding(analysis, "text_stack_clutter", "fail",
-                    "The storyboard likely stacks too many textual or formula objects at once.",
-                    "max_visible_textual_objects=" + analysis.getMaxVisibleTextualObjects());
-        } else if (analysis.getMaxVisibleTextualObjects() >= TEXT_STACK_CLUTTER_WARN_THRESHOLD) {
-            addFinding(analysis, "text_stack_clutter", "warn",
-                    "The storyboard may show too many text/formula objects at the same time.",
-                    "max_visible_textual_objects=" + analysis.getMaxVisibleTextualObjects());
-        }
-
-        if (analysis.getMaxNarrationWordsPerSecond() > 4.5) {
-            addFinding(analysis, "pacing_mismatch_dense", "fail",
-                    "At least one scene has narration that is too dense for its duration.",
-                    String.format(Locale.ROOT, "max_words_per_second=%.2f", analysis.getMaxNarrationWordsPerSecond()));
-        } else if (analysis.getMaxNarrationWordsPerSecond() > 3.6) {
-            addFinding(analysis, "pacing_mismatch_dense", "warn",
-                    "A scene may have narration that feels rushed relative to the planned animation.",
-                    String.format(Locale.ROOT, "max_words_per_second=%.2f", analysis.getMaxNarrationWordsPerSecond()));
-        }
-
-        if (analysis.getMinNarrationWordsPerSecond() > 0 && analysis.getMinNarrationWordsPerSecond() < 0.30) {
-            addFinding(analysis, "pacing_mismatch_sparse", "warn",
-                    "At least one scene may have very little narration relative to its duration.",
-                    String.format(Locale.ROOT, "min_words_per_second=%.2f", analysis.getMinNarrationWordsPerSecond()));
+        if (NodeSupport.isGeoGebraTarget(workflowConfig)) {
+            return;
         }
 
         boolean dynamicThreeDCameraRequested = false;
@@ -1137,7 +849,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         }
 
         if (analysis.getThreeDStoryboardSceneCount() > 0 && !analysis.isThreeDScene()) {
-            addFinding(analysis, "three_d_scene_required", "fail",
+            addFinding(analysis, "three_d_scene_required", "warn",
                     "The storyboard requests 3D staging, but the code does not use `ThreeDScene`.",
                     String.format(Locale.ROOT,
                             "storyboard_3d_scenes=%d, code_uses_threedscene=%s",
@@ -1166,7 +878,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                 && analysis.getFixedInFrameCount() == 0
                 && analysis.getFixedOrientationCount() == 0) {
             addFinding(analysis, dynamicThreeDCameraRequested ? "three_d_overlay_unfixed" : "three_d_overlay_missing",
-                    dynamicThreeDCameraRequested ? "fail" : "warn",
+                    "warn",
                     dynamicThreeDCameraRequested
                             ? "3D scenes with camera motion should keep explanatory text fixed in frame."
                             : "3D storyboard scenes likely need fixed-in-frame overlays for readable text.",
@@ -1183,13 +895,13 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                 + analysis.getFadeTransformCount();
         int fadeCycles = analysis.getFadeInCount() + analysis.getFadeOutCount();
         if (continuityScenes >= 3 && transformLike == 0 && fadeCycles >= 6) {
-            addFinding(analysis, "weak_transform_continuity", "fail",
+            addFinding(analysis, "weak_transform_continuity", "info",
                     "The storyboard expects persistent visual continuity, but the code barely uses transforms.",
                     String.format(Locale.ROOT,
                             "continuity_scenes=%d, transform_like=%d, fade_in_out=%d",
                             continuityScenes, transformLike, fadeCycles));
         } else if (continuityScenes >= 2 && transformLike <= 1 && fadeCycles >= 4) {
-            addFinding(analysis, "weak_transform_continuity", "warn",
+            addFinding(analysis, "weak_transform_continuity", "info",
                     "The storyboard expects persistent visual continuity, but the code uses few transforms.",
                     String.format(Locale.ROOT,
                             "continuity_scenes=%d, transform_like=%d, fade_in_out=%d",
@@ -1198,9 +910,13 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     }
 
     private void addCodeDrivenFindings(StaticAnalysis analysis) {
+        if (NodeSupport.isGeoGebraTarget(workflowConfig)) {
+            return;
+        }
+
         if (analysis.getThreeDObjectCount() > 0 && !analysis.isThreeDScene()
                 && !hasRule(analysis, "three_d_scene_required")) {
-            addFinding(analysis, "three_d_scene_required", "fail",
+            addFinding(analysis, "three_d_scene_required", "warn",
                     "The code creates 3D objects but does not declare a `ThreeDScene`.",
                     String.format(Locale.ROOT,
                             "three_d_objects=%d, code_uses_threedscene=%s",
@@ -1222,7 +938,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                 && analysis.getFixedInFrameCount() == 0
                 && analysis.getFixedOrientationCount() == 0
                 && !hasRule(analysis, "three_d_overlay_unfixed")) {
-            addFinding(analysis, "three_d_overlay_unfixed", "fail",
+            addFinding(analysis, "three_d_overlay_unfixed", "warn",
                     "Camera motion in a 3D scene should not leave explanatory text rotating with the world.",
                     String.format(Locale.ROOT,
                             "camera_motion_calls=%d, fixed_in_frame=%d, fixed_orientation=%d, text_like=%d",
@@ -1243,48 +959,6 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                             analysis.getFixedInFrameCount(),
                             analysis.getFixedOrientationCount(),
                             analysis.getMathTexCount() + analysis.getTextCount()));
-        }
-
-        if (analysis.getToEdgeCount() >= 7 || analysis.getLargeShiftCount() >= 5) {
-            addFinding(analysis, "edge_push_abuse", "fail",
-                    "The code heavily relies on edge pushes or large shifts, which raises drift/offscreen risk.",
-                    String.format(Locale.ROOT,
-                            "to_edge=%d, large_shift=%d",
-                            analysis.getToEdgeCount(), analysis.getLargeShiftCount()));
-        } else if (analysis.getToEdgeCount() >= 4 || analysis.getLargeShiftCount() >= 3) {
-            addFinding(analysis, "edge_push_abuse", "warn",
-                    "The code leans on `to_edge` or large shifts more than is ideal for stable layouts.",
-                    String.format(Locale.ROOT,
-                            "to_edge=%d, large_shift=%d",
-                            analysis.getToEdgeCount(), analysis.getLargeShiftCount()));
-        }
-
-        if (analysis.getMathTexCount() + analysis.getTextCount() >= 8
-                && analysis.getArrangeCount() == 0
-                && analysis.getNextToCount() == 0) {
-            addFinding(analysis, "spacing_strategy_missing", "fail",
-                    "The code creates many text/formula objects without a clear spacing strategy.",
-                    String.format(Locale.ROOT,
-                            "mathtex=%d, text=%d, arrange=%d, next_to=%d",
-                            analysis.getMathTexCount(), analysis.getTextCount(),
-                            analysis.getArrangeCount(), analysis.getNextToCount()));
-        } else if (analysis.getMathTexCount() + analysis.getTextCount() >= 5
-                && analysis.getArrangeCount() == 0
-                && analysis.getNextToCount() < 2) {
-            addFinding(analysis, "spacing_strategy_missing", "warn",
-                    "The code may lack a consistent arrangement/spacing pattern for textual content.",
-                    String.format(Locale.ROOT,
-                            "mathtex=%d, text=%d, arrange=%d, next_to=%d",
-                            analysis.getMathTexCount(), analysis.getTextCount(),
-                            analysis.getArrangeCount(), analysis.getNextToCount()));
-        }
-
-        if (analysis.getSceneCount() > 0 && analysis.getCodeLines() > Math.max(260, analysis.getSceneCount() * 120)) {
-            addFinding(analysis, "code_bloat", "warn",
-                    "The generated code looks long relative to the planned storyboard size.",
-                    String.format(Locale.ROOT,
-                            "code_lines=%d, scene_count=%d",
-                            analysis.getCodeLines(), analysis.getSceneCount()));
         }
     }
 
