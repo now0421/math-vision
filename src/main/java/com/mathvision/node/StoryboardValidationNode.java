@@ -1,4 +1,4 @@
-﻿package com.mathvision.node;
+package com.mathvision.node;
 
 import com.mathvision.config.WorkflowConfig;
 import com.mathvision.model.KnowledgeGraph;

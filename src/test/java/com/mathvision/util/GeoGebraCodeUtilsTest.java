@@ -69,6 +69,20 @@ class GeoGebraCodeUtilsTest {
     }
 
     @Test
+    void validateGeoGebraRules_allowsDocumentedTextCommands() {
+        String code = String.join("\n",
+                "labelA = Text(\"A\", A)",
+                "formulaLabel = FormulaText(x^2 + 1)",
+                "fractionLabel = FractionText(1 / 2)",
+                "tableLabel = TableText({{1, 2}, {3, 4}})",
+                "rotatedLabel = RotateText(\"slope\", pi / 6)");
+
+        List<String> violations = GeoGebraCodeUtils.validateGeoGebraRules(code);
+
+        assertTrue(violations.isEmpty());
+    }
+
+    @Test
     void validateGeoGebraRules_allowsQuotedExecutableText() {
         List<String> violations = GeoGebraCodeUtils.validateGeoGebraRules(
                 "SetCaption(L, \"minimum = 2\")");
