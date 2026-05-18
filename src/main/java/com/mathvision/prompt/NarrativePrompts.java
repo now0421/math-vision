@@ -49,6 +49,8 @@ public final class NarrativePrompts {
                     + "- Use a single typed `style` object per storyboard object, never a style array and never custom style keys.\n"
                     + "- Style describes the object itself only. Create separate storyboard objects for labels, badges, helper outlines, cards, or callouts that have their own identity.\n"
                     + "- Prefer `kind = text` or `kind = equation` over `kind = text_card` or `kind = formula_card`. Display text directly without a background box/card unless the card itself is teaching-essential (e.g. a titled result panel). Most formulas and labels are clearer without a surrounding box. Convert existing text_card/formula_card objects to text/equation when the card is not teaching-essential.\n"
+                    + "- Preserve the motion-first visual-action teaching intent from exploration and visual design: do not turn a movable reveal, construction, transform, or manipulation into a static text/formula-only explanation unless backend practicality makes the motion impossible.\n"
+                    + "- When repairing clutter, overlap, or redundancy, simplify supporting text or cards before removing the movable object, action, dependency, or visual evidence that carries the idea.\n"
                     + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n"
                     + SystemPrompts.ASCII_TEXT_RULES;
 
@@ -202,7 +204,7 @@ public final class NarrativePrompts {
     public static String buildCleanupUserPrompt(String storyboardJson, java.util.List<String> issues) {
         StringBuilder userPrompt = new StringBuilder();
         userPrompt.append("Please clean up this storyboard so it is coherent, and ensure that all coordinate-based elements stay within bounds and do not visibly overlap.\n");
-        userPrompt.append("Preserve the original narrative order, object identity, and teaching intent as much as possible; only adjust the layout and wording where necessary.\n");
+        userPrompt.append("Preserve the original narrative order, object identity, and motion-first visual teaching intent as much as possible; only adjust the layout and wording where necessary.\n");
         userPrompt.append("Replace every non-ASCII text token reported below with an ASCII equivalent across the full storyboard.\n");
         userPrompt.append("For each reported token, locate every occurrence in the current storyboard and rewrite the surrounding sentence if needed so the whole string is ASCII-only. For example, replace curly apostrophes with straight apostrophes, em/en dashes with ` - ` or `-`, and mathematical comparison glyphs with ASCII operators such as `!=`, `<=`, or `>=`.\n");
         userPrompt.append("Before returning, perform a final character-by-character pass over every JSON string value and ensure no character code is greater than 0x7F.\n");

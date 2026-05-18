@@ -612,11 +612,11 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         if (WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)) {
             return "Solve the user-provided math problem through a coherent "
                     + medium
-                    + " that explains the reasoning and conclusion clearly.";
+                    + " that first makes the problem's meaning visible through motion or manipulation when feasible, then explains the reasoning and conclusion clearly.";
         }
         return "Explain the user-provided math concept through a coherent "
                 + medium
-                + " with a clear, learner-facing teaching flow.";
+                + " that first makes the concept's meaning visible through motion or manipulation when feasible, then builds a clear, learner-facing teaching flow.";
     }
 
     private String normalizeInputModeDecision(String response) {

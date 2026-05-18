@@ -32,13 +32,30 @@ class PromptModulesTest {
     }
 
     @Test
-    void conceptGraphPromptFramesCompactTypedTeachingDag() {
+    void conceptGraphPromptFramesMotionDrivenTeachingDag() {
         String prompt = ExplorationPrompts.buildConceptGraphFixedContextPrompt("Demo")
                 + ExplorationPrompts.buildConceptGraphRulesPrompt();
 
-        assertTrue(prompt.contains("compact teaching DAG"));
-        assertTrue(prompt.contains("5 to 9 strong beats"));
+        assertTrue(prompt.contains("motion-driven teaching DAG"));
+        assertTrue(prompt.contains("Start by building a concrete visual situation"));
+        assertTrue(prompt.contains("reveal the relationship, invariant, or pattern the concept captures"));
+        assertTrue(prompt.contains("setup, motion reveal, and formal naming separate"));
+        assertTrue(prompt.contains("Prioritize movable visual elements over text"));
         assertTrue(prompt.contains("concept, observation, construction, derivation, conclusion"));
+    }
+
+    @Test
+    void problemGraphPromptFramesMotionDrivenSolvingDag() {
+        String prompt = ExplorationPrompts.buildProblemGraphFixedContextPrompt("Demo")
+                + ExplorationPrompts.buildProblemGraphRulesPrompt();
+
+        assertTrue(prompt.contains("Start by building the problem situation as a concrete visual setup"));
+        assertTrue(prompt.contains("reveal what quantity, relation, or target the problem is asking about"));
+        assertTrue(prompt.contains("Prioritize movable problem quantities and visual elements over text"));
+        assertTrue(prompt.contains("Each node must be one atomic solving beat"));
+        assertTrue(prompt.contains("Setting up the problem situation and revealing the question's target through motion are separate atomic beats"));
+        assertTrue(prompt.contains("Do not bundle multiple hidden reasoning moves into one node"));
+        assertTrue(prompt.contains("problem, observation, construction, derivation, conclusion"));
     }
 
     @Test
@@ -122,6 +139,22 @@ class PromptModulesTest {
         assertTrue(geogebraReviewPrompt.contains("verify the implementation by calculating the derived coordinates from its dependencies"));
         assertTrue(geogebraReviewPrompt.contains("direct numeric coordinates are acceptable only when they match fixed source geometry"));
         assertTrue(geogebraReviewPrompt.contains("notes_for_codegen"));
+    }
+
+    @Test
+    void visualAndNarrativePromptsPreserveMotionFirstTeachingIntent() {
+        String manimVisualPrompt = VisualDesignPrompts.buildFixedContextPrompt("Triangle", "Demo", "manim", null)
+                + VisualDesignPrompts.buildRulesPrompt("manim");
+        String geogebraVisualPrompt = VisualDesignPrompts.buildFixedContextPrompt("Triangle", "Demo", "geogebra", null)
+                + VisualDesignPrompts.buildRulesPrompt("geogebra");
+        String narrativePrompt = narrativeSystemPrompt("Triangle", "Demo", "manim");
+
+        assertFalse(manimVisualPrompt.contains("motion is not mandatory"));
+        assertTrue(manimVisualPrompt.contains("favor motion for meaning-carrying elements"));
+        assertTrue(manimVisualPrompt.contains("prefer moving, transforming, dragging, sweeping, or restyling existing elements over adding explanatory text"));
+        assertTrue(geogebraVisualPrompt.contains("draggable, constrained, or movable construction elements over text-heavy explanation"));
+        assertTrue(narrativePrompt.contains("motion-first visual-action teaching intent"));
+        assertTrue(narrativePrompt.contains("do not turn a movable reveal, construction, transform, or manipulation into a static text/formula-only explanation"));
     }
 
     @Test

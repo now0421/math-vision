@@ -68,12 +68,12 @@ public final class VisualDesignPrompts {
 
     private static final String SCENE_TEACHING_RULES =
             "Scene teaching rules:\n"
-                    + "- Write narration as learner-facing beats: each sentence should correspond to something visible, highlighted, transformed, or deliberately held on screen.\n"
+                    + "- Write narration as learner-facing beats: each sentence should correspond to something visible, moved, manipulated, highlighted, transformed, or deliberately held on screen.\n"
                     + "- Leave breathing room after key reveals; do not imply nonstop motion with no time to read.\n"
                     + "- Plan scene transitions intentionally: choose clean break (fade all, pause), carry-forward (keep one anchor, fade rest), or transform bridge for each scene boundary. Record the chosen style in `notes_for_codegen` only when downstream code generation must preserve it as a hard constraint.\n"
                     + "- When the current step merges multiple prerequisite branches, treat the scene as a convergence beat: inherit existing object names, color meanings, and continuity anchors instead of restarting the story.\n"
                     + "- For merge scenes, combine upstream conclusions into one coherent scene and do not replay each branch as if it were brand new.\n"
-                    + "- Keep the storyboard lean: introduce the fewest objects needed for the teaching beat, and prefer actions, style changes, or narration over new objects when they communicate the same idea.\n"
+                    + "- Keep the storyboard lean: prefer moving, transforming, dragging, sweeping, or restyling existing elements over adding explanatory text or new objects when they communicate the same idea.\n"
                     + "- When a temporary element has served its purpose, include it in `exiting_objects` of the current or next scene.\n"
                     + "- Use enrichment fields only when they sharpen the explanation.\n"
                     + "- Narrative must not be constrained by a fixed word count.\n"
@@ -125,7 +125,7 @@ public final class VisualDesignPrompts {
                     + "- Use `scene_mode = 3d` only when depth is genuinely needed for the teaching goal.\n"
                     + "- Use the default black background `#000000` and choose readable 6-digit hex foreground colors by contrast, not by a fixed color whitelist.\n"
                     + "- Prefer a stable world layout and meaningful transforms over repeatedly replacing the whole diagram.\n"
-                    + "- Distinguish what should animate from what should stay static; motion is not mandatory.\n"
+                    + "- Distinguish what should animate from what should stay static; favor motion for meaning-carrying elements and avoid decorative motion that adds load.\n"
                     + "- The visual plan must be concrete enough for documented Manim constructs, with no hidden assumptions.\n"
                     + SystemPrompts.NARRATIVE_PHILOSOPHY
                     + SCENE_TEACHING_RULES
@@ -140,7 +140,7 @@ public final class VisualDesignPrompts {
             "You are a visual designer for GeoGebra teaching constructions.\n"
                     + "You are designing ONE scene at a time for a sequential storyboard. Each knowledge-graph node becomes one scene.\n"
                     + "Use the conversation history and object registry to maintain visual continuity with previous scenes.\n"
-                    + "Turn abstract reasoning into something the learner can see, compare, or manipulate.\n"
+                    + "Turn abstract reasoning into something the learner can first see through a manipulable or constrained construction, then compare or explain with supporting text.\n"
                     + "Do not invent unsupported givens or alternative solution branches.\n\n"
                     + SCENE_AUTHORING_RULES
                     + SystemPrompts.MINIMIZE_HELPER_OBJECTS_AUTHORING_RULES
@@ -158,7 +158,7 @@ public final class VisualDesignPrompts {
                     + SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS + "\n"
                     + SystemPrompts.GEOGEBRA_COLOR_RULES_BULLETS
                     + "Visual design principles:\n"
-                    + "- Prefer direct visual reasoning over text-heavy explanation.\n"
+                    + "- Prefer direct visual reasoning with draggable, constrained, or movable construction elements over text-heavy explanation.\n"
                     + "- Keep the learner oriented around one stable construction when possible.\n"
                     + "- Let formulas support the visual argument instead of replacing it.\n"
                     + "- If a reasoning step is not naturally visible, design a faithful construction-based proxy.\n"
