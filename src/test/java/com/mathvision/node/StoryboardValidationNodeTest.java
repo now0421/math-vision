@@ -151,11 +151,17 @@ class StoryboardValidationNodeTest {
     @Test
     void ignoresAttachedLabelOverlapWithItsAnchorObject() {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardObject point = registryObject("point_a", "point", "Point A", null);
+        StoryboardObject label = registryObject("point_a_label", "label", "A", null);
+        label.setConstraints(List.of(constraint(
+                "label_point_a",
+                "attachment",
+                "label_for",
+                Map.of("label", "point_a_label", "anchor", "point_a"),
+                Map.of(),
+                "hard")));
         Storyboard storyboard = buildSingleSceneStoryboard(
-                List.of(
-                        registryObject("point_a", "point", "Point A", null),
-                        registryObject("point_a_label", "label", "A", "point_a")
-                ),
+                List.of(point, label),
                 List.of(
                         scenePatch("point_a", boxPlacement("world", -0.1, 0.1, -0.1, 0.1)),
                         scenePatch("point_a_label", boxPlacement("anchor", -0.15, 0.15, -0.05, 0.15))
@@ -167,14 +173,12 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
-    void ignoresAttachedLabelOverlapByPrefixStyleNamingWithoutAnchorId() {
-        // Covers the "label_a" / "point_a" prefix pattern where no anchorId is set —
-        // semanticStem must strip type prefixes from both sides so the stems match.
+    void reportsPrefixNamedLabelOverlapWithoutAttachmentConstraint() {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(
                 List.of(
                         registryObject("point_a", "point", "Point A", null),
-                        registryObject("label_a", "label", "A", null)  // no anchorId, relies on stem matching
+                        registryObject("label_a", "label", "A", null)
                 ),
                 List.of(
                         scenePatch("point_a", boxPlacement("world", -0.1, 0.1, -0.1, 0.1)),
@@ -183,7 +187,8 @@ class StoryboardValidationNodeTest {
 
         List<String> issues = node.validate(storyboard);
 
-        assertTrue(issues.isEmpty(), () -> String.join("\n", issues));
+        assertEquals(1, issues.size(), () -> String.join("\n", issues));
+        assertTrue(issues.get(0).contains("text object 'label_a' overlaps object 'point_a'"));
     }
 
     @Test
@@ -201,18 +206,25 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
-    void reportsDependencyDrivenObjectWithoutDependencyObjects() {
+    void reportsCoordinateDerivedConstraintWithoutRequiredRefs() {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         StoryboardObject reflectedPoint = registryObject("Bprime", "point", "Reflected point", null);
-        reflectedPoint.setBehavior(StoryboardObject.BEHAVIOR_DERIVED);
-        reflectedPoint.setDependencyRelation("reflection_across_line");
+        reflectedPoint.setConstraints(List.of(constraint(
+                "Bprime_reflection",
+                "geometry",
+                "reflection_across",
+                Map.of("image", "Bprime"),
+                Map.of(),
+                "hard")));
         Storyboard storyboard = buildSingleSceneStoryboard(
                 List.of(reflectedPoint),
                 List.of(scenePatch("Bprime", boxPlacement("world", 2.9, 3.1, -3.6, -3.4))));
 
         List<String> issues = node.validate(storyboard);
 
-        assertTrue(issues.stream().anyMatch(issue -> issue.contains("dependency_objects")),
+        assertTrue(issues.stream().anyMatch(issue -> issue.contains("requires refs role 'source'")),
+                () -> String.join("\n", issues));
+        assertTrue(issues.stream().anyMatch(issue -> issue.contains("requires refs role one of [mirror, axis, line]")),
                 () -> String.join("\n", issues));
     }
 
@@ -221,17 +233,21 @@ class StoryboardValidationNodeTest {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         StoryboardObject pointP = registryObject("P", "point", "Vertex", null);
         StoryboardObject lineL = registryObject("l", "line", "Reference line", null);
+        lineL.setConstraints(List.of(constraint(
+                "l_through_P_A",
+                "geometry",
+                "line_through_points",
+                Map.of("line", "l", "point_a", "P", "point_b", "A"),
+                Map.of(),
+                "hard")));
         StoryboardObject pointA = registryObject("A", "point", "Point A", null);
         StoryboardObject angle = registryObject("angleIn", "angle_marker", "Angle at P", null);
-        angle.setBehavior(StoryboardObject.BEHAVIOR_DERIVED);
-        angle.setDependencyObjects(List.of("P", "l", "A"));
-        angle.setDependencyRelation("angle_between");
         angle.setConstraints(List.of(constraint(
                 "angleIn_sector",
                 "measurement",
-                "angle_between_rays",
+                "angle_between",
                 Map.of("marker", "angleIn", "vertex", "P", "start_boundary", "l", "end_boundary", "A"),
-                Map.of("sector", "smaller", "side_of_reference", Map.of("reference_role", "start_boundary", "side", "same_as", "object_role", "end_boundary")),
+                Map.of("sector", "smaller", "side_of_reference", "same_as_end_boundary"),
                 "hard")));
 
         Storyboard storyboard = buildSingleSceneStoryboard(
@@ -278,13 +294,10 @@ class StoryboardValidationNodeTest {
         StoryboardObject lineL = registryObject("l", "line", "Reference line", null);
         StoryboardObject pointA = registryObject("A", "point", "Point A", null);
         StoryboardObject angle = registryObject("angleIn", "angle_marker", "Angle at P", null);
-        angle.setBehavior(StoryboardObject.BEHAVIOR_DERIVED);
-        angle.setDependencyObjects(List.of("P", "l", "A"));
-        angle.setDependencyRelation("angle_between");
         angle.setConstraints(List.of(constraint(
                 "angleIn_sector",
                 "measurement",
-                "angle_between_rays",
+                "angle_between",
                 Map.of("marker", "angleIn", "vertex", "P", "start_boundary", "l", "end_boundary", "A"),
                 Map.of(),
                 null)));
@@ -305,9 +318,6 @@ class StoryboardValidationNodeTest {
         StoryboardObject pointB = registryObject("B", "point", "Point B", null);
         StoryboardObject river = registryObject("river", "line", "River", null);
         StoryboardObject reflectedPoint = registryObject("Bprime", "point", "Reflected point", null);
-        reflectedPoint.setBehavior(StoryboardObject.BEHAVIOR_DERIVED);
-        reflectedPoint.setDependencyObjects(List.of("B", "river"));
-        reflectedPoint.setDependencyRelation("reflection_across_line");
         reflectedPoint.setConstraints(List.of(constraint(
                 "Bprime_reflection",
                 "geometry",
@@ -332,7 +342,7 @@ class StoryboardValidationNodeTest {
         assertTrue(issue.contains("- Bprime depends on [B, river]"));
         assertTrue(issue.contains("- B: world placement x=3.0, y=1.5"));
         assertTrue(issue.contains("- river: world placement y=-1.5"));
-        assertTrue(issue.contains("- relation: reflection_across_line"));
+        assertTrue(issue.contains("reflection_across"));
         assertFalse(issue.contains("repair_rule"));
     }
 
@@ -411,7 +421,7 @@ class StoryboardValidationNodeTest {
         assertFalse(Files.exists(tempDir.resolve("3_narrative.json")));
         assertTrue(validatedStoryboardJson.contains("\"scenes\""));
         assertTrue(validatedStoryboardJson.contains("Layout validation"));
-        assertFalse(validatedStoryboardJson.contains("\"dependency_objects\" : [ ]"));
+        assertFalse(validatedStoryboardJson.contains("\"dependency_objects\""));
         assertFalse(validatedStoryboardJson.contains("\"constraints\" : [ ]"));
         assertTrue(reportJson.contains("\"initial_issue_count\""));
         assertTrue(reportJson.contains("\"initial_issues\""));
@@ -519,7 +529,15 @@ class StoryboardValidationNodeTest {
         object.setId(id);
         object.setKind(kind);
         object.setContent(content);
-        object.setAnchorId(anchorId);
+        if (anchorId != null && !anchorId.isBlank()) {
+            object.setConstraints(List.of(constraint(
+                    id + "_label_for_" + anchorId,
+                    "attachment",
+                    "label_for",
+                    Map.of("label", id, "anchor", anchorId),
+                    Map.of(),
+                    "hard")));
+        }
         return object;
     }
 

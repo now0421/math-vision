@@ -9,7 +9,6 @@ import com.mathvision.model.Narrative.StoryboardPlacement;
 import com.mathvision.model.Narrative.StoryboardPlacementAxis;
 import com.mathvision.model.Narrative.StoryboardStyle;
 import com.mathvision.util.JsonUtils;
-import com.mathvision.util.StoryboardPatchResolver;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
@@ -49,7 +48,7 @@ public final class StoryboardJsonBuilder {
      * so the fixer can recover layout without breaking geometric constraints.
      */
     public static String buildForSceneEvaluationFix(Storyboard storyboard) {
-        return build(storyboard, new BuildOptions(true, false));
+        return build(storyboard, new BuildOptions(true, true));
     }
 
     private static String build(Storyboard storyboard, BuildOptions options) {
@@ -58,15 +57,13 @@ public final class StoryboardJsonBuilder {
             root.putArray("scenes");
             return JsonUtils.toPrettyJson(root);
         }
-        Storyboard mergedStoryboard = StoryboardPatchResolver.buildMergedStoryboard(storyboard);
-        Storyboard source = mergedStoryboard != null ? mergedStoryboard : storyboard;
 
-        putNonBlank(root, "continuity_plan", source.getContinuityPlan());
-        putTrimmedStringArray(root, "global_visual_rules", source.getGlobalVisualRules());
+        putNonBlank(root, "continuity_plan", storyboard.getContinuityPlan());
+        putTrimmedStringArray(root, "global_visual_rules", storyboard.getGlobalVisualRules());
 
         ArrayNode scenesArray = root.putArray("scenes");
-        if (source.getScenes() != null) {
-            for (StoryboardScene scene : source.getScenes()) {
+        if (storyboard.getScenes() != null) {
+            for (StoryboardScene scene : storyboard.getScenes()) {
                 if (scene == null) {
                     continue;
                 }
@@ -74,9 +71,8 @@ public final class StoryboardJsonBuilder {
             }
         }
 
-        // Serialize object registry if present
-        if (source.getObjectRegistry() != null && !source.getObjectRegistry().isEmpty()) {
-            addObjectArray(root, "object_registry", source.getObjectRegistry(), options);
+        if (storyboard.getObjectRegistry() != null && !storyboard.getObjectRegistry().isEmpty()) {
+            addRegistryObjectArray(root, "object_registry", storyboard.getObjectRegistry());
         }
 
         return JsonUtils.toPrettyJson(root);
@@ -107,17 +103,16 @@ public final class StoryboardJsonBuilder {
         addConstraintArray(sceneNode, "constraints", scene.getConstraints());
         putTrimmedStringArray(sceneNode, "step_refs", scene.getStepRefs());
 
-        addObjectArray(sceneNode, "entering_objects", scene.getEnteringObjects(), options);
-        addObjectArray(sceneNode, "persistent_objects", scene.getPersistentObjects(), options);
-        addObjectArray(sceneNode, "exiting_objects", scene.getExitingObjects(), options);
+        addPatchObjectArray(sceneNode, "entering_objects", scene.getEnteringObjects(), options.includePlacement, false);
+        addPatchObjectArray(sceneNode, "persistent_objects", scene.getPersistentObjects(), options.includePlacement, false);
+        addPatchObjectArray(sceneNode, "exiting_objects", scene.getExitingObjects(), false, true);
         addActions(sceneNode, scene.getActions());
         putTrimmedStringArray(sceneNode, "notes_for_codegen", scene.getNotesForCodegen());
     }
 
-    private static void addObjectArray(ObjectNode parent,
-                                       String fieldName,
-                                       List<StoryboardObject> objects,
-                                       BuildOptions options) {
+    private static void addRegistryObjectArray(ObjectNode parent,
+                                               String fieldName,
+                                               List<StoryboardObject> objects) {
         ArrayNode arrayNode = parent.putArray(fieldName);
         if (objects == null) {
             return;
@@ -131,16 +126,34 @@ public final class StoryboardJsonBuilder {
             putNonBlank(objectNode, "id", object.getId());
             putNonBlank(objectNode, "kind", object.getKind());
             putNonBlank(objectNode, "content", object.getContent());
-            if (options.includePlacement) {
-                addPlacement(objectNode, object.getPlacement());
-            }
             addStyle(objectNode, object.getStyle());
-            putNonBlank(objectNode, "source_node", object.getSourceNode());
-            putNonBlank(objectNode, "behavior", object.getBehavior());
-            putNonBlank(objectNode, "anchor_id", object.getAnchorId());
-            putTrimmedStringArray(objectNode, "dependency_objects", object.getDependencyObjects());
-            putNonBlank(objectNode, "dependency_relation", object.getDependencyRelation());
             addConstraintArray(objectNode, "constraints", object.getConstraints());
+            removeIfEmpty(arrayNode, objectNode);
+        }
+    }
+
+    private static void addPatchObjectArray(ObjectNode parent,
+                                            String fieldName,
+                                            List<StoryboardObject> objects,
+                                            boolean includePlacement,
+                                            boolean idOnly) {
+        ArrayNode arrayNode = parent.putArray(fieldName);
+        if (objects == null) {
+            return;
+        }
+
+        for (StoryboardObject object : objects) {
+            if (object == null) {
+                continue;
+            }
+            ObjectNode objectNode = arrayNode.addObject();
+            putNonBlank(objectNode, "id", object.getId());
+            if (!idOnly) {
+                if (includePlacement) {
+                    addPlacement(objectNode, object.getPlacement());
+                }
+                addStyle(objectNode, object.getStyle());
+            }
             removeIfEmpty(arrayNode, objectNode);
         }
     }

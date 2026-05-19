@@ -119,11 +119,6 @@ public final class StoryboardPatchResolver {
         copy.setContent(source.getContent());
         copy.setPlacement(copyPlacement(source.getPlacement()));
         copy.setStyle(copyStyle(source.getStyle()));
-        copy.setSourceNode(source.getSourceNode());
-        copy.setBehavior(source.getBehavior());
-        copy.setAnchorId(source.getAnchorId());
-        copy.setDependencyObjects(copyStringList(source.getDependencyObjects()));
-        copy.setDependencyRelation(source.getDependencyRelation());
         copy.setConstraints(copyConstraints(source.getConstraints()));
         return copy;
     }
@@ -182,35 +177,11 @@ public final class StoryboardPatchResolver {
         if (!isBlank(patch.getId())) {
             target.setId(patch.getId().trim());
         }
-        if (!isBlank(patch.getKind())) {
-            target.setKind(patch.getKind());
-        }
-        if (!isBlank(patch.getContent())) {
-            target.setContent(patch.getContent());
-        }
         if (patch.getPlacement() != null && patch.getPlacement().hasData()) {
             target.setPlacement(copyPlacement(patch.getPlacement()));
         }
         if (patch.getStyle() != null && patch.getStyle().hasData()) {
             target.setStyle(copyStyle(patch.getStyle()));
-        }
-        if (!isBlank(patch.getSourceNode())) {
-            target.setSourceNode(patch.getSourceNode());
-        }
-        if (!isBlank(patch.getBehavior())) {
-            target.setBehavior(patch.getBehavior());
-        }
-        if (!isBlank(patch.getAnchorId())) {
-            target.setAnchorId(patch.getAnchorId());
-        }
-        if (patch.getDependencyObjects() != null && !patch.getDependencyObjects().isEmpty()) {
-            target.setDependencyObjects(copyStringList(patch.getDependencyObjects()));
-        }
-        if (!isBlank(patch.getDependencyRelation())) {
-            target.setDependencyRelation(patch.getDependencyRelation());
-        }
-        if (patch.getConstraints() != null && !patch.getConstraints().isEmpty()) {
-            target.setConstraints(copyConstraints(patch.getConstraints()));
         }
     }
 

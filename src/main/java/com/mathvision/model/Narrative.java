@@ -221,11 +221,6 @@ public class Narrative {
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public static class StoryboardObject {
 
-        public static final String BEHAVIOR_STATIC = "static";
-        public static final String BEHAVIOR_FOLLOWS_ANCHOR = "follows_anchor";
-        public static final String BEHAVIOR_DERIVED = "derived";
-        public static final String BEHAVIOR_FIXED_OVERLAY = "fixed_overlay";
-
         @JsonProperty("id")
         private String id;
 
@@ -240,21 +235,6 @@ public class Narrative {
 
         @JsonProperty("style")
         private StoryboardStyle style;
-
-        @JsonProperty("source_node")
-        private String sourceNode;
-
-        @JsonProperty("behavior")
-        private String behavior;
-
-        @JsonProperty("anchor_id")
-        private String anchorId;
-
-        @JsonProperty("dependency_objects")
-        private List<String> dependencyObjects = new ArrayList<>();
-
-        @JsonProperty("dependency_relation")
-        private String dependencyRelation;
 
         @JsonProperty("constraints")
         private List<StoryboardConstraint> constraints = new ArrayList<>();
@@ -274,25 +254,7 @@ public class Narrative {
         public void setPlacement(StoryboardPlacement placement) { this.placement = placement; }
 
         public StoryboardStyle getStyle() { return style; }
-
         public void setStyle(StoryboardStyle style) { this.style = style; }
-
-        public String getSourceNode() { return sourceNode; }
-        public void setSourceNode(String sourceNode) { this.sourceNode = sourceNode; }
-
-        public String getBehavior() { return behavior; }
-        public void setBehavior(String behavior) { this.behavior = behavior; }
-
-        public String getAnchorId() { return anchorId; }
-        public void setAnchorId(String anchorId) { this.anchorId = anchorId; }
-
-        public List<String> getDependencyObjects() { return dependencyObjects; }
-        public void setDependencyObjects(List<String> dependencyObjects) {
-            this.dependencyObjects = dependencyObjects != null ? dependencyObjects : new ArrayList<>();
-        }
-
-        public String getDependencyRelation() { return dependencyRelation; }
-        public void setDependencyRelation(String dependencyRelation) { this.dependencyRelation = dependencyRelation; }
 
         public List<StoryboardConstraint> getConstraints() { return constraints; }
         public void setConstraints(List<StoryboardConstraint> constraints) {

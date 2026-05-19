@@ -19,13 +19,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class StoryboardJsonBuilderTest {
 
     @Test
-    void codegenJsonSuppressesPlacementForDerivedObjectsOnly() throws Exception {
+    void codegenJsonSeparatesRegistrySemanticsFromScenePatchPlacement() throws Exception {
         Storyboard storyboard = new Storyboard();
 
-        StoryboardObject anchor = objectWithPlacement("A", "point", "static", "independent", -3.0, 1.0);
-        StoryboardObject pmin = objectWithPlacement("Pmin", "point", "derived", "intersection", 0.6, -1.0);
-        pmin.setDependencyObjects(List.of("ABprime", "l"));
-        storyboard.setObjectRegistry(List.of(anchor, pmin));
+        StoryboardObject anchor = objectWithPlacement("A", "point", -3.0, 1.0);
+        StoryboardObject segment = objectWithPlacement("ABprime", "segment", 0.0, 0.0);
+        StoryboardObject line = objectWithPlacement("l", "line", 0.0, -1.0);
+        StoryboardObject pmin = objectWithPlacement("Pmin", "point", 0.6, -1.0);
+        pmin.setConstraints(List.of(constraint(
+                "Pmin_intersection",
+                "geometry",
+                "intersection_of",
+                Map.of("point", "Pmin", "object_a", "ABprime", "object_b", "l"),
+                Map.of(),
+                "hard")));
+        storyboard.setObjectRegistry(List.of(anchor, segment, line, pmin));
 
         StoryboardScene scene = new StoryboardScene();
         scene.setSceneId("scene_1");
@@ -34,22 +42,27 @@ class StoryboardJsonBuilderTest {
         storyboard.setScenes(List.of(scene));
 
         JsonNode codegen = JsonUtils.mapper().readTree(StoryboardJsonBuilder.buildForCodegen(storyboard));
-        String codegenText = codegen.toString();
-        assertTrue(codegenText.contains("\"id\":\"A\""));
-        assertTrue(codegenText.contains("\"placement\""));
+        assertTrue(codegen.toString().contains("\"id\":\"A\""));
+        assertFalse(findObject(codegen.get("object_registry"), "A").has("placement"));
         assertFalse(findObject(codegen.get("object_registry"), "Pmin").has("placement"));
-        assertFalse(findObject(codegen.get("scenes").get(0).get("entering_objects"), "Pmin").has("placement"));
+        assertTrue(findObject(codegen.get("object_registry"), "Pmin").has("constraints"));
+
+        JsonNode pminPatch = findObject(codegen.get("scenes").get(0).get("entering_objects"), "Pmin");
+        assertTrue(pminPatch.has("placement"));
+        assertFalse(pminPatch.has("kind"));
+        assertFalse(pminPatch.has("content"));
+        assertFalse(pminPatch.has("constraints"));
 
         JsonNode sceneFix = JsonUtils.mapper().readTree(StoryboardJsonBuilder.buildForSceneEvaluationFix(storyboard));
-        assertFalse(findObject(sceneFix.get("scenes").get(0).get("entering_objects"), "Pmin").has("placement"));
+        assertTrue(findObject(sceneFix.get("scenes").get(0).get("entering_objects"), "Pmin").has("placement"));
     }
 
     @Test
     void codegenJsonIncludesStructuredConstraintsAndUsesThemForDerivedPlacement() throws Exception {
         Storyboard storyboard = new Storyboard();
 
-        StoryboardObject base = objectWithPlacement("A", "point", "static", "independent", -3.0, 1.0);
-        StoryboardObject reflected = objectWithPlacement("A_ref", "point", "static", "independent", -3.0, -3.0);
+        StoryboardObject base = objectWithPlacement("A", "point", -3.0, 1.0);
+        StoryboardObject reflected = objectWithPlacement("A_ref", "point", -3.0, -3.0);
         reflected.setConstraints(List.of(constraint(
                 "A_ref_reflection",
                 "geometry",
@@ -57,7 +70,7 @@ class StoryboardJsonBuilderTest {
                 Map.of("image", "A_ref", "source", "A", "mirror", "l"),
                 Map.of(),
                 "hard")));
-        StoryboardObject line = objectWithPlacement("l", "line", "static", "independent", 0.0, 0.0);
+        StoryboardObject line = objectWithPlacement("l", "line", 0.0, 0.0);
         storyboard.setObjectRegistry(List.of(base, line, reflected));
 
         StoryboardScene scene = new StoryboardScene();
@@ -85,7 +98,7 @@ class StoryboardJsonBuilderTest {
     @Test
     void codegenJsonOmitsEmptyScenePatchMetadataArrays() throws Exception {
         Storyboard storyboard = new Storyboard();
-        storyboard.setObjectRegistry(List.of(objectWithPlacement("A", "point", "static", "independent", -3.0, 1.0)));
+        storyboard.setObjectRegistry(List.of(objectWithPlacement("A", "point", -3.0, 1.0)));
 
         StoryboardScene scene = new StoryboardScene();
         scene.setSceneId("scene_1");
@@ -95,7 +108,7 @@ class StoryboardJsonBuilderTest {
 
         String codegenJson = StoryboardJsonBuilder.buildForCodegen(storyboard);
 
-        assertFalse(codegenJson.contains("\"dependency_objects\" : [ ]"));
+        assertFalse(codegenJson.contains("\"dependency_objects\""));
         assertFalse(codegenJson.contains("\"constraints\" : [ ]"));
         assertFalse(codegenJson.contains("\"geometry_constraints\" : [ ]"));
         assertFalse(codegenJson.contains("\"step_refs\" : [ ]"));
@@ -103,15 +116,11 @@ class StoryboardJsonBuilderTest {
 
     private static StoryboardObject objectWithPlacement(String id,
                                                         String kind,
-                                                        String behavior,
-                                                        String dependencyRelation,
                                                         double x,
                                                         double y) {
         StoryboardObject object = new StoryboardObject();
         object.setId(id);
         object.setKind(kind);
-        object.setBehavior(behavior);
-        object.setDependencyRelation(dependencyRelation);
         object.setPlacement(placement(x, y));
         return object;
     }

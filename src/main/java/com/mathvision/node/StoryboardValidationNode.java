@@ -21,6 +21,7 @@ import com.mathvision.util.AiRequestUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
 import com.mathvision.util.StoryboardConstraintCatalog;
+import com.mathvision.util.StoryboardConstraintUtils;
 import com.mathvision.util.StoryboardConstraintCatalog.RelationSpec;
 import com.mathvision.util.StoryboardConstraintCatalog.Scope;
 import com.mathvision.util.StoryboardNormalizer;
@@ -73,7 +74,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
     private static final double MIN_OVERLAP_AREA = 0.015;
     private static final double MIN_OVERLAP_RATIO = 0.08;
     private static final double SPATIAL_BUCKET_SIZE = 1.25;
-    private static final int MAX_VALIDATION_FIX_ATTEMPTS = 3;
+    private static final int DEFAULT_VALIDATION_FIX_ATTEMPTS = 3;
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
@@ -127,8 +128,9 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
 
         boolean fixApplied = false;
         int attempts = 0;
+        int maxValidationFixAttempts = resolveMaxValidationFixAttempts();
         if (issues.isEmpty()) {
-            if (aiClient == null) {
+            if (aiClient == null || maxValidationFixAttempts == 0) {
                 log.info("Storyboard validation passed (no issues)");
                 finalizeReport(storyboardValidationReport, true, false, false, List.of(),
                         "Storyboard validation passed");
@@ -137,14 +139,14 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
 
             attempts++;
             log.info("Storyboard validation passed; attempting LLM storyboard cleanup pass {}/{}",
-                    attempts, MAX_VALIDATION_FIX_ATTEMPTS);
+                    attempts, maxValidationFixAttempts);
             Instant cleanupStart = Instant.now();
             int toolCallsBefore = toolCalls;
             Narrative fixed = attemptLlmFix(current, issues);
             int cleanupToolCalls = toolCalls - toolCallsBefore;
             if (fixed == null || fixed.getStoryboard() == null) {
                 log.warn("LLM storyboard cleanup pass {}/{} did not return a usable storyboard",
-                        attempts, MAX_VALIDATION_FIX_ATTEMPTS);
+                        attempts, maxValidationFixAttempts);
                 appendValidationTraceEntry(
                         current.getStoryboard(),
                         "cleanup_failed",
@@ -184,21 +186,21 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             }
 
             log.warn("LLM storyboard cleanup pass {}/{} left {} issues",
-                    attempts, MAX_VALIDATION_FIX_ATTEMPTS, issues.size());
+                    attempts, maxValidationFixAttempts, issues.size());
             logValidationIssues(issues);
         }
 
-        while (!issues.isEmpty() && attempts < MAX_VALIDATION_FIX_ATTEMPTS) {
+        while (!issues.isEmpty() && attempts < maxValidationFixAttempts) {
             attempts++;
             log.warn("Attempting LLM storyboard cleanup pass {}/{}",
-                    attempts, MAX_VALIDATION_FIX_ATTEMPTS);
+                    attempts, maxValidationFixAttempts);
             Instant cleanupStart = Instant.now();
             int toolCallsBefore = toolCalls;
             Narrative fixed = attemptLlmFix(current, issues);
             int cleanupToolCalls = toolCalls - toolCallsBefore;
             if (fixed == null || fixed.getStoryboard() == null) {
                 log.warn("LLM storyboard cleanup pass {}/{} did not return a usable storyboard",
-                        attempts, MAX_VALIDATION_FIX_ATTEMPTS);
+                        attempts, maxValidationFixAttempts);
                 appendValidationTraceEntry(
                         current.getStoryboard(),
                         "cleanup_failed",
@@ -237,16 +239,23 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             }
 
             log.warn("LLM storyboard cleanup pass {}/{} left {} issues",
-                    attempts, MAX_VALIDATION_FIX_ATTEMPTS, issues.size());
+                    attempts, maxValidationFixAttempts, issues.size());
             logValidationIssues(issues);
         }
 
         log.warn("Storyboard validation still has {} issues after {} cleanup pass(es); proceeding to next node",
                 issues.size(), attempts);
         finalizeReport(storyboardValidationReport, false, attempts > 0, fixApplied, issues,
-                "Storyboard validation reached the maximum of " + MAX_VALIDATION_FIX_ATTEMPTS
+                "Storyboard validation reached the maximum of " + maxValidationFixAttempts
                         + " cleanup pass(es); proceeding with remaining issues");
         return current;
+    }
+
+    private int resolveMaxValidationFixAttempts() {
+        if (workflowConfig == null) {
+            return DEFAULT_VALIDATION_FIX_ATTEMPTS;
+        }
+        return Math.max(workflowConfig.getStoryboardValidationMaxRetries(), 0);
     }
 
     private void logValidationIssues(List<String> issues) {
@@ -333,45 +342,8 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         // All remaining checks use the original storyboard
         issues.addAll(validateAsciiText(storyboard));
         issues.addAll(validateStoryboardColors(storyboard));
-        issues.addAll(validateDependencyFields(storyboard));
         issues.addAll(validateStructuredConstraints(storyboard));
         issues.addAll(validateGeometricMarkerDefinitions(storyboard));
-
-        return issues;
-    }
-
-    private List<String> validateDependencyFields(Storyboard storyboard) {
-        List<String> issues = new ArrayList<>();
-        if (storyboard == null || storyboard.getObjectRegistry() == null) {
-            return issues;
-        }
-
-        Map<String, StoryboardObject> registry = new LinkedHashMap<>();
-        for (StoryboardObject object : storyboard.getObjectRegistry()) {
-            String objectId = StoryboardPatchResolver.objectId(object);
-            if (objectId != null) {
-                registry.put(objectId, object);
-            }
-        }
-
-        for (StoryboardObject object : registry.values()) {
-            String objectId = StoryboardPatchResolver.objectId(object);
-            List<String> dependencies = cleanDependencyObjects(object);
-            boolean dependencyDriven = isDependencyDriven(object);
-            if (dependencyDriven && dependencies.isEmpty()) {
-                issues.add("object_registry: dependency-driven object '" + objectId
-                        + "' must define dependency_objects with source object ids");
-            }
-
-            for (String dependencyId : dependencies) {
-                if (objectId != null && objectId.equals(dependencyId)) {
-                    issues.add("object_registry: object '" + objectId + "' cannot depend on itself");
-                } else if (!registry.containsKey(dependencyId)) {
-                    issues.add("object_registry: object '" + objectId
-                            + "' references unknown dependency_object '" + dependencyId + "'");
-                }
-            }
-        }
 
         return issues;
     }
@@ -386,20 +358,9 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                 continue;
             }
             String objectId = StoryboardPatchResolver.objectId(object);
-            List<String> dependencies = cleanDependencyObjects(object);
-            String dependency = normalizeForSemanticCheck(String.join(" ", dependencies) + " "
-                    + safe(object.getDependencyRelation()));
             boolean hasStructuredMeasurementConstraint = hasStructuredConstraint(object,
-                    "angle_between_rays", "angle_between_lines", "angle_between", "arc_sweep", "right_angle_at");
+                    "angle_between", "arc_sweep", "right_angle_at");
 
-            if (dependencies.isEmpty() && !mentionsAngleVertex(object, dependency)) {
-                issues.add("object_registry: angle/arc marker '" + objectId
-                        + "' must include its measured vertex or anchor in dependency_objects");
-            }
-            if (dependencies.size() < 2 && !mentionsTwoAngleBoundaries(dependency)) {
-                issues.add("object_registry: angle/arc marker '" + objectId
-                        + "' must define both boundary rays, segments, lines, normals, tangents, or source objects in dependency_objects/dependency_relation");
-            }
             if (isArcMarker(object) && !hasStructuredMeasurementConstraint) {
                 issues.add("object_registry: arc marker '" + objectId
                         + "' must define the ordered arc sweep with a structured measurement constraint");
@@ -419,7 +380,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
     /**
      * Validates that for every angle_between constraint, each boundary line
      * referenced in the constraint passes through (or has the vertex as an
-     * endpoint in) its dependency_objects. This catches cases where a line
+     * endpoint in) the structured connector refs. This catches cases where a line
      * at a different location is incorrectly used as an angle boundary,
      * e.g. using a perpendicular from a different point as the normal at
      * the vertex.
@@ -470,42 +431,44 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                         continue;
                     }
 
-                    List<String> boundaryDeps = cleanDependencyObjects(boundaryObj);
-                    if (boundaryDeps.contains(vertexId)) {
-                        // Vertex is a dependency of the boundary line — the line passes through the vertex
+                    if (constraintReferences(boundaryObj, vertexId)) {
                         continue;
                     }
 
-                    // Check if the boundary object's own constraints reference the vertex
-                    // (e.g. a line defined as intersection may not list the vertex in dependency_objects
-                    // but is still geometrically valid). Only flag if the boundary is a simple
-                    // segment/line that should have endpoints in dependency_objects.
                     String boundaryKind = normalizeForSemanticCheck(boundaryObj.getKind());
-                    String boundaryRelation = normalizeForSemanticCheck(boundaryObj.getDependencyRelation());
-                    boolean isSimpleSegmentOrLine = containsAny(boundaryKind, " segment ", " line ")
-                            || containsAny(boundaryRelation, " connects_points ", " perpendicular_bisector ");
-                    boolean isPerpendicularHelper = containsAny(boundaryRelation, " perpendicular_bisector ")
+                    boolean isSimpleSegmentOrLine = containsAny(boundaryKind, " segment ", " line ", " ray ");
+                    boolean isPerpendicularHelper = hasStructuredConstraint(boundaryObj, "perpendicular_through", "perpendicular_bisector")
                             || containsAny(normalizeForSemanticCheck(boundaryObj.getContent()), " perpendicular ", " normal ");
 
                     if (isSimpleSegmentOrLine && !isPerpendicularHelper) {
                         String objectId = StoryboardPatchResolver.objectId(object);
                         issues.add("object_registry: angle marker '" + objectId + "' constraint references '"
                                 + boundaryId + "' as " + refKey + ", but '" + boundaryId
-                                + "' does not include vertex '" + vertexId + "' in its dependency_objects; "
-                                + "the boundary line may not pass through the angle vertex");
-                    } else if (isPerpendicularHelper && !boundaryDeps.contains(vertexId)) {
-                        // Perpendicular / normal helper that doesn't reference the vertex
-                        // is almost certainly the wrong perpendicular (e.g. from a different point)
+                                + "' has no constraint referencing vertex '" + vertexId
+                                + "'; the boundary line may not pass through the angle vertex");
+                    } else if (isPerpendicularHelper && !constraintReferences(boundaryObj, vertexId)) {
                         String objectId = StoryboardPatchResolver.objectId(object);
                         issues.add("object_registry: angle marker '" + objectId + "' constraint references '"
                                 + boundaryId + "' as " + refKey + ", but '" + boundaryId
-                                + "' is a perpendicular/normal from " + boundaryDeps + " and does not pass through vertex '"
+                                + "' is a perpendicular/normal that does not reference vertex '"
                                 + vertexId + "'; use a normal at the vertex instead");
                     }
                 }
             }
         }
         return issues;
+    }
+
+    private boolean constraintReferences(StoryboardObject object, String objectId) {
+        if (object == null || objectId == null || objectId.isBlank() || object.getConstraints() == null) {
+            return false;
+        }
+        for (StoryboardConstraint constraint : object.getConstraints()) {
+            if (StoryboardConstraintUtils.referencedObjectIds(constraint).contains(objectId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -530,11 +493,13 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             return issues;
         }
         Set<String> knownIds = new LinkedHashSet<>();
+        Map<String, StoryboardObject> registryById = new LinkedHashMap<>();
         if (storyboard.getObjectRegistry() != null) {
             for (StoryboardObject object : storyboard.getObjectRegistry()) {
                 String id = StoryboardPatchResolver.objectId(object);
                 if (id != null) {
                     knownIds.add(id);
+                    registryById.put(id, object);
                 }
             }
         }
@@ -545,6 +510,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                 validateConstraintList("object_registry object '" + objectId + "'",
                         object != null ? object.getConstraints() : null,
                         knownIds,
+                        registryById,
                         objectId,
                         Scope.OBJECT,
                         issues);
@@ -559,6 +525,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                 validateConstraintList("scene " + (i + 1) + " (" + sceneId + ")",
                         scene != null ? scene.getConstraints() : null,
                         knownIds,
+                        registryById,
                         null,
                         Scope.SCENE,
                         issues);
@@ -570,6 +537,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
     private void validateConstraintList(String scope,
                                         List<StoryboardConstraint> constraints,
                                         Set<String> knownIds,
+                                        Map<String, StoryboardObject> registryById,
                                         String ownerId,
                                         Scope constraintScope,
                                         List<String> issues) {
@@ -635,8 +603,87 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                 if (ownerId != null && !ownerId.isBlank() && !referencedIds.contains(ownerId)) {
                     issues.add(label + ": object-level constraint should include its owner id '" + ownerId + "' in refs");
                 }
+                validateRelationKindCompatibility(label, constraint, registryById, issues);
             }
             validateConstraintParameters(label, constraint.getParameters(), relationSpec, knownIds, issues);
+        }
+    }
+
+    private void validateRelationKindCompatibility(String label,
+                                                   StoryboardConstraint constraint,
+                                                   Map<String, StoryboardObject> registryById,
+                                                   List<String> issues) {
+        if (constraint == null || registryById == null || registryById.isEmpty()) {
+            return;
+        }
+        String relation = normalizeConstraintKey(constraint.getRelation());
+        switch (relation) {
+            case "label_for":
+                validateRefKind(label, constraint, registryById, "label",
+                        List.of(" text ", " equation ", " formula ", " label ", " caption ", " title "), issues);
+                break;
+            case "moves_on_object":
+                validateRefKind(label, constraint, registryById, "point", List.of(" point "), issues);
+                break;
+            case "connects_points":
+                validateAnyRefKind(label, constraint, registryById,
+                        List.of("object", "connector", "segment", "line", "ray"),
+                        List.of(" segment ", " line ", " ray ", " vector "), issues);
+                break;
+            case "angle_between":
+                validateRefKind(label, constraint, registryById, "marker",
+                        List.of(" angle_marker ", " anglemarker ", " right_angle ", " rightangle ", " arc_marker "), issues);
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void validateRefKind(String label,
+                                 StoryboardConstraint constraint,
+                                 Map<String, StoryboardObject> registryById,
+                                 String role,
+                                 List<String> allowedKindTokens,
+                                 List<String> issues) {
+        String id = resolveRefId(constraint.getRefs() != null ? constraint.getRefs().get(role) : null);
+        if (id == null) {
+            return;
+        }
+        StoryboardObject object = registryById.get(id);
+        if (object == null) {
+            return;
+        }
+        String kind = normalizeForSemanticCheck(object.getKind());
+        if (!containsAny(kind, allowedKindTokens.toArray(new String[0]))) {
+            issues.add(label + ": relation '" + constraint.getRelation() + "' refs." + role
+                    + " must reference a compatible kind, but '" + id + "' has kind '" + object.getKind() + "'");
+        }
+    }
+
+    private void validateAnyRefKind(String label,
+                                    StoryboardConstraint constraint,
+                                    Map<String, StoryboardObject> registryById,
+                                    List<String> roles,
+                                    List<String> allowedKindTokens,
+                                    List<String> issues) {
+        if (constraint.getRefs() == null) {
+            return;
+        }
+        for (String role : roles) {
+            String id = resolveRefId(constraint.getRefs().get(role));
+            if (id == null) {
+                continue;
+            }
+            StoryboardObject object = registryById.get(id);
+            if (object == null) {
+                return;
+            }
+            String kind = normalizeForSemanticCheck(object.getKind());
+            if (!containsAny(kind, allowedKindTokens.toArray(new String[0]))) {
+                issues.add(label + ": relation '" + constraint.getRelation() + "' refs." + role
+                        + " must reference a compatible kind, but '" + id + "' has kind '" + object.getKind() + "'");
+            }
+            return;
         }
     }
 
@@ -800,23 +847,13 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             return false;
         }
         String kind = normalizeForSemanticCheck(object.getKind());
-        String relation = normalizeForSemanticCheck(object.getDependencyRelation());
 
-        if (isTextRenderKind(kind) || isLabelRelation(relation)) {
+        if (isTextRenderKind(kind)) {
             return false;
         }
 
-        boolean markerKind = isAngleOrArcMarkerKind(kind);
-        boolean markerRelation = isAngleOrArcMarkerRelation(relation);
-        if (markerKind || markerRelation) {
-            return true;
-        }
-
-        if (!kind.isBlank()) {
-            return false;
-        }
-
-        return hasLegacyAngleOrArcMarkerIdFallback(object);
+        return isAngleOrArcMarkerKind(kind) || hasStructuredConstraint(object,
+                "angle_between", "arc_sweep", "right_angle_at");
     }
 
     private boolean isArcMarker(StoryboardObject object) {
@@ -824,25 +861,15 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             return false;
         }
         String kind = normalizeForSemanticCheck(object.getKind());
-        String relation = normalizeForSemanticCheck(object.getDependencyRelation());
-        if (isTextRenderKind(kind) || isLabelRelation(relation)) {
+        if (isTextRenderKind(kind)) {
             return false;
         }
-        if (isArcMarkerKind(kind) || containsAny(relation, " arc_sweep ")) {
-            return true;
-        }
-        return kind.isBlank() && containsAny(normalizeForSemanticCheck(object.getId()), " arc ");
+        return isArcMarkerKind(kind) || hasStructuredConstraint(object, "arc_sweep");
     }
 
     private boolean isAngleOrArcMarkerKind(String kind) {
         return containsAny(kind,
                 " angle_marker ", " anglemarker ", " arc_marker ", " arc ", " right_angle ", " rightangle ");
-    }
-
-    private boolean isAngleOrArcMarkerRelation(String relation) {
-        return containsAny(relation,
-                " angle_between ", " angle_at_vertex ", " directed_angle ", " arc_sweep ",
-                " angle_marker ", " right_angle ");
     }
 
     private boolean isArcMarkerKind(String kind) {
@@ -865,49 +892,10 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         return false;
     }
 
-    private boolean hasLegacyAngleOrArcMarkerIdFallback(StoryboardObject object) {
-        String id = normalizeForSemanticCheck(object.getId());
-        String semanticFields = normalizeForSemanticCheck(String.join(" ",
-                safe(object.getContent()),
-                String.join(" ", cleanDependencyObjects(object)),
-                safe(object.getDependencyRelation())));
-        boolean markerId = containsAny(id, " angle ", " arc ", " anglemarker ", " angle_marker ");
-        boolean angleMeaning = containsAny(semanticFields, "theta", " angle ", " perpendicular", " normal", " tangent");
-        return markerId && angleMeaning;
-    }
-
     private boolean isTextRenderKind(String kind) {
         return containsAny(kind,
                 " text ", " label ", " text_card ", " equation ", " formula ", " formula_card ",
                 " title ", " caption ");
-    }
-
-    private boolean isLabelRelation(String relation) {
-        return containsAny(relation, " label_for ", " follows_anchor ");
-    }
-
-    private boolean mentionsAngleVertex(StoryboardObject object, String dependency) {
-        if (containsAny(dependency, "vertex", " at ", "center", "shared point", "anchor")) {
-            return true;
-        }
-        String anchorId = normalizeForSemanticCheck(object != null ? object.getAnchorId() : null);
-        return !anchorId.isBlank() && containsToken(dependency, anchorId);
-    }
-
-    private boolean mentionsTwoAngleBoundaries(String dependency) {
-        if (dependency.isBlank()) {
-            return false;
-        }
-        if (containsAny(dependency, " between ") && containsAny(dependency, " and ", " vs ", " versus ")) {
-            return true;
-        }
-        int boundaryTerms = 0;
-        for (String term : List.of("ray", "segment", "line", "normal", "perpendicular", "tangent", "vector")) {
-            if (containsAny(dependency, term)) {
-                boundaryTerms++;
-            }
-        }
-        return boundaryTerms >= 2;
     }
 
     private String normalizeForSemanticCheck(String text) {
@@ -927,42 +915,6 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             }
         }
         return false;
-    }
-
-    private boolean containsToken(String haystack, String token) {
-        if (haystack == null || token == null || token.isBlank()) {
-            return false;
-        }
-        return haystack.contains(" " + token.trim() + " ");
-    }
-
-    private String safe(String text) {
-        return text == null ? "" : text;
-    }
-
-    private List<String> cleanDependencyObjects(StoryboardObject object) {
-        List<String> dependencies = new ArrayList<>();
-        if (object == null || object.getDependencyObjects() == null) {
-            return dependencies;
-        }
-        for (String dependencyId : object.getDependencyObjects()) {
-            if (dependencyId != null && !dependencyId.isBlank()) {
-                dependencies.add(dependencyId.trim());
-            }
-        }
-        return dependencies;
-    }
-
-    private boolean isDependencyDriven(StoryboardObject object) {
-        if (object == null) {
-            return false;
-        }
-        String behavior = object.getBehavior();
-        String relation = object.getDependencyRelation();
-        return Narrative.StoryboardObject.BEHAVIOR_DERIVED.equalsIgnoreCase(behavior)
-                || Narrative.StoryboardObject.BEHAVIOR_FOLLOWS_ANCHOR.equalsIgnoreCase(behavior)
-                || (!isBlank(relation) && !relation.trim().equalsIgnoreCase("independent")
-                && !relation.trim().equalsIgnoreCase("independent_overlay"));
     }
 
     private List<String> validateStoryboardColors(Storyboard storyboard) {
@@ -1016,8 +968,9 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         Narrative.StoryboardStyle style = object.getStyle();
         boolean isTextKind = isTextual(object);
         boolean isTextCard = containsAny(normalizeForSemanticCheck(object.getKind()), " text_card ", " formula_card ");
+        boolean hasExplicitTextBackground = isTextKind && style.getFillOpacity() != null && style.getFillOpacity() > 0.0;
         collectColorValue("color", style.getColor(), isTextKind, false, colors);
-        collectColorValue("fill_color", style.getFillColor(), false, isTextCard, colors);
+        collectColorValue("fill_color", style.getFillColor(), false, isTextCard || hasExplicitTextBackground, colors);
         collectColorValue("stroke_color", style.getStrokeColor(), false, isTextCard, colors);
         collectColorValue("highlight_color", style.getHighlightColor(), false, false, colors);
         return colors;
@@ -1346,7 +1299,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         AxisBounds xBounds;
         AxisBounds yBounds;
         if (Narrative.StoryboardPlacement.COORDINATE_SPACE_ANCHOR.equalsIgnoreCase(coordinateSpace)) {
-            String rawAnchorId = !isBlank(object.getAnchorId()) ? object.getAnchorId().trim() : null;
+            String rawAnchorId = resolveAttachmentAnchorId(object);
             String anchorId = StoryboardPatchResolver.objectId(visibleObjects.get(rawAnchorId));
             if (anchorId == null) {
                 return null;
@@ -1375,6 +1328,28 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         }
 
         return new StoryboardLayoutBounds(xBounds.min, xBounds.max, yBounds.min, yBounds.max);
+    }
+
+    private String resolveAttachmentAnchorId(StoryboardObject object) {
+        if (object == null || object.getConstraints() == null) {
+            return null;
+        }
+        String objectId = StoryboardPatchResolver.objectId(object);
+        for (StoryboardConstraint constraint : object.getConstraints()) {
+            if (!StoryboardConstraintCatalog.isAttachmentRelation(constraint.getRelation())
+                    || constraint.getRefs() == null) {
+                continue;
+            }
+            String anchorId = resolveRefId(constraint.getRefs().get("anchor"));
+            if (anchorId == null || anchorId.isBlank()) {
+                continue;
+            }
+            Set<String> ownerIds = StoryboardConstraintUtils.ownerIds(constraint);
+            if (ownerIds.isEmpty() || ownerIds.contains(objectId)) {
+                return anchorId;
+            }
+        }
+        return null;
     }
 
     private AxisBounds resolveAxisBounds(StoryboardPlacementAxis axis,
@@ -1443,7 +1418,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
     private String formatDependencyContext(String objectId,
                                            StoryboardObject object,
                                            List<StoryboardLayoutElement> elements) {
-        List<String> dependencies = cleanDependencyObjects(object);
+        List<String> dependencies = constraintDependencyIds(object);
         if (object == null || dependencies.isEmpty()) {
             return "";
         }
@@ -1456,12 +1431,40 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         StringBuilder sb = new StringBuilder();
         sb.append("Dependency chain:\n");
         sb.append("- ").append(objectId).append(" depends on [")
-                .append(String.join(", ", dependencies)).append("]\n");
-        appendDependencyPlacementLines(dependencies, byId, new LinkedHashSet<>(), sb);
-        if (!isBlank(object.getDependencyRelation())) {
-            sb.append("- relation: ").append(object.getDependencyRelation().trim()).append("\n");
+                .append(String.join(", ", dependencies)).append("]");
+        String relationSummary = formatConstraintRelationSummary(object);
+        if (!relationSummary.isBlank()) {
+            sb.append(" via ").append(relationSummary);
         }
+        sb.append("\n");
+        appendDependencyPlacementLines(dependencies, byId, new LinkedHashSet<>(), sb);
         return sb.toString();
+    }
+
+    private String formatConstraintRelationSummary(StoryboardObject object) {
+        if (object == null || object.getConstraints() == null) {
+            return "";
+        }
+        LinkedHashSet<String> relations = new LinkedHashSet<>();
+        for (StoryboardConstraint constraint : object.getConstraints()) {
+            if (constraint != null && constraint.getRelation() != null && !constraint.getRelation().isBlank()) {
+                relations.add(constraint.getRelation().trim());
+            }
+        }
+        return String.join(", ", relations);
+    }
+
+    private List<String> constraintDependencyIds(StoryboardObject object) {
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        if (object == null || object.getConstraints() == null) {
+            return new ArrayList<>();
+        }
+        String objectId = StoryboardPatchResolver.objectId(object);
+        for (StoryboardConstraint constraint : object.getConstraints()) {
+            ids.addAll(StoryboardConstraintUtils.dependencyIds(constraint));
+        }
+        ids.remove(objectId);
+        return new ArrayList<>(ids);
     }
 
     private void appendDependencyPlacementLines(List<String> dependencyIds,
@@ -1480,7 +1483,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             StoryboardObject dependencyObject = dependencyElement.object;
             sb.append("- ").append(dependencyId).append(": ")
                     .append(formatPlacementSummary(dependencyObject)).append("\n");
-            List<String> nestedDependencies = cleanDependencyObjects(dependencyObject);
+            List<String> nestedDependencies = constraintDependencyIds(dependencyObject);
             if (!nestedDependencies.isEmpty()) {
                 sb.append("- ").append(dependencyId).append(" depends on [")
                         .append(String.join(", ", nestedDependencies)).append("]\n");
@@ -1499,9 +1502,11 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                 ? placement.getCoordinateSpace().trim()
                 : "unknown";
         sb.append(coordinateSpace).append(" placement");
-        if (Narrative.StoryboardPlacement.COORDINATE_SPACE_ANCHOR.equalsIgnoreCase(coordinateSpace)
-                && !isBlank(object.getAnchorId())) {
-            sb.append(" anchor=").append(object.getAnchorId().trim());
+        if (Narrative.StoryboardPlacement.COORDINATE_SPACE_ANCHOR.equalsIgnoreCase(coordinateSpace)) {
+            String anchorId = resolveAttachmentAnchorId(object);
+            if (!isBlank(anchorId)) {
+                sb.append(" anchor=").append(anchorId.trim());
+            }
         }
         List<String> axisParts = new ArrayList<>();
         String xSummary = formatAxisSummary("x", placement.getX());
@@ -1687,68 +1692,28 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             return false;
         }
         String otherId = StoryboardPatchResolver.objectId(otherObject);
-        if (!isBlank(textObject.getAnchorId()) && textObject.getAnchorId().trim().equals(otherId)) {
-            return true;
-        }
-        if (!isLikelyLabel(textObject)) {
+        String textId = StoryboardPatchResolver.objectId(textObject);
+        if (textId == null || otherId == null || textObject.getConstraints() == null) {
             return false;
         }
-        String textStem = semanticStem(StoryboardPatchResolver.objectId(textObject));
-        String otherStem = semanticStem(otherId);
-        return textStem != null && textStem.equals(otherStem);
-    }
-
-    private boolean isLikelyLabel(StoryboardObject object) {
-        if (object == null) {
-            return false;
-        }
-        String kind = normalizeForSemanticCheck(object.getKind());
-        String relation = normalizeForSemanticCheck(object.getDependencyRelation());
-        if (containsAny(kind, " label ")
-                || isLabelRelation(relation)
-                || !isBlank(object.getAnchorId())) {
-            return true;
-        }
-        if (!kind.isBlank()) {
-            return false;
-        }
-        String objectId = StoryboardPatchResolver.objectId(object);
-        if (objectId == null) {
-            return false;
-        }
-        String normalized = objectId.trim().toLowerCase(Locale.ROOT);
-        return normalized.endsWith("_label")
-                || normalized.endsWith("label")
-                || normalized.endsWith("_text")
-                || normalized.endsWith("text")
-                || normalized.startsWith("label_")
-                || normalized.startsWith("text_");
-    }
-
-    private String semanticStem(String objectId) {
-        if (objectId == null || objectId.isBlank()) {
-            return null;
-        }
-        String normalized = objectId.trim().toLowerCase(Locale.ROOT);
-        // Strip common label/text suffixes first
-        String[] suffixes = {"_label", "_text", "label", "text"};
-        for (String suffix : suffixes) {
-            if (normalized.endsWith(suffix) && normalized.length() > suffix.length()) {
-                normalized = normalized.substring(0, normalized.length() - suffix.length());
-                break;
+        for (StoryboardConstraint constraint : textObject.getConstraints()) {
+            if (!StoryboardConstraintCatalog.isAttachmentRelation(constraint.getRelation())) {
+                continue;
+            }
+            Map<String, Object> refs = constraint.getRefs();
+            if (refs == null) {
+                continue;
+            }
+            String labelId = resolveRefId(refs.get("label"));
+            String objectId = resolveRefId(refs.get("object"));
+            String attachedId = resolveRefId(refs.get("attached"));
+            String anchorId = resolveRefId(refs.get("anchor"));
+            boolean ownsText = textId.equals(labelId) || textId.equals(objectId) || textId.equals(attachedId);
+            if (ownsText && otherId.equals(anchorId)) {
+                return true;
             }
         }
-        // Strip common type prefixes (label, text, and geometry types) to align with
-        // SceneEvaluationNode.semanticFamilyKey behaviour so that e.g. "label_a" and
-        // "point_a" resolve to the same stem "a".
-        String[] prefixes = {"label_", "text_", "point_", "seg_", "line_", "brace_", "bar_"};
-        for (String prefix : prefixes) {
-            if (normalized.startsWith(prefix) && normalized.length() > prefix.length()) {
-                normalized = normalized.substring(prefix.length());
-                break;
-            }
-        }
-        return normalized;
+        return false;
     }
 
     private boolean isBlank(String text) {
@@ -1854,7 +1819,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
     /**
      * Asks the LLM to compute placements for objects that lack coordinates,
      * so that layout validation (offscreen / overlap checks) can cover derived
-     * objects whose positions are determined by dependency_relations rather
+     * objects whose positions are determined by structured constraints rather
      * than explicit placement fields.
      *
      * <p>The returned storyboard is <strong>only</strong> used for
@@ -1867,16 +1832,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             return null;
         }
         try {
-            boolean hasObjectsNeedingPlacement = false;
-            if (storyboard.getObjectRegistry() != null) {
-                for (StoryboardObject object : storyboard.getObjectRegistry()) {
-                    if (object != null && (object.getPlacement() == null || !object.getPlacement().hasData())) {
-                        hasObjectsNeedingPlacement = true;
-                        break;
-                    }
-                }
-            }
-            if (!hasObjectsNeedingPlacement) {
+            if (!hasVisibleObjectsNeedingPlacement(storyboard)) {
                 return null;
             }
 
@@ -1927,6 +1883,35 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             log.warn("Placement enrichment failed: {}", e.getMessage());
             return null;
         }
+    }
+
+    private boolean hasVisibleObjectsNeedingPlacement(Storyboard storyboard) {
+        Storyboard mergedStoryboard = StoryboardPatchResolver.buildMergedStoryboard(storyboard);
+        if (mergedStoryboard == null || mergedStoryboard.getScenes() == null) {
+            return false;
+        }
+        for (StoryboardScene scene : mergedStoryboard.getScenes()) {
+            if (scene == null) {
+                continue;
+            }
+            if (hasVisibleObjectsNeedingPlacement(scene.getPersistentObjects())
+                    || hasVisibleObjectsNeedingPlacement(scene.getEnteringObjects())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasVisibleObjectsNeedingPlacement(List<StoryboardObject> objects) {
+        if (objects == null) {
+            return false;
+        }
+        for (StoryboardObject object : objects) {
+            if (object != null && (object.getPlacement() == null || !object.getPlacement().hasData())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private int countObjectsWithPlacement(Storyboard storyboard) {
@@ -2007,6 +1992,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
 
             Storyboard fixedStoryboard = JsonUtils.mapper().treeToValue(storyboardNode, Storyboard.class);
             fixedStoryboard = StoryboardNormalizer.normalize(fixedStoryboard);
+            preserveStepRefs(narrative.getStoryboard(), fixedStoryboard);
 
             return new Narrative(
                     narrative.getTargetConcept(),
@@ -2019,6 +2005,23 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         } catch (Exception e) {
             log.warn("LLM fix failed: {}", e.getMessage());
             return null;
+        }
+    }
+
+    private void preserveStepRefs(Storyboard source, Storyboard target) {
+        if (source == null || target == null
+                || source.getScenes() == null || target.getScenes() == null) {
+            return;
+        }
+        int count = Math.min(source.getScenes().size(), target.getScenes().size());
+        for (int i = 0; i < count; i++) {
+            StoryboardScene sourceScene = source.getScenes().get(i);
+            StoryboardScene targetScene = target.getScenes().get(i);
+            if (sourceScene != null && targetScene != null) {
+                targetScene.setStepRefs(sourceScene.getStepRefs() != null
+                        ? new ArrayList<>(sourceScene.getStepRefs())
+                        : new ArrayList<>());
+            }
         }
     }
 

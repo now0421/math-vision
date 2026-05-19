@@ -54,6 +54,7 @@ class ManimRendererServiceTest {
             @Override
             protected Process startProcess(List<String> cmd, Path workingDir, Path geometryOutputPath)
                     throws IOException {
+                assertFalse(cmd.contains("--disable_caching"));
                 String script = Files.readString(workingDir.resolve("scene_render.py"));
                 assertTrue(script.contains("from mathvision_geometry_export import patch_scene_for_geometry_export"));
                 assertTrue(script.contains("DemoScene = __mathvision_patch_scene(DemoScene)"));

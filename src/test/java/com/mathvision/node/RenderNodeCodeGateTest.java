@@ -172,8 +172,9 @@ class RenderNodeCodeGateTest {
                         "",
                         "class DemoScene(Scene):",
                         "    def construct(self):",
-                        "        label = Tex(r\"B^\\\\prime\")",
-                        "        self.add(label)"),
+                        "        path = VMobject()",
+                        "        path.set_points([LEFT, RIGHT])",
+                        "        self.add(path)"),
                 "DemoScene",
                 "demo",
                 "Demo concept",
@@ -199,7 +200,7 @@ class RenderNodeCodeGateTest {
                 (com.mathvision.model.CodeFixRequest) ctx.get(WorkflowKeys.CODE_FIX_REQUEST);
         assertEquals("summary_signature", request.getErrorContextMode());
         assertTrue(request.getStaticAuditIssueCount() > 0);
-        assertTrue(request.getStaticAuditSummary().contains("Tex constructor mismatch"));
+        assertTrue(request.getStaticAuditSummary().contains("unsafe VMobject.set_points() call"));
         assertNotEquals("", request.getInputTextHealth());
     }
 

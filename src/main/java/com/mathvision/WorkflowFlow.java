@@ -1,5 +1,6 @@
 package com.mathvision;
 
+import com.mathvision.config.WorkflowConfig;
 import com.mathvision.node.CodeGenerationNode;
 import com.mathvision.node.CodeFixNode;
 import com.mathvision.node.ExplorationNode;
@@ -33,11 +34,18 @@ public class WorkflowFlow {
      * Creates the full workflow with all stages wired together.
      */
     public static PocketFlow.Flow<?> create() {
+        return create(null);
+    }
+
+    /**
+     * Creates the full workflow with all stages wired together.
+     */
+    public static PocketFlow.Flow<?> create(WorkflowConfig config) {
         ExplorationNode exploration = new ExplorationNode();
         MathEnrichmentNode mathEnrich = new MathEnrichmentNode();
         VisualDesignNode visualDesign = new VisualDesignNode();
         StoryboardValidationNode storyboardValidation = new StoryboardValidationNode();
-        CodeGenerationNode codeGen = new CodeGenerationNode();
+        CodeGenerationNode codeGen = createCodeGenerationNode(config);
         CodeEvaluationNode codeEvaluation = new CodeEvaluationNode();
         CodeFixNode codeFix = new CodeFixNode();
         RenderNode render = new RenderNode();
@@ -69,11 +77,18 @@ public class WorkflowFlow {
      * Creates a workflow that skips rendering but still runs code evaluation.
      */
     public static PocketFlow.Flow<?> createWithoutRender() {
+        return createWithoutRender(null);
+    }
+
+    /**
+     * Creates a workflow that skips rendering but still runs code evaluation.
+     */
+    public static PocketFlow.Flow<?> createWithoutRender(WorkflowConfig config) {
         ExplorationNode exploration = new ExplorationNode();
         MathEnrichmentNode mathEnrich = new MathEnrichmentNode();
         VisualDesignNode visualDesign = new VisualDesignNode();
         StoryboardValidationNode storyboardValidation = new StoryboardValidationNode();
-        CodeGenerationNode codeGen = new CodeGenerationNode();
+        CodeGenerationNode codeGen = createCodeGenerationNode(config);
         CodeEvaluationNode codeEvaluation = new CodeEvaluationNode();
         CodeFixNode codeFix = new CodeFixNode();
 
@@ -99,10 +114,18 @@ public class WorkflowFlow {
      * Use when the knowledge graph has been loaded manually via --from-graph.
      */
     public static PocketFlow.Flow<?> createFromGraph() {
+        return createFromGraph(null);
+    }
+
+    /**
+     * Creates a workflow starting from stage 1 (skips stage 0 exploration).
+     * Use when the knowledge graph has been loaded manually via --from-graph.
+     */
+    public static PocketFlow.Flow<?> createFromGraph(WorkflowConfig config) {
         MathEnrichmentNode mathEnrich = new MathEnrichmentNode();
         VisualDesignNode visualDesign = new VisualDesignNode();
         StoryboardValidationNode storyboardValidation = new StoryboardValidationNode();
-        CodeGenerationNode codeGen = new CodeGenerationNode();
+        CodeGenerationNode codeGen = createCodeGenerationNode(config);
         CodeEvaluationNode codeEvaluation = new CodeEvaluationNode();
         CodeFixNode codeFix = new CodeFixNode();
         RenderNode render = new RenderNode();
@@ -134,10 +157,18 @@ public class WorkflowFlow {
      * Use when the knowledge graph has been loaded manually via --from-graph.
      */
     public static PocketFlow.Flow<?> createFromGraphWithoutRender() {
+        return createFromGraphWithoutRender(null);
+    }
+
+    /**
+     * Creates a workflow starting from stage 1, without rendering.
+     * Use when the knowledge graph has been loaded manually via --from-graph.
+     */
+    public static PocketFlow.Flow<?> createFromGraphWithoutRender(WorkflowConfig config) {
         MathEnrichmentNode mathEnrich = new MathEnrichmentNode();
         VisualDesignNode visualDesign = new VisualDesignNode();
         StoryboardValidationNode storyboardValidation = new StoryboardValidationNode();
-        CodeGenerationNode codeGen = new CodeGenerationNode();
+        CodeGenerationNode codeGen = createCodeGenerationNode(config);
         CodeEvaluationNode codeEvaluation = new CodeEvaluationNode();
         CodeFixNode codeFix = new CodeFixNode();
 
@@ -244,5 +275,10 @@ public class WorkflowFlow {
         PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(exploration);
         log.info("Workflow assembled (to visual design): Exploration -> MathEnrichment -> VisualDesign");
         return flow;
+    }
+
+    private static CodeGenerationNode createCodeGenerationNode(WorkflowConfig config) {
+        int maxRetries = config != null ? config.getCodeGenMaxRetries() : 2;
+        return new CodeGenerationNode(maxRetries);
     }
 }

@@ -143,6 +143,81 @@ class VisualDesignNodeTest {
         );
     }
 
+    @Test
+    void visibleObjectRegistryRemovesExitedObjectsButKeepsFinalRegistry() {
+        VisibilityLifecycleAiClient aiClient = new VisibilityLifecycleAiClient();
+
+        KnowledgeNode introduce = node("introduce", "Introduce root object", KnowledgeNode.NODE_TYPE_PROBLEM);
+        KnowledgeNode exit = node("exit", "Exit root object", KnowledgeNode.NODE_TYPE_OBSERVATION);
+        KnowledgeNode afterExit = node("afterExit", "After root exits", KnowledgeNode.NODE_TYPE_DERIVATION);
+
+        KnowledgeGraph graph = graph(
+                List.of(introduce, exit, afterExit),
+                Map.of(
+                        "introduce", List.of("exit"),
+                        "exit", List.of("afterExit")
+                ),
+                List.of("introduce", "exit", "afterExit")
+        );
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.KNOWLEDGE_GRAPH, graph);
+
+        new VisualDesignNode().run(ctx);
+
+        String exitPrompt = aiClient.findUserMessageContaining("- Step: Exit root object");
+        String afterExitPrompt = aiClient.findUserMessageContaining("- Step: After root exits");
+
+        assertNotNull(exitPrompt);
+        assertNotNull(afterExitPrompt);
+        assertTrue(exitPrompt.contains("Currently visible object registry"));
+        assertTrue(exitPrompt.contains("rootObj"));
+        assertTrue(exitPrompt.contains("ROOT_VISIBLE_COLOR"));
+        assertFalse(afterExitPrompt.contains("rootObj"));
+        assertTrue(afterExitPrompt.contains("Currently visible object registry: empty"));
+
+        Narrative narrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
+        assertNotNull(narrative);
+        assertTrue(narrative.getStoryboard().getObjectRegistry().stream()
+                .anyMatch(object -> "rootObj".equals(object.getId())));
+    }
+
+    @Test
+    void visibleObjectRegistryAddsReenteredObjectsWithLatestStyle() {
+        VisibilityLifecycleAiClient aiClient = new VisibilityLifecycleAiClient();
+
+        KnowledgeNode introduce = node("introduce", "Introduce root object", KnowledgeNode.NODE_TYPE_PROBLEM);
+        KnowledgeNode exit = node("exit", "Exit root object", KnowledgeNode.NODE_TYPE_OBSERVATION);
+        KnowledgeNode reenter = node("reenter", "Reenter root object", KnowledgeNode.NODE_TYPE_DERIVATION);
+        KnowledgeNode afterReenter = node("afterReenter", "After root reenters", KnowledgeNode.NODE_TYPE_CONCLUSION);
+
+        KnowledgeGraph graph = graph(
+                List.of(introduce, exit, reenter, afterReenter),
+                Map.of(
+                        "introduce", List.of("exit"),
+                        "exit", List.of("reenter"),
+                        "reenter", List.of("afterReenter")
+                ),
+                List.of("introduce", "exit", "reenter", "afterReenter")
+        );
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.KNOWLEDGE_GRAPH, graph);
+
+        new VisualDesignNode().run(ctx);
+
+        String reenterPrompt = aiClient.findUserMessageContaining("- Step: Reenter root object");
+        String afterReenterPrompt = aiClient.findUserMessageContaining("- Step: After root reenters");
+
+        assertNotNull(reenterPrompt);
+        assertNotNull(afterReenterPrompt);
+        assertFalse(reenterPrompt.contains("rootObj"));
+        assertTrue(afterReenterPrompt.contains("rootObj"));
+        assertTrue(afterReenterPrompt.contains("ROOT_REENTERED_COLOR"));
+    }
+
     private static KnowledgeNode node(String id, String step, String nodeType) {
         KnowledgeNode node = new KnowledgeNode(id, step, 0);
         node.setNodeType(nodeType);
@@ -318,13 +393,130 @@ class VisualDesignNodeTest {
         newObject.put("kind", "point");
         newObject.put("content", objectId);
         newObject.put("placement", "center");
-        newObject.put("source_node", suffix);
-        newObject.put("behavior", "static");
-        newObject.put("anchor_id", "");
-        newObject.putArray("dependency_objects");
-        newObject.put("dependency_relation", "independent");
+        newObject.putArray("constraints");
 
         function.put("arguments", JsonUtils.toJson(arguments));
         return response;
+    }
+
+    private static final class VisibilityLifecycleAiClient implements AiClient {
+        private final List<String> userMessages = new ArrayList<>();
+
+        @Override
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
+            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
+            userMessages.add(userMessage);
+            return CompletableFuture.completedFuture("{\"scene\":{\"title\":\"fallback\"},\"new_objects\":[]}");
+        }
+
+        @Override
+        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
+                                                                 String toolsJson) {
+            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
+            userMessages.add(userMessage);
+            return CompletableFuture.completedFuture(visibilityLifecycleResponseFor(userMessage));
+        }
+
+        private String findUserMessageContaining(String snippet) {
+            for (String userMessage : userMessages) {
+                if (userMessage != null && userMessage.contains(snippet)) {
+                    return userMessage;
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public String providerName() {
+            return "visibility-lifecycle-test";
+        }
+    }
+
+    private static JsonNode visibilityLifecycleResponseFor(String userPrompt) {
+        if (userPrompt.contains("- Step: Exit root object")) {
+            return sceneDesignResponse("exit", persistentObject("rootObj", "ROOT_EXIT_COLOR"), null, exitingObject("rootObj"), null);
+        }
+        if (userPrompt.contains("- Step: Reenter root object")) {
+            return sceneDesignResponse("reenter", null, enteringObject("rootObj", "ROOT_REENTERED_COLOR"), null, null);
+        }
+        if (userPrompt.contains("- Step: After root exits")) {
+            return sceneDesignResponse("after_exit", null, enteringObject("afterExitObj", "AFTER_EXIT_COLOR"), null, registryObject("afterExitObj"));
+        }
+        if (userPrompt.contains("- Step: After root reenters")) {
+            return sceneDesignResponse("after_reenter", persistentObject("rootObj", "ROOT_REENTERED_COLOR"), null, null, null);
+        }
+        return sceneDesignResponse("introduce", null, enteringObject("rootObj", "ROOT_VISIBLE_COLOR"), null, registryObject("rootObj"));
+    }
+
+    private static JsonNode sceneDesignResponse(String suffix,
+                                                ObjectNode persistentObject,
+                                                ObjectNode enteringObject,
+                                                ObjectNode exitingObject,
+                                                ObjectNode newObject) {
+        ObjectNode response = JsonUtils.mapper().createObjectNode();
+        ArrayNode choices = response.putArray("choices");
+        ObjectNode message = choices.addObject().putObject("message");
+        ArrayNode toolCalls = message.putArray("tool_calls");
+        ObjectNode function = toolCalls.addObject().putObject("function");
+        function.put("name", "write_scene_design");
+
+        ObjectNode arguments = JsonUtils.mapper().createObjectNode();
+        ObjectNode scene = arguments.putObject("scene");
+        scene.put("scene_id", "scene_" + suffix);
+        scene.put("title", "Scene " + suffix);
+        scene.put("goal", "Goal " + suffix);
+        scene.put("narration", "Narration " + suffix);
+        scene.put("layout_goal", "Layout " + suffix);
+        scene.put("scene_mode", "2d");
+        ArrayNode enteringObjects = scene.putArray("entering_objects");
+        if (enteringObject != null) {
+            enteringObjects.add(enteringObject);
+        }
+        ArrayNode persistentObjects = scene.putArray("persistent_objects");
+        if (persistentObject != null) {
+            persistentObjects.add(persistentObject);
+        }
+        ArrayNode exitingObjects = scene.putArray("exiting_objects");
+        if (exitingObject != null) {
+            exitingObjects.add(exitingObject);
+        }
+        scene.putArray("actions");
+
+        ArrayNode newObjects = arguments.putArray("new_objects");
+        if (newObject != null) {
+            newObjects.add(newObject);
+        }
+        function.put("arguments", JsonUtils.toJson(arguments));
+        return response;
+    }
+
+    private static ObjectNode enteringObject(String id, String color) {
+        ObjectNode object = JsonUtils.mapper().createObjectNode();
+        object.put("id", id);
+        object.putObject("style").put("color", color);
+        ObjectNode placement = object.putObject("placement");
+        placement.put("coordinate_space", "screen");
+        placement.putObject("x").put("value", 0.0);
+        placement.putObject("y").put("value", 0.0);
+        return object;
+    }
+
+    private static ObjectNode persistentObject(String id, String color) {
+        return enteringObject(id, color);
+    }
+
+    private static ObjectNode exitingObject(String id) {
+        ObjectNode object = JsonUtils.mapper().createObjectNode();
+        object.put("id", id);
+        return object;
+    }
+
+    private static ObjectNode registryObject(String id) {
+        ObjectNode object = JsonUtils.mapper().createObjectNode();
+        object.put("id", id);
+        object.put("kind", "point");
+        object.put("content", id);
+        object.putArray("constraints");
+        return object;
     }
 }

@@ -102,33 +102,41 @@ public final class StoryboardConstraintCatalog {
         return spec != null && spec.coordinateDerived();
     }
 
-    public static boolean isCoordinateDerivedDependencyRelation(String relation) {
-        // First check catalog (covers all coordinateDerived=true relations automatically)
-        if (isCoordinateDerivedRelation(relation)) {
-            return true;
-        }
-        // Legacy dependency_relation names not in the catalog but semantically equivalent
-        String normalized = normalize(relation);
-        return Set.of(
-                "reflection_across_line",
-                "intersection",
-                "midpoint",
-                "angle_between_rays",
-                "angle_between_lines",
-                "projection",
-                "perpendicular_foot",
-                "segment_between",
-                "arc_between",
-                "point_on_object"
-        ).contains(normalized);
+    public static boolean isMotionSensitiveRelation(String relation) {
+        RelationSpec spec = relation(relation);
+        return spec != null && spec.motionSensitive();
+    }
+
+    public static boolean isAttachmentRelation(String relation) {
+        RelationSpec spec = relation(relation);
+        return spec != null && "attachment".equals(spec.domain());
+    }
+
+    public static Set<String> ownerRefRoles(String relation) {
+        RelationSpec spec = relation(relation);
+        return spec != null ? spec.ownerRefRoles() : Set.of();
+    }
+
+    public static Set<String> dependencyRefRoles(String relation) {
+        RelationSpec spec = relation(relation);
+        return spec != null ? spec.dependencyRefRoles() : Set.of();
     }
 
     private static Map<String, RelationSpec> buildRelations() {
         Map<String, RelationSpec> relations = new LinkedHashMap<>();
 
+        add(relations, spec("geometry", "point_at")
+                .scopes(Scope.OBJECT, Scope.SCENE)
+                .coordinateDerived()
+                .ownerRefs("point")
+                .requireRef("point")
+                .requireParam("coordinate")
+                .optionalParams("coordinate_space", "tolerance"));
         add(relations, spec("geometry", "lies_on")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("point")
+                .dependencyRefs("support")
                 .requireRef("point")
                 .requireRef("support")
                 .optionalParams("side", "range", "tolerance"));
@@ -222,6 +230,15 @@ public final class StoryboardConstraintCatalog {
                 .optionalParams("tolerance"));
         add(relations, spec("geometry", "same_side_of")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("objects")
+                .dependencyRefs("reference", "line", "boundary")
+                .requireRef("objects")
+                .requireAnyRef("reference", "line", "boundary")
+                .optionalParams("side", "tolerance"));
+        add(relations, spec("geometry", "opposite_side_of")
+                .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("objects")
+                .dependencyRefs("reference", "line", "boundary")
                 .requireRef("objects")
                 .requireAnyRef("reference", "line", "boundary")
                 .optionalParams("side", "tolerance"));
@@ -261,6 +278,16 @@ public final class StoryboardConstraintCatalog {
                 .requireRef("start_boundary")
                 .requireRef("end_boundary")
                 .optionalParams("side_of_reference", "tolerance"));
+        add(relations, spec("measurement", "equal_length")
+                .scopes(Scope.OBJECT, Scope.SCENE)
+                .requireRef("members")
+                .optionalRefs("reference")
+                .optionalParams("tolerance"));
+        add(relations, spec("measurement", "equal_angle")
+                .scopes(Scope.OBJECT, Scope.SCENE)
+                .requireRef("members")
+                .optionalRefs("reference")
+                .optionalParams("tolerance"));
         add(relations, spec("measurement", "equal_measure_group")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .requireRef("members")
@@ -282,6 +309,9 @@ public final class StoryboardConstraintCatalog {
 
         add(relations, spec("motion", "moves_on_object")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .motionSensitive()
+                .ownerRefs("point")
+                .dependencyRefs("support")
                 .requireRef("point")
                 .requireRef("support")
                 .optionalParams("range", "speed", "loop", "tolerance"));
@@ -305,6 +335,8 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("attachment", "label_for")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("label")
+                .dependencyRefs("anchor")
                 .requireRef("label")
                 .requireRef("anchor")
                 .optionalParams("offset", "coordinate_space", "side", "clearance"));
@@ -321,6 +353,12 @@ public final class StoryboardConstraintCatalog {
                 .requireAnyRef("object", "attached")
                 .requireRef("anchor")
                 .optionalParams("offset", "coordinate_space", "side"));
+
+        add(relations, spec("attachment", "fixed_overlay")
+                .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("object", "objects")
+                .requireAnyRef("object", "objects")
+                .optionalParams("coordinate_space", "position", "anchor", "margin"));
 
         add(relations, spec("layout", "keep_inside_safe_area")
                 .scopes(Scope.OBJECT, Scope.SCENE)
@@ -455,6 +493,9 @@ public final class StoryboardConstraintCatalog {
         private final Set<String> optionalParameters;
         private final Map<String, Set<String>> enumParameters;
         private final boolean coordinateDerived;
+        private final boolean motionSensitive;
+        private final Set<String> ownerRefRoles;
+        private final Set<String> dependencyRefRoles;
 
         private RelationSpec(Builder builder) {
             this.domain = builder.domain;
@@ -466,6 +507,12 @@ public final class StoryboardConstraintCatalog {
             this.optionalParameters = Collections.unmodifiableSet(new LinkedHashSet<>(builder.optionalParameters));
             this.enumParameters = deepUnmodifiableMap(builder.enumParameters);
             this.coordinateDerived = builder.coordinateDerived;
+            this.motionSensitive = builder.motionSensitive
+                    || builder.coordinateDerived
+                    || "motion".equals(builder.domain)
+                    || "attachment".equals(builder.domain);
+            this.ownerRefRoles = Collections.unmodifiableSet(resolveOwnerRefRoles(builder));
+            this.dependencyRefRoles = Collections.unmodifiableSet(resolveDependencyRefRoles(builder, this.ownerRefRoles));
         }
 
         public String domain() {
@@ -518,6 +565,18 @@ public final class StoryboardConstraintCatalog {
             return coordinateDerived;
         }
 
+        public boolean motionSensitive() {
+            return motionSensitive;
+        }
+
+        public Set<String> ownerRefRoles() {
+            return ownerRefRoles;
+        }
+
+        public Set<String> dependencyRefRoles() {
+            return dependencyRefRoles;
+        }
+
         public String requiredRefDescription() {
             if (requiredRefGroups.isEmpty()) {
                 return "non-empty role map";
@@ -545,6 +604,42 @@ public final class StoryboardConstraintCatalog {
             return Collections.unmodifiableMap(copy);
         }
 
+        private static Set<String> resolveOwnerRefRoles(Builder builder) {
+            if (!builder.ownerRefRoles.isEmpty()) {
+                return new LinkedHashSet<>(builder.ownerRefRoles);
+            }
+            List<String> preferred = List.of(
+                    "object", "objects", "point", "label", "attached", "marker", "arc", "line",
+                    "ray", "segment", "connector", "image", "projection", "midpoint", "intersection",
+                    "measurement", "circle", "bisector");
+            Set<String> allRoles = new LinkedHashSet<>();
+            for (Set<String> group : builder.requiredRefGroups) {
+                allRoles.addAll(group);
+            }
+            for (String role : preferred) {
+                if (allRoles.contains(role)) {
+                    return Set.of(role);
+                }
+            }
+            if (!builder.requiredRefGroups.isEmpty()) {
+                return Set.of(builder.requiredRefGroups.get(0).iterator().next());
+            }
+            return Set.of();
+        }
+
+        private static Set<String> resolveDependencyRefRoles(Builder builder, Set<String> ownerRoles) {
+            if (!builder.dependencyRefRoles.isEmpty()) {
+                return new LinkedHashSet<>(builder.dependencyRefRoles);
+            }
+            Set<String> roles = new LinkedHashSet<>();
+            for (Set<String> group : builder.requiredRefGroups) {
+                roles.addAll(group);
+            }
+            roles.addAll(builder.optionalRefs);
+            roles.removeAll(ownerRoles);
+            return roles;
+        }
+
         public static final class Builder {
             private final String domain;
             private final String relation;
@@ -554,7 +649,10 @@ public final class StoryboardConstraintCatalog {
             private final Set<String> requiredParameters = new LinkedHashSet<>();
             private final Set<String> optionalParameters = new LinkedHashSet<>();
             private final Map<String, Set<String>> enumParameters = new LinkedHashMap<>();
+            private final Set<String> ownerRefRoles = new LinkedHashSet<>();
+            private final Set<String> dependencyRefRoles = new LinkedHashSet<>();
             private boolean coordinateDerived;
+            private boolean motionSensitive;
 
             private Builder(String domain, String relation) {
                 this.domain = normalize(domain);
@@ -568,6 +666,25 @@ public final class StoryboardConstraintCatalog {
 
             private Builder coordinateDerived() {
                 this.coordinateDerived = true;
+                return this;
+            }
+
+            private Builder motionSensitive() {
+                this.motionSensitive = true;
+                return this;
+            }
+
+            private Builder ownerRefs(String... roles) {
+                for (String role : roles) {
+                    this.ownerRefRoles.add(normalize(role));
+                }
+                return this;
+            }
+
+            private Builder dependencyRefs(String... roles) {
+                for (String role : roles) {
+                    this.dependencyRefRoles.add(normalize(role));
+                }
                 return this;
             }
 

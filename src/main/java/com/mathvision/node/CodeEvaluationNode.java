@@ -31,6 +31,7 @@ import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.StoryboardConstraintComplianceAnalyzer;
 import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TimeUtils;
 import io.github.the_pocket.PocketFlow;
@@ -298,6 +299,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                 : null;
         if (storyboard != null && storyboard.getScenes() != null) {
             analysis.setSceneCount(storyboard.getScenes().size());
+            addConstraintComplianceFindings(analysis, storyboard, generatedCode, geoGebraTarget);
             if (!geoGebraTarget) {
                 analysis.setThreeDStoryboardSceneCount(countThreeDStoryboardScenes(storyboard));
                 addStoryboardDrivenFindings(analysis, storyboard);
@@ -614,6 +616,24 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         analysis.getFindings().add(new StaticFinding(ruleId, severity, summary, evidence));
     }
 
+    private void addConstraintComplianceFindings(StaticAnalysis analysis,
+                                                 Storyboard storyboard,
+                                                 String generatedCode,
+                                                 boolean geoGebraTarget) {
+        String outputTarget = geoGebraTarget
+                ? WorkflowConfig.OUTPUT_TARGET_GEOGEBRA
+                : WorkflowConfig.OUTPUT_TARGET_MANIM;
+        StoryboardConstraintComplianceAnalyzer analyzer = new StoryboardConstraintComplianceAnalyzer();
+        for (StoryboardConstraintComplianceAnalyzer.Violation violation
+                : analyzer.analyze(storyboard, outputTarget, generatedCode)) {
+            addFinding(analysis,
+                    StoryboardConstraintComplianceAnalyzer.RULE_ID,
+                    violation.getSeverity(),
+                    violation.summary(),
+                    violation.evidenceText());
+        }
+    }
+
     private void addStaticValidationFindings(StaticAnalysis analysis, String generatedCode) {
         List<String> violations = NodeSupport.isGeoGebraTarget(workflowConfig)
                 ? GeoGebraCodeUtils.validateFull(generatedCode)
@@ -682,7 +702,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         if (config == null) {
             return DEFAULT_MAX_CODE_FIX_ATTEMPTS;
         }
-        return Math.max(config.getCodeFixMaxAttempts(), 0);
+        return Math.max(config.getCodeEvaluationMaxRetries(), 0);
     }
 
     private int countMatches(String text, Pattern pattern) {

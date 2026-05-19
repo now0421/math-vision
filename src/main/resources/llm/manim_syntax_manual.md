@@ -1410,7 +1410,7 @@ self.next_section("Introduction")
 manim --save_sections file.py SceneName
 ```
 
-```python
+```text
 %%manim -qm MyScene
 class MyScene(Scene):
     def construct(self):

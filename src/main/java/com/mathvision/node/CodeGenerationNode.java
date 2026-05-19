@@ -26,6 +26,8 @@ import com.mathvision.util.JsonUtils;
 import com.mathvision.util.TimeUtils;
 import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.StoryboardConstraintCatalog;
+import com.mathvision.util.StoryboardConstraintUtils;
 import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -59,7 +61,11 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     private int toolCalls = 0;
 
     public CodeGenerationNode() {
-        super(2, 2000);
+        this(2);
+    }
+
+    public CodeGenerationNode(int maxRetries) {
+        super(Math.max(maxRetries, 1), 2000);
     }
 
     public static class CodeGenerationInput {
@@ -539,7 +545,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     /**
      * Builds a compact structured JSON block for the object_registry entries
      * referenced by a specific scene, so the LLM has exact semantic data
-     * (kind, content, behavior, dependency_objects, constraints, etc.)
+     * (kind, content, style, constraints, etc.)
      * alongside the human-readable text summary.
      */
     static String buildSceneRegistryJsonBlock(StoryboardScene scene,
@@ -558,15 +564,8 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         // Also include objects that are dependencies of referenced objects
         // (transitive closure one level deep)
         Set<String> allIds = new LinkedHashSet<>(objectIdToKind.keySet());
-        for (String id : objectIdToKind.keySet()) {
-            StoryboardObject obj = enrichedRegistry.get(id);
-            if (obj != null && obj.getDependencyObjects() != null) {
-                for (String depId : obj.getDependencyObjects()) {
-                    if (enrichedRegistry.containsKey(depId)) {
-                        allIds.add(depId);
-                    }
-                }
-            }
+        for (String id : new ArrayList<>(objectIdToKind.keySet())) {
+            collectConstraintReferencedIds(id, enrichedRegistry, allIds);
         }
 
         // Build compact JSON array of the relevant objects
@@ -657,18 +656,6 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             sb.append("- id=").append(obj.getId())
                     .append(", kind=").append(obj.getKind())
                     .append(", content=").append(truncate(obj.getContent(), 60));
-            if (obj.getBehavior() != null && !obj.getBehavior().isBlank()) {
-                sb.append(", behavior=").append(obj.getBehavior());
-            }
-            if (obj.getAnchorId() != null && !obj.getAnchorId().isBlank()) {
-                sb.append(", anchor_id=").append(obj.getAnchorId());
-            }
-            if (obj.getDependencyObjects() != null && !obj.getDependencyObjects().isEmpty()) {
-                sb.append(", dependency_objects=").append(obj.getDependencyObjects());
-            }
-            if (obj.getDependencyRelation() != null && !obj.getDependencyRelation().isBlank()) {
-                sb.append(", dependency_relation=").append(truncate(obj.getDependencyRelation(), 80));
-            }
             if (obj.getConstraints() != null && !obj.getConstraints().isEmpty()) {
                 sb.append(", constraints=").append(truncate(JsonUtils.toJson(obj.getConstraints()), 500));
             }
@@ -696,6 +683,17 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         // Collect all object IDs referenced in this scene
         Map<String, String> objectIdToKind = new LinkedHashMap<>();
         collectSceneObjectIds(scene, objectIdToKind, enrichedRegistry);
+
+        Set<String> allIds = new LinkedHashSet<>(objectIdToKind.keySet());
+        for (String id : new ArrayList<>(objectIdToKind.keySet())) {
+            collectConstraintReferencedIds(id, enrichedRegistry, allIds);
+        }
+        for (String id : allIds) {
+            StoryboardObject refObj = enrichedRegistry.get(id);
+            if (refObj != null) {
+                objectIdToKind.putIfAbsent(id, refObj.getKind() != null ? refObj.getKind() : "?");
+            }
+        }
 
         // Gather constraints per object
         List<String> lines = new ArrayList<>();
@@ -762,6 +760,22 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         }
     }
 
+    private static void collectConstraintReferencedIds(String id,
+                                                       Map<String, StoryboardObject> enrichedRegistry,
+                                                       Set<String> allIds) {
+        StoryboardObject obj = enrichedRegistry.get(id);
+        if (obj == null || obj.getConstraints() == null) {
+            return;
+        }
+        for (var constraint : obj.getConstraints()) {
+            for (String refId : StoryboardConstraintUtils.referencedObjectIds(constraint)) {
+                if (enrichedRegistry.containsKey(refId) && allIds.add(refId)) {
+                    collectConstraintReferencedIds(refId, enrichedRegistry, allIds);
+                }
+            }
+        }
+    }
+
     private static void collectObjectIds(List<StoryboardObject> objects,
                                           Map<String, String> objectIdToKind,
                                           Map<String, StoryboardObject> enrichedRegistry) {
@@ -795,6 +809,32 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         sb.append(objId).append("(").append(kind).append("): ");
         sb.append(c.getDomain() != null ? c.getDomain() : "?").append("/");
         sb.append(c.getRelation() != null ? c.getRelation() : "?");
+        if (StoryboardConstraintCatalog.isCoordinateDerivedRelation(c.getRelation())) {
+            sb.append(" [coordinate-derived]");
+        }
+        if (StoryboardConstraintCatalog.isMotionSensitiveRelation(c.getRelation())) {
+            sb.append(" [motion-sensitive]");
+        }
+        Set<String> ownerRoles = StoryboardConstraintCatalog.ownerRefRoles(c.getRelation());
+        Set<String> dependencyRoles = StoryboardConstraintCatalog.dependencyRefRoles(c.getRelation());
+        Set<String> ownerIds = StoryboardConstraintUtils.ownerIds(c);
+        Set<String> dependencyIds = StoryboardConstraintUtils.dependencyIds(c);
+        if (!ownerIds.isEmpty()) {
+            sb.append(" owners=").append(ownerIds);
+        }
+        if (!dependencyIds.isEmpty()) {
+            sb.append(" dependencies=").append(dependencyIds);
+        }
+        String strength = c.getStrength();
+        if (strength != null && !strength.isBlank()) {
+            sb.append(" strength=").append(strength.trim());
+        }
+        if (!ownerRoles.isEmpty()) {
+            sb.append(" owner_roles=").append(ownerRoles);
+        }
+        if (!dependencyRoles.isEmpty()) {
+            sb.append(" dependency_roles=").append(dependencyRoles);
+        }
         // Key refs
         if (c.getRefs() != null && !c.getRefs().isEmpty()) {
             sb.append(" refs=").append(c.getRefs());

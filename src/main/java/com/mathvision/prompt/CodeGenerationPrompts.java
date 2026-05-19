@@ -21,9 +21,9 @@ public final class CodeGenerationPrompts {
                     + "- Treat storyboard structured `constraints` and scene `notes_for_codegen` fields as hard invariants.\n"
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_MANIM + "\n"
                     + "Additional code generation rules:\n"
-                    + "- `entering_objects[].content` describes candidate visible content; implement only the objects that are necessary or helpful for the teaching beat.\n"
-                    + "- When `content`, `dependency_objects`, or related fields mention another object, treat those mentions as object ids only rather than as repeated type declarations.\n"
-                    + "- If a storyboard object uses `behavior = follows_anchor`, `derived`, or an equivalent dependency note, implement that relationship continuously with the appropriate Manim mechanism.\n"
+                    + "- `object_registry[].content` describes candidate visible content; implement only storyboard-declared objects that are necessary or helpful for the teaching beat.\n"
+                    + "- When registry `content`, constraint refs, or related fields mention another object, treat those mentions as object ids only rather than as repeated type declarations.\n"
+                    + "- If structured constraints define attachment, motion, or derived geometry, implement that relationship continuously with the appropriate Manim mechanism.\n"
                     + "- If an object's actual coordinates depend on other objects, recompute its coordinates from those source objects or use native backend/API construction helpers; never hardcode a coordinate copied from placement for that object.\n\n"
                     + "- Apply every `notes_for_codegen` item as a mandatory scene-level implementation constraint. If a note gives a concrete range, endpoint, duration, visibility, lifecycle, transform, color, or layout instruction, encode that exact constraint in code rather than replacing it with a similar-looking free movement or ad hoc placement.\n\n"
                     + "Continuity and object-management rules:\n"
@@ -56,7 +56,7 @@ public final class CodeGenerationPrompts {
                     + "- Do not hardcode numeric MathTex subobject indexing.\n"
                     + "- Use `ThreeDScene` only when needed and keep overlays fixed in frame when appropriate.\n"
                     + "- Keep content inside the readable safe frame and prefer stable anchors plus `arrange`/`next_to`.\n"
-                    + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES
+                    + "- " + SystemPrompts.COLOR_FORMAT_RULES
                     + "- " + SystemPrompts.MANIM_COLOR_RULES
                     + "- Do not place a free-floating arc by shifting/rotating it near the vertex, and do not accidentally mark a large exterior angle when the scene intends two small equal angles.\n"
                     + "Layout and camera rules:\n"
@@ -112,9 +112,9 @@ public final class CodeGenerationPrompts {
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_GEOGEBRA + "\n"
                     + SystemPrompts.OBJECT_LIFECYCLE_RULES
                     + "Additional storyboard field rules:\n"
-                    + "- When `content`, `dependency_objects`, or other object fields mention another object, treat those mentions as object ids only. Do not reinterpret kind words from prose and do not invent a second object type for the same id.\n"
+                    + "- When `content`, constraint refs, or other object fields mention another object, treat those mentions as object ids only. Do not reinterpret kind words from prose and do not invent a second object type for the same id.\n"
                     + "- Treat storyboard object ids as the naming source for generated GeoGebra variables. Preserve those ids in code, and when you must introduce a helper name, use concise camelCase or math-style identifiers.\n\n"
-                    + "- Interpret storyboard `behavior` by dependency semantics, not by motion permission: `static` means independently defined base object, not automatically a free point.\n"
+                    + "- Use structured constraints to decide dependency semantics: independent anchors may be free/fixed, while constrained or derived objects must remain dependency-driven.\n"
                     + "- If a point is constrained to a path or object, construct it as a point on that object or with an equivalent dependency-safe definition. Do not replace it with a free coordinate point.\n"
                     + "- If a point is described as fixed and no dependency is stated, define it as an independent anchor and keep it fixed unless the storyboard explicitly asks for dragging.\n"
                     + "- If a point is described as moving or draggable while constrained, preserve both facts at once: keep the dependency and allow the motion within that dependency.\n"
@@ -130,7 +130,7 @@ public final class CodeGenerationPrompts {
                     + "- Prefer common, stable GeoGebra Classic commands over obscure tricks.\n"
                     + "- Ignore timing-only details such as scene duration, but preserve the same teaching order and object-state progression.\n"
                     + "- Use style and visibility commands sparingly and semantically, and apply scripting commands after construction commands.\n"
-                    + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES
+                    + "- " + SystemPrompts.COLOR_FORMAT_RULES
                     + "- " + SystemPrompts.GEOGEBRA_COLOR_RULES
                     + "- Keep the script organized in scene order so downstream scene buttons can toggle the right visible objects.\n"
                     + "- If a requested visual effect would require a command not documented in the manual, re-express it with documented commands or omit that unsupported decoration.\n\n"
@@ -159,7 +159,7 @@ public final class CodeGenerationPrompts {
                                                  String objectRegistryJson) {
         String registrySection = "";
         if (objectRegistryJson != null && !objectRegistryJson.isBlank()) {
-            registrySection = "\n\nObject registry (complete JSON — semantic authority for object identity, geometry meaning, and dependency relationships):\n```json\n"
+            registrySection = "\n\nObject registry (complete JSON - semantic authority for object identity, geometry meaning, and dependency relationships):\n```json\n"
                     + objectRegistryJson + "\n```";
         }
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
@@ -302,8 +302,8 @@ public final class CodeGenerationPrompts {
                         + "  * `lies_on` / `point_on_object`: the point must stay on the referenced object at all times; instantiate it as a point-on-line/curve, not as a free coordinate.\n"
                         + "  * `moves_on_object` with `range`: the point may slide along the referenced object but must NEVER leave it or exceed the specified range; clamp or parameterize the motion accordingly.\n"
                         + "  * `same_side_of`: the object must stay on the specified side of the line.\n"
-                        + "  * `reflection_across`, `midpoint`, `projection`, `connects_points`, `angle_between`: compute the object from its dependency objects; never hardcode placement coordinates that ignore the dependency.\n"
-                        + "- For any object with `behavior=derived`, structured `constraints`, or dependency relations such as `intersection`, `reflection_across_line`, `midpoint`, `projection`, `connects_points`, or `angle_between`, compute it from `dependency_objects`/`constraints` or use native Manim/API geometry helpers. Do not instantiate it from hardcoded placement coordinates.\n"
+                        + "  * `reflection_across`, `midpoint_of`, `intersection_of`, `projection_onto`, `connects_points`, `line_through_points`, `ray_from_to`, `angle_between`: compute the object from its constraint refs; never hardcode placement coordinates that ignore the dependency.\n"
+                        + "- For any object with structured constraints that define derived geometry, attachments, connectors, motion, or measurements, compute it from constraint refs or use native Manim/API geometry helpers. Do not instantiate it from hardcoded placement coordinates.\n"
                         + "- Respect storyboard text semantics strictly: `kind=equation` means `MathTex(...)`; `kind=text` and `kind=text_card` mean `Text(...)` unless the content clearly requires math rendering; avoid `Tex(...)` unless the scene explicitly needs non-math LaTeX text.\n"
                         + "- Return the method body via the write_scene_code tool.",
                 methodName, sceneIndex + 1, totalScenes,
@@ -323,7 +323,7 @@ public final class CodeGenerationPrompts {
                         + "- Global coordinate and view settings, including `SetCoordSystem(-7, 7, -4, 4)` unless already provided downstream\n"
                         + "- Shared base objects that persist across multiple scenes\n"
                         + "- A section comment header for each scene: %s\n\n"
-                        + "Do NOT implement the scene-specific objects yet — just provide the global setup.\n"
+                        + "Do NOT implement the scene-specific objects yet - just provide the global setup.\n"
                         + "Return the skeleton code via the write_code_skeleton tool.",
                 storyboardJson, sectionList));
     }

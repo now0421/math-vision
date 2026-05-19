@@ -29,7 +29,7 @@ public final class StoryboardSchemaPrompts {
     /** Lexical contract reinforcing quote discipline and forbidding bare identifiers. */
     public static final String JSON_LEXICAL_CONTRACT =
             "JSON lexical contract:\n"
-                    + "- Use double quotes for all JSON keys and all string values, including categorical fields such as kind, behavior, scene_mode, action type, line_style, hex colors, and label content.\n"
+                    + "- Use double quotes for all JSON keys and all string values, including categorical fields such as kind, scene_mode, action type, line_style, hex colors, and label content.\n"
                     + "- Do not output markdown fences, comments, trailing commas, or single-quoted strings.\n"
                     + "- Do not output bare identifiers as JSON values. Invalid: \"type\": create. Valid: \"type\": \"create\".\n";
 
@@ -37,11 +37,11 @@ public final class StoryboardSchemaPrompts {
     public static final String JSON_LEXICAL_EXAMPLES =
             "Invalid examples to avoid:\n"
                     + "- {\"type\": create}\n"
-                    + "- {\"behavior\": static}\n"
+                    + "- {\"kind\": point}\n"
                     + "- {\"style\": {\"color\": #FACC15}}\n"
                     + "Valid equivalents:\n"
                     + "- {\"type\": \"create\"}\n"
-                    + "- {\"behavior\": \"static\"}\n"
+                    + "- {\"kind\": \"point\"}\n"
                     + "- {\"style\": {\"color\": \"#FACC15\"}}\n";
 
     // ── Field-level schemas ────────────────────────────────────────────
@@ -131,7 +131,6 @@ public final class StoryboardSchemaPrompts {
                     + "    \"safe_area_plan\": \"string, how important content stays readable and inside the safe frame\",\n"
                     + "    \"screen_overlay_plan\": \"string, what text or formulas stay fixed relative to the viewport rather than the main geometry, and where the safe overlay zone is\",\n"
                     + "    \"constraints\": [\"object, machine-readable scene-level invariant with domain, relation, refs, optional parameters, strength, and reason\"],\n"
-                    + "    \"step_refs\": [\"string, referenced knowledge-graph step or solving beat covered by this scene\"],\n"
                     + "    \"entering_objects\": [\n"
                     + ENTERING_OBJECT_SCHEMA + "\n"
                     + "    ],\n"
@@ -148,24 +147,20 @@ public final class StoryboardSchemaPrompts {
                     + NOTES_FOR_CODEGEN_SCHEMA + "\n"
                     + "    ]";
 
-    /** Schema for an object_registry / new_objects entry: identity, content, dependency, and behavior fields. */
+    /** Schema for an object_registry / new_objects entry: identity, content, style, and hard constraints. */
     public static final String OBJECT_DEFINITION_SCHEMA =
             "    {\n"
                     + "      \"id\": \"string, stable visual identity for continuity and transforms; keep ids concise and non-redundant since `kind` carries the type; follow only the active backend's naming rules\",\n"
-                    + "      \"kind\": \"string, concrete render/construction primitive such as point|line|ray|segment|vector|circle|arc|angle_marker|right_angle_marker|polygon|polyline|axes|number_line|function_curve|parametric_curve|implicit_curve|conic|region|brace|tick_marker|distance_marker|text|equation|image; prefer text/equation over text_card/formula_card (cards should only be used when the box itself is teaching-essential); semantic roles such as labels should be expressed with dependency_relation/behavior/anchor_id; avoid broad kinds like graph/helper when a concrete primitive fits; do not repeat this type inside `id`\",\n"
+                    + "      \"kind\": \"string, concrete render/construction primitive such as point|line|ray|segment|vector|circle|arc|angle_marker|right_angle_marker|polygon|polyline|axes|number_line|function_curve|parametric_curve|implicit_curve|conic|region|brace|tick_marker|distance_marker|text|equation|image; prefer text/equation over text_card/formula_card (cards should only be used when the box itself is teaching-essential); avoid broad kinds like graph/helper when a concrete primitive fits; do not repeat this type inside `id`\",\n"
                     + "      \"content\": \"string, mathematical or visual content shown by the object; if this text references other storyboard objects, mention those objects by id only and do not repeat their kind\",\n"
-                    + "      \"source_node\": \"string, originating step or node when relevant\",\n"
-                    + "      \"behavior\": \"string, dependency role such as static|follows_anchor|derived|fixed_overlay\",\n"
-                    + "      \"anchor_id\": \"string, id of the object this one should stay attached to when relevant\",\n"
-                    + "      \"dependency_objects\": [\"string, ordered source object ids only; empty for independent objects\"],\n"
-                    + "      \"dependency_relation\": \"string, concise construction relationship such as independent|follows_anchor|point_on_object|connects_points|reflection_across_line|intersection|midpoint|angle_between|label_for\",\n"
+                    + STYLE_SCHEMA + ",\n"
                     + "      \"constraints\": [\n"
                     + "        {\n"
                     + "          \"id\": \"string, optional stable id for this single invariant\",\n"
                     + "          \"domain\": \"" + StoryboardConstraintCatalog.domainList() + "\",\n"
                     + "          \"relation\": \"string, one of " + StoryboardConstraintCatalog.relationList() + "\",\n"
                     + "          \"refs\": { \"canonical_role\": \"object id or [id list]; use ONLY the role names from the constraint catalog in the rules section above\" },\n"
-                    + "          \"parameters\": { \"param_name\": \"string, number, or boolean; use ONLY the parameter names from the constraint catalog; NEVER put object ids here\" },\n"
+                    + "          \"parameters\": { \"param_name\": \"string, number, boolean, array, or object; use ONLY catalog parameter names; NEVER put object ids here\" },\n"
                     + "          \"strength\": \"hard (mathematical/semantic invariant) | repair_hard (required during cleanup) | soft (preference)\",\n"
                     + "          \"reason\": \"string, short human-readable explanation\"\n"
                     + "        }\n"
@@ -179,12 +174,7 @@ public final class StoryboardSchemaPrompts {
             "    {\n"
                     + "      \"id\": \"numberLine\",\n"
                     + "      \"kind\": \"line\",\n"
-                    + "      \"content\": \"Number line from -2 to 6 with integer ticks\",\n"
-                    + "      \"source_node\": \"problem_setup\",\n"
-                    + "      \"behavior\": \"static\",\n"
-                    + "      \"anchor_id\": \"\",\n"
-                    + "      \"dependency_objects\": [],\n"
-                    + "      \"dependency_relation\": \"independent\"\n"
+                    + "      \"content\": \"Number line from -2 to 6 with integer ticks\"\n"
                     + "    }";
 
     /** Example object-registry entry: a derived moving point. */
@@ -193,11 +183,6 @@ public final class StoryboardSchemaPrompts {
                     + "      \"id\": \"P\",\n"
                     + "      \"kind\": \"point\",\n"
                     + "      \"content\": \"Moving point on numberLine\",\n"
-                    + "      \"source_node\": \"problem_setup\",\n"
-                    + "      \"behavior\": \"derived\",\n"
-                    + "      \"anchor_id\": \"numberLine\",\n"
-                    + "      \"dependency_objects\": [\"numberLine\"],\n"
-                    + "      \"dependency_relation\": \"point_on_object\",\n"
                     + "      \"constraints\": [\n"
                     + "        {\n"
                     + "          \"domain\": \"geometry\",\n"
@@ -222,11 +207,16 @@ public final class StoryboardSchemaPrompts {
                     + "      \"id\": \"labelP\",\n"
                     + "      \"kind\": \"text\",\n"
                     + "      \"content\": \"P\",\n"
-                    + "      \"source_node\": \"problem_setup\",\n"
-                    + "      \"behavior\": \"follows_anchor\",\n"
-                    + "      \"anchor_id\": \"P\",\n"
-                    + "      \"dependency_objects\": [\"P\"],\n"
-                    + "      \"dependency_relation\": \"label_for\"\n"
+                    + "      \"constraints\": [\n"
+                    + "        {\n"
+                    + "          \"domain\": \"attachment\",\n"
+                    + "          \"relation\": \"label_for\",\n"
+                    + "          \"refs\": {\"label\": \"labelP\", \"anchor\": \"P\"},\n"
+                    + "          \"parameters\": {\"side\": \"up_right\"},\n"
+                    + "          \"strength\": \"hard\",\n"
+                    + "          \"reason\": \"labelP follows P\"\n"
+                    + "        }\n"
+                    + "      ]\n"
                     + "    }";
 
     /** Backend-specific example snippet: a companion text label attached to a point. */
@@ -255,11 +245,16 @@ public final class StoryboardSchemaPrompts {
                     + "      \"id\": \"formulaCard\",\n"
                     + "      \"kind\": \"equation\",\n"
                     + "      \"content\": \"min = 2 for x in [1,3]\",\n"
-                    + "      \"source_node\": \"minimum_reveal\",\n"
-                    + "      \"behavior\": \"fixed_overlay\",\n"
-                    + "      \"anchor_id\": \"\",\n"
-                    + "      \"dependency_objects\": [],\n"
-                    + "      \"dependency_relation\": \"independent_overlay\"\n"
+                    + "      \"constraints\": [\n"
+                    + "        {\n"
+                    + "          \"domain\": \"attachment\",\n"
+                    + "          \"relation\": \"fixed_overlay\",\n"
+                    + "          \"refs\": {\"object\": \"formulaCard\"},\n"
+                    + "          \"parameters\": {\"coordinate_space\": \"screen\"},\n"
+                    + "          \"strength\": \"hard\",\n"
+                    + "          \"reason\": \"formulaCard remains a screen overlay\"\n"
+                    + "        }\n"
+                    + "      ]\n"
                     + "    }";
 
     /** Example object-registry entry: a derived minimum marker. */
@@ -268,11 +263,6 @@ public final class StoryboardSchemaPrompts {
                     + "      \"id\": \"minMarker\",\n"
                     + "      \"kind\": \"point\",\n"
                     + "      \"content\": \"Minimum point marker\",\n"
-                    + "      \"source_node\": \"minimum_reveal\",\n"
-                    + "      \"behavior\": \"derived\",\n"
-                    + "      \"anchor_id\": \"numberLine\",\n"
-                    + "      \"dependency_objects\": [\"numberLine\"],\n"
-                    + "      \"dependency_relation\": \"minimum_on_object\",\n"
                     + "      \"constraints\": [\n"
                     + "        {\n"
                     + "          \"domain\": \"geometry\",\n"
@@ -347,14 +337,14 @@ public final class StoryboardSchemaPrompts {
                     + "    \"screen_overlay_plan\": \"No fixed screen overlay needed.\",\n"
                     + "    \"constraints\": [\n"
                     + "      {\n"
-                    + "        \"domain\": \"geometry\",\n"
-                    + "        \"relation\": \"preserve_derived_construction\",\n"
-                    + "        \"refs\": {\"objects\": [\"P\"]},\n"
+                    + "        \"domain\": \"motion\",\n"
+                    + "        \"relation\": \"moves_on_object\",\n"
+                    + "        \"refs\": {\"point\": \"P\", \"support\": \"numberLine\"},\n"
+                    + "        \"parameters\": {\"range\": \"visible_line\"},\n"
                     + "        \"strength\": \"hard\",\n"
-                    + "        \"reason\": \"Keep derived points defined by their construction, not by ad hoc coordinates.\"\n"
+                    + "        \"reason\": \"P remains constrained to numberLine while it moves.\"\n"
                     + "      }\n"
                     + "    ],\n"
-                    + "    \"step_refs\": [\"problem_setup\"],\n"
                     + EXAMPLE_SCENE1_ENTERING_OBJECTS + ",\n"
                     + "    \"persistent_objects\": [],\n"
                     + "    \"exiting_objects\": [],\n"
@@ -399,7 +389,6 @@ public final class StoryboardSchemaPrompts {
                     + "    \"safe_area_plan\": \"Keep all important content inside x[-7,7] and y[-4,4] with margin.\",\n"
                     + "    \"screen_overlay_plan\": \"No fixed screen overlay needed.\",\n"
                     + "    \"constraints\": [],\n"
-                    + "    \"step_refs\": [\"minimum_reveal\"],\n"
                     + EXAMPLE_SCENE2_ENTERING_OBJECTS + ",\n"
                     + "    \"persistent_objects\": [\n"
                     + "      { \"id\": \"numberLine\" },\n"
@@ -425,7 +414,7 @@ public final class StoryboardSchemaPrompts {
 
     /** Patch-semantics explanation shared by both output formats. */
     public static final String PATCH_SEMANTICS_NOTE =
-            "`entering_objects` and `persistent_objects` in each scene are patches: each entry carries only `id` plus optional `placement` and `style`. Do NOT include kind, content, source_node, behavior, anchor_id, dependency_objects, dependency_relation, or constraints there — those belong in the object registry.\n"
+            "`entering_objects` and `persistent_objects` in each scene are patches: each entry carries only `id` plus optional `placement` and `style`. Do NOT include kind, content, or constraints there - those belong in the object registry.\n"
                     + "`exiting_objects` entries carry `id` only.\n";
 
     /** Text style semantics rules shared by both output formats. */

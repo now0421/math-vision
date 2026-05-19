@@ -11,7 +11,6 @@ import java.util.List;
  */
 public final class TargetDescriptionBuilder {
 
-    private static final int MAX_CHAIN_LENGTH = 15;
     private static final int MAX_REASON_LENGTH = 200;
 
     private TargetDescriptionBuilder() {}
@@ -120,11 +119,6 @@ public final class TargetDescriptionBuilder {
         int currentStepNumber = -1;
 
         for (KnowledgeNode node : ordered) {
-            if (stepNumber > MAX_CHAIN_LENGTH) {
-                sb.append("... (").append(ordered.size() - MAX_CHAIN_LENGTH).append(" more steps)\n");
-                break;
-            }
-
             String marker = "";
             if (currentStep != null && node.getId().equals(currentStep.getId())) {
                 marker = " <-- current";
@@ -154,7 +148,7 @@ public final class TargetDescriptionBuilder {
 
         if (currentStepNumber > 0) {
             sb.append("\nCurrently processing step ").append(currentStepNumber)
-                    .append(" of ").append(Math.min(ordered.size(), MAX_CHAIN_LENGTH)).append(".");
+                    .append(" of ").append(ordered.size()).append(".");
         }
 
         return sb.toString().trim();

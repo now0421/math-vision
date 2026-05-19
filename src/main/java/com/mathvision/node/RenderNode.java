@@ -40,7 +40,7 @@ import java.util.Map;
 public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderResult, String> {
 
     private static final Logger log = LoggerFactory.getLogger(RenderNode.class);
-    private static final int DEFAULT_MAX_CODE_FIX_ATTEMPTS = 3;
+    private static final int DEFAULT_MAX_RENDER_RETRIES = 4;
 
     private final ManimRendererService renderer;
     private final GeoGebraRenderService geoGebraRenderer;
@@ -565,14 +565,10 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
     }
 
     private int resolveMaxRenderFixAttempts(WorkflowConfig config) {
-        int codeFixMax = config != null
-                ? Math.max(config.getCodeFixMaxAttempts(), 0)
-                : DEFAULT_MAX_CODE_FIX_ATTEMPTS;
         if (config == null) {
-            return codeFixMax;
+            return DEFAULT_MAX_RENDER_RETRIES;
         }
-        int renderMaxRetries = Math.max(config.getRenderMaxRetries(), 0);
-        return Math.min(codeFixMax, renderMaxRetries);
+        return Math.max(config.getRenderMaxRetries(), 0);
     }
 
     private String abbreviateError(String error) {

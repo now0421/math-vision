@@ -26,6 +26,7 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CodeEvaluationNodeTest {
@@ -176,24 +177,27 @@ class CodeEvaluationNodeTest {
     }
 
     @Test
-    void reviewPromptSuppressesDerivedPlacementCoordinates() {
+    void staticConstraintComplianceBlocksDerivedObjectHardcodingBeforeReview() {
         QueueAiClient aiClient = new QueueAiClient();
-        aiClient.toolResponses.add(reviewResponse(true, 8, 8, 8, 2, 1,
-                "Looks good.",
-                "None.",
-                "Proceed to render."));
 
         Map<String, Object> ctx = buildContext(aiClient, initialCode(), buildDerivedPointNarrative());
 
         CodeEvaluationNode node = new CodeEvaluationNode();
         CodeEvaluationNode.CodeEvaluationInput input = node.prep(ctx);
-        node.exec(input);
+        CodeEvaluationResult result = node.exec(input);
+        String action = node.post(ctx, input, result);
 
-        assertNotNull(aiClient.lastUserMessage);
-        assertTrue(aiClient.lastUserMessage.contains("\"id\" : \"Pmin\""));
-        assertTrue(aiClient.lastUserMessage.contains("\"dependency_relation\" : \"intersection\""));
-        assertFalse(aiClient.lastUserMessage.contains("\"value\" : 0.6"));
-        assertFalse(aiClient.lastUserMessage.contains("\"value\" : -1.0"));
+        assertNull(aiClient.lastUserMessage);
+        assertFalse(result.isApprovedForRender());
+        assertEquals(WorkflowActions.FIX_CODE, action);
+        assertTrue(result.getFinalStaticAnalysis().getFindings().stream()
+                .anyMatch(finding -> "constraint_compliance".equals(finding.getRuleId())
+                        && finding.getSummary().contains("intersection_of")));
+        com.mathvision.model.CodeFixRequest request =
+                (com.mathvision.model.CodeFixRequest) ctx.get(WorkflowKeys.CODE_FIX_REQUEST);
+        assertNotNull(request);
+        assertTrue(request.getStoryboardJson().contains("\"relation\" : \"intersection_of\""));
+        assertTrue(request.getErrorReason().contains("Constraint compliance failed"));
     }
 
     @Test
@@ -545,9 +549,15 @@ class CodeEvaluationNodeTest {
         Narrative.Storyboard storyboard = new Narrative.Storyboard();
 
         Narrative.StoryboardObject pmin = object("Pmin", "point", "optimal stop");
-        pmin.setBehavior(Narrative.StoryboardObject.BEHAVIOR_DERIVED);
-        pmin.setDependencyObjects(List.of("ABprime", "l"));
-        pmin.setDependencyRelation("intersection");
+        pmin.setConstraints(List.of(constraint(
+                "Pmin_intersection",
+                "geometry",
+                "intersection_of",
+                Map.of("point", "Pmin", "object_a", "ABprime", "object_b", "l"),
+                Map.of(),
+                "hard")));
+        storyboard.getObjectRegistry().add(object("ABprime", "segment", "Shortcut segment"));
+        storyboard.getObjectRegistry().add(object("l", "line", "Boundary line"));
         storyboard.getObjectRegistry().add(pmin);
 
         Narrative.StoryboardScene scene = new Narrative.StoryboardScene();
@@ -591,6 +601,22 @@ class CodeEvaluationNodeTest {
         Narrative.StoryboardObject object = new Narrative.StoryboardObject();
         object.setId(id);
         return object;
+    }
+
+    private static Narrative.StoryboardConstraint constraint(String id,
+                                                             String domain,
+                                                             String relation,
+                                                             Map<String, Object> refs,
+                                                             Map<String, Object> parameters,
+                                                             String strength) {
+        Narrative.StoryboardConstraint constraint = new Narrative.StoryboardConstraint();
+        constraint.setId(id);
+        constraint.setDomain(domain);
+        constraint.setRelation(relation);
+        constraint.setRefs(refs);
+        constraint.setParameters(parameters);
+        constraint.setStrength(strength);
+        return constraint;
     }
 
     private static JsonNode reviewResponse(boolean approved,

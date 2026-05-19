@@ -242,29 +242,43 @@ class CodeGenerationNodeRoutingTest {
         StoryboardObject fixedPoint = new StoryboardObject();
         fixedPoint.setId("A");
         fixedPoint.setKind("point");
-        fixedPoint.setBehavior("static");
-        fixedPoint.setDependencyRelation("independent");
         fixedPoint.setPlacement(placement(-3.0, 1.0));
+
+        StoryboardObject segment = new StoryboardObject();
+        segment.setId("ABprime");
+        segment.setKind("segment");
+
+        StoryboardObject line = new StoryboardObject();
+        line.setId("l");
+        line.setKind("line");
 
         StoryboardObject pmin = new StoryboardObject();
         pmin.setId("Pmin");
         pmin.setKind("point");
-        pmin.setBehavior("derived");
-        pmin.setDependencyRelation("intersection");
-        pmin.setDependencyObjects(List.of("ABprime", "l"));
+        pmin.setConstraints(List.of(constraint(
+                "Pmin_intersection",
+                "geometry",
+                "intersection_of",
+                Map.of("point", "Pmin", "object_a", "ABprime", "object_b", "l"),
+                Map.of(),
+                "hard")));
         pmin.setPlacement(placement(0.6, -1.0));
 
         Map<String, StoryboardObject> registry = new LinkedHashMap<>();
         registry.put(fixedPoint.getId(), fixedPoint);
+        registry.put(segment.getId(), segment);
+        registry.put(line.getId(), line);
         registry.put(pmin.getId(), pmin);
 
         String summary = CodeGenerationNode.formatRegistrySummary(registry, 4);
 
-        assertTrue(summary.contains("id=A"));
-        assertTrue(summary.contains("id=A, kind=point, content=, behavior=static, dependency_relation=independent, placement=world x=-3.0 y=1.0"));
+        assertTrue(summary.contains("id=A, kind=point, content=, placement=world x=-3.0 y=1.0"));
         assertTrue(summary.contains("id=Pmin"));
-        assertTrue(summary.contains("dependency_relation=intersection"));
-        assertTrue(summary.contains("id=Pmin, kind=point, content=, behavior=derived, dependency_objects=[ABprime, l], dependency_relation=intersection, placement=world x=0.6 y=-1.0"));
+        assertTrue(summary.contains("\"relation\":\"intersection_of\""));
+        assertTrue(summary.contains("\"object_a\":\"ABprime\""));
+        assertFalse(summary.contains("dependency_relation"));
+        assertFalse(summary.contains("dependency_objects"));
+        assertFalse(summary.contains("behavior="));
     }
 
     private static Narrative buildNarrative() {
@@ -316,7 +330,6 @@ class CodeGenerationNodeRoutingTest {
         titleStyle.setColor("#FFFFFF");
         titleStyle.setFontSize(28.0);
         title.setStyle(titleStyle);
-        title.setSourceNode("problem");
         scene.setEnteringObjects(List.of(title));
         Narrative.StoryboardObject persistentTitle = new Narrative.StoryboardObject();
         persistentTitle.setId("title_main");
@@ -345,6 +358,22 @@ class CodeGenerationNodeRoutingTest {
         placement.setX(xAxis);
         placement.setY(yAxis);
         return placement;
+    }
+
+    private static Narrative.StoryboardConstraint constraint(String id,
+                                                             String domain,
+                                                             String relation,
+                                                             Map<String, Object> refs,
+                                                             Map<String, Object> parameters,
+                                                             String strength) {
+        Narrative.StoryboardConstraint constraint = new Narrative.StoryboardConstraint();
+        constraint.setId(id);
+        constraint.setDomain(domain);
+        constraint.setRelation(relation);
+        constraint.setRefs(refs);
+        constraint.setParameters(parameters);
+        constraint.setStrength(strength);
+        return constraint;
     }
 
     private static JsonNode codegenResponse(String code) {

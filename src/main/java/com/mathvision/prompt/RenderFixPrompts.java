@@ -98,7 +98,7 @@ public final class RenderFixPrompts {
                 .append("Error summary:\n```\n").append(error).append("\n```\n\n")
                 .append("The following Manim code failed to render:\n\n")
                 .append("```python\n").append(generatedCode).append("\n```\n\n")
-                .append("You MUST audit the ENTIRE file. The error type and signature below are routing hints only — the actual bugs may be anywhere with the same structural pattern. Do NOT limit your fix to the line mentioned in the traceback.\n")
+                .append("You MUST audit the ENTIRE file. The error type and signature below are routing hints only - the actual bugs may be anywhere with the same structural pattern. Do NOT limit your fix to the line mentioned in the traceback.\n")
                 .append("Treat the error summary as a routing hint, not as a single-line patch target.\n")
                 .append("Sweep all `Text(...)`, `Tex(...)`, and `MathTex(...)` calls whenever the error category suggests text-constructor or LaTeX misuse.\n")
                 .append("Prioritize the earliest root-cause category instead of patching downstream symptoms.\n")

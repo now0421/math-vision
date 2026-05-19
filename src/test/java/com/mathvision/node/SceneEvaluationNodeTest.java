@@ -9,6 +9,8 @@ import com.mathvision.model.RenderResult;
 import com.mathvision.model.SceneEvaluationResult;
 import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
+import com.mathvision.util.JsonUtils;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -145,7 +147,13 @@ class SceneEvaluationNodeTest {
         assertTrue(request.getStoryboardJson().contains("\"layout_goal\""));
         assertTrue(request.getStoryboardJson().contains("\"constraints\""));
         assertFalse(request.getStoryboardJson().contains("\"constraint_note\""));
-        assertFalse(request.getStoryboardJson().contains("\"placement\""));
+
+        JsonNode storyboardJson = JsonUtils.mapper().readTree(request.getStoryboardJson());
+        JsonNode registryBprime = findObject(storyboardJson.get("object_registry"), "point_Bprime");
+        JsonNode sceneBprime = findObject(storyboardJson.get("scenes").get(0).get("entering_objects"), "point_Bprime");
+        assertFalse(registryBprime.has("placement"));
+        assertTrue(sceneBprime.has("placement"));
+        assertFalse(sceneBprime.has("constraints"));
     }
 
     @Test
@@ -262,6 +270,16 @@ class SceneEvaluationNodeTest {
         assertNull(action);
     }
 
+    private JsonNode findObject(JsonNode objects, String id) {
+        assertNotNull(objects);
+        for (JsonNode object : objects) {
+            if (id.equals(object.path("id").asText())) {
+                return object;
+            }
+        }
+        throw new AssertionError("missing object " + id);
+    }
+
     private Map<String, Object> buildContext(Path geometryPath) {
         return buildContext(geometryPath, null);
     }
@@ -313,9 +331,14 @@ class SceneEvaluationNodeTest {
         pointBPrime.setId("point_Bprime");
         pointBPrime.setKind("point");
         pointBPrime.setContent("Reflection of B across l");
-        pointBPrime.setBehavior("derived");
-        pointBPrime.setDependencyObjects(List.of("point_B", "line_l"));
-        pointBPrime.setDependencyRelation("reflection_across_line");
+        pointBPrime.setConstraints(List.of(constraint(
+                "point_Bprime_reflection",
+                "geometry",
+                "reflection_across",
+                Map.of("image", "point_Bprime", "source", "point_B", "mirror", "line_l"),
+                Map.of(),
+                "hard",
+                "B' is the exact reflection of B across line l")));
         pointBPrime.setPlacement(placement(8.0, 3.8));
 
         Narrative.StoryboardScene scene = new Narrative.StoryboardScene();

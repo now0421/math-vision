@@ -107,7 +107,7 @@ class PromptModulesTest {
         assertTrue(authorityRules.contains("`notes_for_codegen`"));
         assertTrue(authorityRules.contains("hard semantic requirements"));
         assertTrue(authorityRules.contains("Do not treat scene-level `placement.x/y/z.value`, `min`, or `max` as a hard geometric constraint"));
-        assertTrue(referenceRules.contains("prefer object_registry dependency facts over scene patch placement/style details"));
+        assertTrue(referenceRules.contains("prefer object_registry constraints over scene patch placement/style details"));
         assertTrue(manimCodegenPrompt.contains("never hardcode a coordinate copied from placement"));
         assertTrue(manimCodegenPrompt.contains("scene `notes_for_codegen`"));
         assertTrue(manimCodegenPrompt.contains("mandatory scene-level implementation constraint"));
@@ -129,14 +129,16 @@ class PromptModulesTest {
                 "A=(0,0)",
                 "geogebra");
 
-        assertTrue(manimReviewPrompt.contains("use object_registry dependency facts as the semantic authority"));
+        assertTrue(manimReviewPrompt.contains("use object_registry constraints as the semantic authority"));
         assertTrue(manimReviewPrompt.contains("Never call a scene placement coordinate such as `x.value` or `y.value` a storyboard hard constraint"));
-        assertTrue(manimReviewPrompt.contains("verify the implementation by calculating the derived coordinates from its dependencies"));
+        assertTrue(manimReviewPrompt.contains("verify the implementation by calculating the derived coordinates from constraint refs"));
+        assertTrue(manimReviewPrompt.contains("recognizing a native dependency-based construction"));
         assertTrue(manimReviewPrompt.contains("direct numeric coordinates are acceptable only when they match fixed source geometry"));
         assertTrue(manimReviewPrompt.contains("notes_for_codegen"));
-        assertTrue(geogebraReviewPrompt.contains("use object_registry dependency facts as the semantic authority"));
+        assertTrue(geogebraReviewPrompt.contains("use object_registry constraints as the semantic authority"));
         assertTrue(geogebraReviewPrompt.contains("Never call a scene placement coordinate such as `x.value` or `y.value` a storyboard hard constraint"));
-        assertTrue(geogebraReviewPrompt.contains("verify the implementation by calculating the derived coordinates from its dependencies"));
+        assertTrue(geogebraReviewPrompt.contains("verify the implementation by calculating the derived coordinates from constraint refs"));
+        assertTrue(geogebraReviewPrompt.contains("recognizing a native dependency-based construction"));
         assertTrue(geogebraReviewPrompt.contains("direct numeric coordinates are acceptable only when they match fixed source geometry"));
         assertTrue(geogebraReviewPrompt.contains("notes_for_codegen"));
     }
@@ -306,7 +308,7 @@ class PromptModulesTest {
     void geogebraNarrativePromptGuidesFixedOverlayTowardTextualOverlays() {
         String geogebraVisualPrompt = VisualDesignPrompts.buildFixedContextPrompt("Triangle", "Demo", "geogebra", null) + VisualDesignPrompts.buildRulesPrompt("geogebra");
 
-        assertTrue(geogebraVisualPrompt.contains("Use `fixed_overlay` mainly for explanatory text"));
+        assertTrue(geogebraVisualPrompt.contains("Use `attachment/fixed_overlay` constraints mainly for explanatory text"));
         assertTrue(geogebraVisualPrompt.contains("bullseye-style highlights"));
     }
 

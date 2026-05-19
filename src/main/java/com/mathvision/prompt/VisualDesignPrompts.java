@@ -16,9 +16,9 @@ public final class VisualDesignPrompts {
             "Output format:\n"
                     + StoryboardSchemaPrompts.JSON_SYNTAX_REQUIREMENTS
                     + "Return a JSON object with two top-level keys: `scene` and `new_objects`.\n"
-                    + "`scene.entering_objects` and `scene.persistent_objects` are scene-level patches: each entry carries only `id` plus optional `placement` and `style`. Do NOT include kind, content, source_node, behavior, anchor_id, dependency_objects, dependency_relation, or constraints here — those belong in `new_objects`.\n"
-                    + "`new_objects` entries represent the canonical registry definition of each object introduced in this scene. They carry identity, content, dependency, and behavior but not scene-specific placement or style.\n"
-                    + "Only add `new_objects` that are teaching-essential, clarify the current beat, or carry distinct geometry/dependency semantics. Required labels or callouts with their own attachment behavior are not duplicates. Reuse existing registry ids instead of creating repeated formulas, redundant highlights, or decorative helper objects.\n"
+                    + "`scene.entering_objects` and `scene.persistent_objects` are scene-level patches: each entry carries only `id` plus optional `placement` and `style`. Do NOT include kind, content, or constraints here - those belong in `new_objects`.\n"
+                    + "`new_objects` entries represent the canonical registry definition of each object introduced in this scene. They carry identity, content, style, and structured constraints but not scene-specific placement.\n"
+                    + "Only add `new_objects` that are teaching-essential, clarify the current beat, or carry distinct geometry/constraint semantics. Required Manim labels or callouts with their own attachment constraint are not duplicates. Reuse existing registry ids instead of creating repeated formulas, redundant highlights, or decorative helper objects.\n"
                     + "{\n"
                     + "  \"scene\": {\n"
                     + StoryboardSchemaPrompts.SCENE_FIELDS_SCHEMA
@@ -31,7 +31,7 @@ public final class VisualDesignPrompts {
     private static final String SCENE_EXAMPLE_OUTPUT =
             "Example output:\n"
                     + StoryboardSchemaPrompts.JSON_LEXICAL_EXAMPLES
-                    + "Scene 1 example (first scene — persistent_objects and exiting_objects must be empty):\n"
+                    + "Scene 1 example (first scene - persistent_objects and exiting_objects must be empty):\n"
                     + "{\n"
                     + "  \"scene\": {\n"
                     + StoryboardSchemaPrompts.EXAMPLE_SCENE1_BODY
@@ -44,7 +44,7 @@ public final class VisualDesignPrompts {
                     + StoryboardSchemaPrompts.EXAMPLE_FORMULA_CARD
                     + "\n  ]\n"
                     + "}\n\n"
-                    + "Scene 2 example (continuation scene — persistent_objects carry ids from earlier scenes):\n"
+                    + "Scene 2 example (continuation scene - persistent_objects carry ids from earlier scenes):\n"
                     + "{\n"
                     + "  \"scene\": {\n"
                     + StoryboardSchemaPrompts.EXAMPLE_SCENE2_BODY
@@ -79,22 +79,16 @@ public final class VisualDesignPrompts {
                     + "- Narrative must not be constrained by a fixed word count.\n"
                     + "- Duration estimation reference: title card 3-5s, concept introduction 10-20s, equation reveal 15-25s, algorithm step 5-10s, aha-moment beat 15-30s, conclusion 5-10s. Use these ranges when setting `duration_seconds`.\n"
                     + "- Keep object ids concise and non-redundant since `kind` already carries the type. Good ids: `AB`, `P`, `l`; bad ids: `segmentAB`, `LineAB`, `PointP`. Follow only the naming rules for the active backend.\n"
-                    + "- Reuse the exact same concise ids consistently in `anchor_id`, `persistent_objects`, `exiting_objects`, and `actions.targets`.\n"
-                    + "- When any field inside `entering_objects` refers to another object, especially `content`, refer to that object by id only. Do not restate its kind there.\n"
-                    + "- For example, write `angle between AP and l at P`, not `angle between segment AP and line l at point P`.\n";
+                    + "- Reuse the exact same concise ids consistently in `persistent_objects`, `exiting_objects`, and `actions.targets`; express geometry/attachment relationships through structured `constraints`.\n"
+                    + "- When `new_objects[].content` or constraint refs mention another object, refer to that object by id only. Do not restate its kind there.\n"
+                    + "- For example, write registry content as `angle between AP and l at P`, not `angle between segment AP and line l at point P`.\n";
 
     private static final String SCENE_STYLE_LAYOUT_RULES =
             "Scene style and layout rules:\n"
                     + "- Design placement, style, color, and visual hierarchy now; downstream validation may clean up the whole storyboard, but this node must produce a strong first-pass scene layout.\n"
-                    + "- Plan where the eye should look first, what remains as dim context, and what area stays open for overlays or later reveals.\n"
-                    + "- Place formulas near edges, not over the main geometry.\n"
                     + "- Use the provided object registry, used colors, and style history to preserve meaning across scenes.\n"
-                    + "- Once a color is assigned to a concept, it keeps that meaning across the entire storyboard. Record non-obvious color-to-concept assignments in `notes_for_codegen` only when they must be enforced downstream.\n"
-                    + "- Assign colors to concepts, not to individual objects. Once a color is assigned to a concept, it keeps that meaning across the entire presentation.\n"
+                    + "- Record non-obvious palette, transition, or layout decisions in `notes_for_codegen` only when downstream code generation must preserve them as hard constraints.\n"
                     + "- Plan per-scene variation: vary the dominant color, spatial layout, animation entry style, and visual density across scenes. Never use identical visual config for every scene.\n"
-                    + "- Use a single typed `style` object per storyboard object, never a style array and never custom style keys.\n"
-                    + "- Style describes the object itself only. Create separate storyboard objects for labels, badges, helper outlines, cards, or callouts that have their own identity.\n"
-                    + "- Prefer `kind = text` or `kind = equation` over `kind = text_card` or `kind = formula_card`. Display text directly without a background box/card unless the card itself is teaching-essential (e.g. a titled result panel). Most formulas and labels are clearer without a surrounding box.\n"
                     + "- Objects whose coordinates can be computed from other elements (e.g. intersections, midpoints, perpendicular feet) do not need `placement`; only objects that require an initial or free position (e.g. a moving point on a line) should carry `placement`.\n"
                     + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n";
 
@@ -109,21 +103,20 @@ public final class VisualDesignPrompts {
                     + "Manim object and label rules:\n"
                     + "- Every planned teaching-essential Manim object must be explicitly represented in `entering_objects` or `persistent_objects`; avoid adding temporary decoration, duplicate labels, or unhelpful helper objects to the storyboard.\n"
                     + "- For named teaching-essential points, lines, intersections, and other geometry whose id or value must be read by the learner, the visible label is mandatory unless the current beat explicitly hides it.\n"
-                    + "- If a point, marker, label, counter, or helper must visibly follow another object, create a separate object and describe the attachment with `behavior`, `anchor_id`, `dependency_objects`, and `dependency_relation`.\n"
-                    + "- For moving points or markers, create a separate label object with `behavior = follows_anchor` so the label tracks the moving object.\n"
-                    + "- Manim does not auto-label objects. When an object's name or value helps the learner understand the current beat, explicitly declare a companion `kind: text` label in the same scene's `entering_objects`; attach it with `behavior = follows_anchor` and `anchor_id` pointing to the parent object's id. Omit labels that are redundant or do not improve understanding.\n"
-                    + "- Do not use `style.label_visible` to request a visible label; labels must be explicit `kind: text` or `kind: equation` companion objects with `dependency_relation = label_for`.\n"
+                    + "- If a point, marker, label, counter, or helper must visibly follow another object, create a separate object and describe the attachment with a structured `attachment/label_for`, `attachment/anchored_to`, or `attachment/fixed_offset_from` constraint.\n"
+                    + "- For moving points or markers in Manim, create a separate label object only when the label is teaching-essential; attach it with `relation = label_for` and refs `{label, anchor}` so downstream code can keep it synchronized.\n"
+                    + "- Manim does not auto-label objects. When an object's name or value helps the learner understand the current beat, explicitly declare a companion `kind: text` or `kind: equation` label in `new_objects`, include it in the scene patch, and attach it through an `attachment/label_for` constraint. Omit labels that are redundant or do not improve understanding.\n"
+                    + "- Do not use `style.label_visible` to request a visible Manim label; labels must be explicit companion objects with attachment constraints.\n"
                     + StoryboardSchemaPrompts.MANIM_COMPANION_LABEL_EXAMPLE
                     + "- Use `screen_overlay_plan` only for true viewport-fixed explanatory overlays, not as a vague place to hide layout conflicts.\n"
                     + SCENE_STYLE_LAYOUT_RULES
                     + SystemPrompts.VISUAL_PLANNING_RULES
                     + SystemPrompts.COMPOSITION_RULES
-                    + SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS
+                    + SystemPrompts.COLOR_FORMAT_RULES_BULLETS
                     + SystemPrompts.MANIM_COLOR_RULES_BULLETS
                     + "Manim visual-planning constraints:\n"
                     + "- " + SystemPrompts.MANIM_LAYOUT_FRAME_RULES.replace("\n", "\n- ").trim() + "\n"
                     + "- Use `scene_mode = 3d` only when depth is genuinely needed for the teaching goal.\n"
-                    + "- Use the default black background `#000000` and choose readable 6-digit hex foreground colors by contrast, not by a fixed color whitelist.\n"
                     + "- Prefer a stable world layout and meaningful transforms over repeatedly replacing the whole diagram.\n"
                     + "- Distinguish what should animate from what should stay static; favor motion for meaning-carrying elements and avoid decorative motion that adds load.\n"
                     + "- The visual plan must be concrete enough for documented Manim constructs, with no hidden assumptions.\n"
@@ -147,15 +140,15 @@ public final class VisualDesignPrompts {
                     + "GeoGebra label and object rules:\n"
                     + "- Follow GeoGebra naming conventions.\n"
                     + "- Prefer native GeoGebra labels for named geometric objects such as points, lines, segments, rays, circles, and polygons.\n"
-                    + "- If the visible text is just the object's own name or symbol, keep it as the object's native label rather than creating a separate `label` or `text` storyboard object.\n"
-                    + "- Create separate `label` or `text` objects only for overlays, formulas, counters, captions, explanatory annotations, or text that is semantically different from the object's native label. Avoid redundant pairs such as `A` plus `aLabel`, `lineL` plus `labelL`, or `circleO` plus `labelO`.\n"
-                    + "- Use `fixed_overlay` mainly for explanatory text, counters, captions, formulas, and similar viewport-fixed overlays. For geometric points, lines, circles, angle markers, and bullseye-style highlights that belong to the construction, prefer `static` or `derived` unless the object is truly an overlay.\n"
+                    + "- If the visible text is just the object's own name or symbol, keep it as the object's native label rather than creating a separate storyboard object. GeoGebra mode must not create independent label companion objects for geometry names.\n"
+                    + "- Create separate `text` or `equation` objects only for overlays, formulas, counters, captions, explanatory annotations, or text that is semantically different from the object's native label. Avoid redundant pairs such as `A` plus `aLabel`, `lineL` plus `labelL`, or `circleO` plus `labelO`.\n"
+                    + "- Use `attachment/fixed_overlay` constraints mainly for explanatory text, counters, captions, formulas, and similar viewport-fixed overlays. For geometric points, lines, circles, angle markers, and bullseye-style highlights that belong to the construction, use geometry/motion constraints instead of overlay semantics.\n"
                     + "- Use style changes (color, line thickness, dash style) on existing objects rather than creating visual duplicates on the same endpoints. GeoGebra objects persist globally, so every redundant object adds permanent clutter.\n"
                     + "- Do not mention specific GeoGebra command names in storyboard notes unless they are documented in the active syntax manual; describe unsupported effects generically instead.\n"
                     + SCENE_STYLE_LAYOUT_RULES
                     + SystemPrompts.VISUAL_PLANNING_RULES
                     + SystemPrompts.COMPOSITION_RULES
-                    + SystemPrompts.HIGH_CONTRAST_COLOR_RULES_BULLETS + "\n"
+                    + SystemPrompts.COLOR_FORMAT_RULES_BULLETS
                     + SystemPrompts.GEOGEBRA_COLOR_RULES_BULLETS
                     + "Visual design principles:\n"
                     + "- Prefer direct visual reasoning with draggable, constrained, or movable construction elements over text-heavy explanation.\n"
@@ -163,7 +156,6 @@ public final class VisualDesignPrompts {
                     + "- Let formulas support the visual argument instead of replacing it.\n"
                     + "- If a reasoning step is not naturally visible, design a faithful construction-based proxy.\n"
                     + "GeoGebra planning constraints:\n"
-                    + "- " + SystemPrompts.LAYOUT_FRAME_RULES.replace("\n", "\n- ").trim() + "\n"
                     + SystemPrompts.GEOGEBRA_VIEWPORT_RULES
                     + "- Use `scene_mode = 3d` only when depth is genuinely needed.\n"
                     + "- Keep the visual plan implementable without hidden assumptions.\n"

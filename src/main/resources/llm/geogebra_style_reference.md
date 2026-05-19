@@ -6,6 +6,7 @@ command generation.
 
 ## Rules
 
+* GeoGebra uses a white background by default (`#FFFFFF`).
 * Write every storyboard color as a 6-digit hex string in `#RRGGBB` format.
 * Do not use named colors, fixed color whitelists, CSS color names, 8-digit hex
   values, RGB strings, gradients, shadows, blur, glow, or browser-specific
@@ -50,12 +51,12 @@ Invalid examples:
 Contrast requirements:
 
 * Ordinary non-text strokes, arrows, geometry, markers, and decorative elements
-  must contrast against the default storyboard background `#000000` at ratio
+  must contrast against the default GeoGebra white background `#FFFFFF` at ratio
   >= 3.0.
 * Text, titles, formulas, labels, badges, and callouts must contrast at ratio
   >= 4.5 against their own background color.
 * If a text element has no explicit background color, compare its text color
-  against `#000000`.
+  against `#FFFFFF`.
 
 ## 2. Safe Style Properties
 

@@ -227,7 +227,6 @@ public class ManimRendererService {
 
         cmd.add("--media_dir");
         cmd.add(outputDir.resolve("media").toAbsolutePath().normalize().toString());
-        cmd.add("--disable_caching");
         cmd.add(codeFile.getFileName().toString());
         cmd.add(sceneName);
 

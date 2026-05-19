@@ -39,7 +39,7 @@ public final class NarrativePrompts {
                     + "Storyboard-level rules:\n"
                     + "- Prefer 3 to 5 strong scenes for problem-solving unless more are truly needed\n"
                     + "- Plan per-scene variation: vary the dominant visual focus, spatial layout pattern, and visual density across scenes. Avoid identical composition for consecutive scenes\n"
-                    + "- " + SystemPrompts.HIGH_CONTRAST_COLOR_RULES + "\n"
+                    + "- " + SystemPrompts.COLOR_FORMAT_RULES + "\n"
                     + "Storyboard style cleanup rules:\n"
                     + "- Treat the visual design pass as a strong draft, not an immutable contract; this stage may repair layout, style, continuity, and backend practicality before the storyboard becomes the validated downstream authority.\n"
                     + "- Remove or merge redundant storyboard objects introduced by the visual design pass when they do not carry distinct teaching, geometry, dependency, or continuity meaning.\n"
@@ -57,15 +57,17 @@ public final class NarrativePrompts {
     private static final String GEOGEBRA_RULES =
             "GeoGebra-specific storyboard validation rules:\n"
                     + SystemPrompts.GEOGEBRA_NAMING_RULES
+                    + SystemPrompts.GEOGEBRA_COLOR_RULES
                     + "- Use style changes (color, line thickness, dash style) on existing objects rather than creating visual duplicates on the same endpoints. GeoGebra objects persist globally, so every redundant object adds permanent clutter.\n"
                     + SystemPrompts.MINIMIZE_HELPER_OBJECTS_AUTHORING_RULES;
 
     private static final String MANIM_RULES =
             "Manim-specific storyboard validation rules:\n"
                     + SystemPrompts.MANIM_MOTION_AND_PACING_RULES
+                    + SystemPrompts.MANIM_COLOR_RULES
                     + SystemPrompts.MANIM_NAMING_RULES
                     + "- For named teaching-essential points, lines, intersections, and other geometry whose id or value must be read by the learner, preserve or add a visible companion label unless the current beat explicitly hides it.\n"
-                    + "- Do not express a visible label with `style.label_visible`; use an explicit `kind: text` or `kind: equation` companion object with `behavior = follows_anchor`, `anchor_id` set to the parent id, and `dependency_relation = label_for`.\n"
+                    + "- Do not express a visible label with `style.label_visible`; use an explicit `kind: text` or `kind: equation` companion object and attach it with a structured `attachment/label_for` constraint whose refs name the label and parent anchor.\n"
                     + StoryboardSchemaPrompts.MANIM_COMPANION_LABEL_EXAMPLE
                     + "- Prefer dark backgrounds (#1C1C1C to #2D2B55) with light content for maximum contrast and cinema feel when the storyboard does not already establish a different valid style.\n";
 
@@ -134,7 +136,7 @@ public final class NarrativePrompts {
                     + "Rules:\n"
                     + "- Do NOT modify any existing placement that already has data.\n"
                     + "- For objects without placement, compute a reasonable world-space coordinate "
-                    + "based on their dependency_objects, dependency_relation, constraints, kind, and content.\n"
+                    + "based on their structured constraints, kind, content, and any available source placements.\n"
                     + "- Use coordinate_space = \"world\" for all computed placements.\n"
                     + "- Return the complete storyboard JSON with placements added for objects that lacked them. "
                     + "Every other field must remain identical to the input.\n"
@@ -149,7 +151,7 @@ public final class NarrativePrompts {
     public static String buildPlacementEnrichmentUserPrompt(String storyboardJson) {
         return "Compute placement coordinates for all storyboard objects that lack a `placement` field.\n"
                 + "Preserve every existing placement exactly as-is; only add new placements where none exists.\n"
-                + "Use the object's dependency_objects, dependency_relation, constraints, kind, and content to infer its position.\n\n"
+                + "Use the object's structured constraints, kind, content, and any available source placements to infer its position.\n\n"
                 + "Storyboard:\n```json\n" + storyboardJson + "\n```\n\n"
                 + "Return the full storyboard JSON with the missing placements filled in.";
     }
@@ -172,7 +174,7 @@ public final class NarrativePrompts {
                 + "Constraint relation catalog for reference:\n"
                 + com.mathvision.util.StoryboardConstraintCatalog.detailedCatalogSummary()
                 + "\n"
-                + "- Use dependency_objects as the authoritative dependency graph.\n"
+                + "- Use structured constraints as the authoritative dependency graph and semantic contract.\n"
                 + "- Use a single typed `style` object only. Do not return style arrays, nested `properties`, role/type layer entries, or custom style keys.\n"
                 + "- Rewrite storyboard colors as 6-digit hex strings (`#RRGGBB`) only; do not use named colors or 8-digit hex.\n"
                 + "- Keep opacity in separate `opacity`, `fill_opacity`, or `stroke_opacity` fields.\n"
@@ -180,15 +182,15 @@ public final class NarrativePrompts {
                 + defaultBackground + " when no text background is present.\n"
                 + "- For non-text objects, ensure foreground colors contrast with " + defaultBackground
                 + " at ratio >= 3.0.\n"
-                + "- If a derived object is out of bounds, adjust upstream dependency_objects, the whole constrained group, or the camera/layout; do not repair by directly moving that derived object when it would contradict dependency_relation or structured constraints.\n"
-                + "- Every dependency-driven object must define dependency_objects as object ids, dependency_relation as a concise construction relation, and structured constraints for hard geometric invariants.\n"
+                + "- If a derived object is out of bounds, adjust upstream source objects from structured constraint refs, the whole constrained group, or the camera/layout; do not repair by directly moving that derived object when it would contradict structured constraints.\n"
+                + "- Every dependency-driven object must define structured constraints for hard geometric invariants, with refs naming owner objects and source objects using catalog role names.\n"
                 + "- ASCII repair is mandatory: rewrite every JSON string value so it contains only characters with code <= 0x7F.\n"
                 + "- Apply this normalization map wherever needed: U+2018 and U+2019 -> `'`; U+201C and U+201D -> `\"`; U+2013 and U+2014 -> `-`; U+2212 -> `-`; U+00D7 -> `x`; U+2260 -> `!=`; U+2264 -> `<=`; U+2265 -> `>=`.\n"
                 + "- Repair examples: `hiker` + U+2019 + `s` becomes `hiker's`; `PB'` + U+2014 + `a` becomes `PB' - a`; `right` + U+2014 + `the` becomes `right - the`; `P_test ` + U+2260 + ` P_min` becomes `P_test != P_min`.\n"
                 + "Angle boundary-vertex consistency rules:\n"
                 + "- For every angle_between or angle_at_vertex constraint, each boundary line (line_a, line_b, start_boundary, end_boundary, ray_a, ray_b) must pass through the angle vertex.\n"
-                + "- A boundary line passes through the vertex when the vertex id appears in the boundary line's dependency_objects (e.g. a segment connecting two points lists both in dependency_objects; a line drawn from one point through another lists both).\n"
-                + "- If a boundary line's dependency_objects do not include the vertex, the line likely does not pass through the vertex, and the angle will be drawn at the wrong location.\n"
+                + "- A boundary line passes through the vertex when a structured connector constraint names the vertex as one endpoint (e.g. `connects_points` refs include both endpoints; `line_through_points` or `ray_from_to` refs include the vertex and another point).\n"
+                + "- If no structured constraint shows that a boundary passes through the vertex, the line likely does not pass through the vertex, and the angle will be drawn at the wrong location.\n"
                 + "- Common mistake: using a perpendicular or normal from a different point as the angle boundary. For example, using a perpendicular from A to l as the normal at P_min is wrong if P_min is not on that perpendicular. Instead, create a normal at P_min (a line through P_min perpendicular to l).\n"
                 + "- When fixing, either: (a) replace the incorrect boundary reference with a line that passes through the vertex, or (b) create a new helper object (e.g. a normal at the vertex) and reference it instead.\n"
                 + "- Verify that equal-angle markers reference symmetrically constructed boundaries so downstream code can render them correctly.";

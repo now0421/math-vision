@@ -23,8 +23,10 @@ public class WorkflowConfig {
     private boolean parallelMathEnrichment;
     private boolean parallelVisualDesign;
     private int maxConcurrent;
-    private int codeGenMaxRetries;
-    private int codeFixMaxAttempts = 3;
+    private int visualDesignSceneMaxRetries = 3;
+    private int storyboardValidationMaxRetries = 3;
+    private int codeGenMaxRetries = 2;
+    private int codeEvaluationMaxRetries = 3;
     private boolean renderEnabled;
     private String renderQuality;
     private int renderMaxRetries;
@@ -89,11 +91,19 @@ public class WorkflowConfig {
     }
     public int getMaxConcurrent() { return maxConcurrent; }
     public void setMaxConcurrent(int maxConcurrent) { this.maxConcurrent = maxConcurrent; }
+    public int getVisualDesignSceneMaxRetries() { return visualDesignSceneMaxRetries; }
+    public void setVisualDesignSceneMaxRetries(int visualDesignSceneMaxRetries) {
+        this.visualDesignSceneMaxRetries = visualDesignSceneMaxRetries;
+    }
+    public int getStoryboardValidationMaxRetries() { return storyboardValidationMaxRetries; }
+    public void setStoryboardValidationMaxRetries(int storyboardValidationMaxRetries) {
+        this.storyboardValidationMaxRetries = storyboardValidationMaxRetries;
+    }
     public int getCodeGenMaxRetries() { return codeGenMaxRetries; }
     public void setCodeGenMaxRetries(int codeGenMaxRetries) { this.codeGenMaxRetries = codeGenMaxRetries; }
-    public int getCodeFixMaxAttempts() { return codeFixMaxAttempts; }
-    public void setCodeFixMaxAttempts(int codeFixMaxAttempts) {
-        this.codeFixMaxAttempts = codeFixMaxAttempts;
+    public int getCodeEvaluationMaxRetries() { return codeEvaluationMaxRetries; }
+    public void setCodeEvaluationMaxRetries(int codeEvaluationMaxRetries) {
+        this.codeEvaluationMaxRetries = codeEvaluationMaxRetries;
     }
     public boolean isRenderEnabled() { return renderEnabled; }
     public void setRenderEnabled(boolean renderEnabled) { this.renderEnabled = renderEnabled; }

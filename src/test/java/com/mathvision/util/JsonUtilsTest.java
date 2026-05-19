@@ -108,7 +108,7 @@ class JsonUtilsTest {
 
     @Test
     void extractJsonObjectRepairsBareIdentifiersAcrossFields() {
-        String malformed = "{\"scene_mode\":2d,\"behavior\":static,\"type\":create,\"kind\":text,"
+        String malformed = "{\"scene_mode\":2d,\"relation\":label_for,\"type\":create,\"kind\":text,"
                 + "\"style\":{\"color\":YELLOW,\"line_style\":dashed}}";
 
         String extracted = JsonUtils.extractJsonObject(malformed);
@@ -116,7 +116,7 @@ class JsonUtilsTest {
         assertNotNull(extracted);
         JsonNode node = JsonUtils.parseTree(extracted);
         assertEquals("2d", node.get("scene_mode").asText());
-        assertEquals("static", node.get("behavior").asText());
+        assertEquals("label_for", node.get("relation").asText());
         assertEquals("create", node.get("type").asText());
         assertEquals("text", node.get("kind").asText());
         assertEquals("YELLOW", node.get("style").get("color").asText());

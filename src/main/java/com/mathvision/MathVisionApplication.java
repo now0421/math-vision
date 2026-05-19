@@ -236,16 +236,16 @@ public class MathVisionApplication {
             flow = WorkflowFlow.createToVisualDesign();
         } else if (preloadedGraph != null) {
             flow = config.isRenderEnabled()
-                    ? WorkflowFlow.createFromGraph()
-                    : WorkflowFlow.createFromGraphWithoutRender();
+                    ? WorkflowFlow.createFromGraph(config)
+                    : WorkflowFlow.createFromGraphWithoutRender(config);
         } else if (preloadedCodeResult != null) {
             flow = config.isRenderEnabled()
                     ? WorkflowFlow.createFromCode()
                     : WorkflowFlow.createFromCodeWithoutRender();
         } else if (config.isRenderEnabled()) {
-            flow = WorkflowFlow.create();
+            flow = WorkflowFlow.create(config);
         } else {
-            flow = WorkflowFlow.createWithoutRender();
+            flow = WorkflowFlow.createWithoutRender(config);
         }
 
         Instant start = Instant.now();

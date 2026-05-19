@@ -23,6 +23,7 @@ import com.mathvision.prompt.StoryboardJsonBuilder;
 import com.mathvision.util.ErrorSummarizer;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.service.FileOutputService;
+import com.mathvision.util.StoryboardConstraintUtils;
 import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TextUtils;
 import com.mathvision.util.TimeUtils;
@@ -65,7 +66,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     private static final double LINE_TEXT_INTERSECTION_TOLERANCE = 0.03;
     private static final double GEOGEBRA_MIN_VIEW_WIDTH_UTILIZATION = 0.25;
     private static final double GEOGEBRA_MIN_VIEW_HEIGHT_UTILIZATION = 0.20;
-    private static final int DEFAULT_MAX_FIX_ATTEMPTS = 3;
+    private static final int DEFAULT_MAX_FIX_ATTEMPTS = 2;
     private static final int MAX_FIX_REPORT_SAMPLES = 12;
     private static final int MAX_ISSUES_PER_SAMPLE_IN_FIX_REPORT = 6;
 
@@ -1325,7 +1326,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         if (config == null) {
             return DEFAULT_MAX_FIX_ATTEMPTS;
         }
-        return Math.max(config.getCodeFixMaxAttempts(), 0);
+        return Math.max(config.getSceneEvaluationMaxRetries(), 0);
     }
 
     private void finalizeResult(SceneEvaluationResult result,
@@ -1543,7 +1544,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         }
         if (!context.isEmpty()) {
             context.put("repair_rule",
-                    "For dependency-driven or derived objects, keep dependency_relation and structured constraints true; fix layout by moving/scaling upstream source objects, the whole constrained group, camera/view, or label attachment instead of directly assigning coordinates to the derived object.");
+                    "For constrained or derived objects, keep structured constraints true; fix layout by moving/scaling upstream source objects, the whole constrained group, camera/view, or attachment offset instead of directly assigning coordinates to the derived object.");
         }
         return context;
     }
@@ -1563,15 +1564,12 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         context.put("reported_role", role);
         context.put("object_id", objectId);
         putNonBlank(context, "kind", object.getKind());
-        putNonBlank(context, "behavior", object.getBehavior());
-        putNonBlank(context, "anchor_id", object.getAnchorId());
-        putNonBlank(context, "dependency_relation", object.getDependencyRelation());
         if (object.getConstraints() != null && !object.getConstraints().isEmpty()) {
             context.put("constraints", object.getConstraints());
         }
-        List<String> dependencies = cleanDependencyObjects(object);
+        List<String> dependencies = constraintDependencyIds(object);
         if (!dependencies.isEmpty()) {
-            context.put("dependency_objects", dependencies);
+            context.put("constraint_dependency_ids", dependencies);
         }
         List<Map<String, Object>> chain = new ArrayList<>();
         appendDependencyChain(objectId, storyboardObjects, new LinkedHashSet<>(), chain);
@@ -1597,7 +1595,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             return;
         }
         chain.add(storyboardObjectDependencyMap(objectId, object));
-        for (String dependencyId : cleanDependencyObjects(object)) {
+        for (String dependencyId : constraintDependencyIds(object)) {
             appendDependencyChain(dependencyId, storyboardObjects, visited, chain);
         }
     }
@@ -1606,13 +1604,10 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("object_id", objectId);
         putNonBlank(map, "kind", object.getKind());
-        putNonBlank(map, "behavior", object.getBehavior());
-        putNonBlank(map, "anchor_id", object.getAnchorId());
-        List<String> dependencies = cleanDependencyObjects(object);
+        List<String> dependencies = constraintDependencyIds(object);
         if (!dependencies.isEmpty()) {
-            map.put("dependency_objects", dependencies);
+            map.put("constraint_dependency_ids", dependencies);
         }
-        putNonBlank(map, "dependency_relation", object.getDependencyRelation());
         if (object.getConstraints() != null && !object.getConstraints().isEmpty()) {
             map.put("constraints", object.getConstraints());
         }
@@ -1621,6 +1616,19 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             map.put("placement", placementSummary);
         }
         return map;
+    }
+
+    private List<String> constraintDependencyIds(StoryboardObject object) {
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        if (object == null || object.getConstraints() == null) {
+            return new ArrayList<>();
+        }
+        String objectId = StoryboardPatchResolver.objectId(object);
+        for (var constraint : object.getConstraints()) {
+            ids.addAll(StoryboardConstraintUtils.dependencyIds(constraint));
+        }
+        ids.remove(objectId);
+        return new ArrayList<>(ids);
     }
 
     private String resolveStoryboardObjectId(ElementRef element,
@@ -1685,19 +1693,6 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             normalized = normalized.substring(5);
         }
         return normalized.replaceAll("[^a-z0-9]", "");
-    }
-
-    private List<String> cleanDependencyObjects(StoryboardObject object) {
-        List<String> dependencies = new ArrayList<>();
-        if (object == null || object.getDependencyObjects() == null) {
-            return dependencies;
-        }
-        for (String dependencyId : object.getDependencyObjects()) {
-            if (dependencyId != null && !dependencyId.isBlank()) {
-                dependencies.add(dependencyId.trim());
-            }
-        }
-        return dependencies;
     }
 
     private String formatPlacementSummary(StoryboardObject object) {

@@ -199,11 +199,6 @@ public final class StoryboardNormalizer {
     private static void stripPatchOnlyFields(StoryboardObject object, PatchMode mode) {
         object.setKind(null);
         object.setContent(null);
-        object.setSourceNode(null);
-        object.setBehavior(null);
-        object.setAnchorId(null);
-        object.setDependencyObjects(new ArrayList<>());
-        object.setDependencyRelation(null);
         object.setConstraints(new ArrayList<>());
         if (mode == PatchMode.EXITING) {
             object.setStyle(null);
