@@ -143,6 +143,7 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("geometry", "connects_points")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("object", "connector", "segment", "line", "ray")
                 .requireAnyRef("object", "connector", "segment", "line", "ray")
                 .requireAnyRef("start", "point_a", "from")
                 .requireAnyRef("end", "point_b", "to")
@@ -150,6 +151,7 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("geometry", "line_through_points")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("line", "object")
                 .requireAnyRef("line", "object")
                 .requireAnyRef("point_a", "start", "from")
                 .requireAnyRef("point_b", "end", "to")
@@ -157,12 +159,14 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("geometry", "ray_from_to")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("ray", "object")
                 .requireAnyRef("ray", "object")
                 .requireAnyRef("start", "from")
                 .requireAnyRef("through", "end", "to"));
         add(relations, spec("geometry", "intersection_of")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("point", "intersection")
                 .requireAnyRef("point", "intersection")
                 .requireAnyRef("object_a", "support_a", "first")
                 .requireAnyRef("object_b", "support_b", "second")
@@ -170,6 +174,7 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("geometry", "reflection_across")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("image")
                 .requireRef("image")
                 .requireRef("source")
                 .requireAnyRef("mirror", "axis", "line")
@@ -177,12 +182,14 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("geometry", "midpoint_of")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("point", "midpoint")
                 .requireAnyRef("point", "midpoint")
                 .requireAnyRef("endpoint_a", "start", "point_a")
                 .requireAnyRef("endpoint_b", "end", "point_b"));
         add(relations, spec("geometry", "projection_onto")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("projection", "point", "image", "foot")
                 .requireAnyRef("projection", "point", "image", "foot")
                 .requireRef("source")
                 .requireAnyRef("support", "line", "target")
@@ -191,18 +198,21 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("geometry", "parallel_to")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("object", "line")
                 .requireAnyRef("object", "line")
                 .requireAnyRef("reference", "parallel_to")
                 .optionalParams("tolerance"));
         add(relations, spec("geometry", "perpendicular_to")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("object", "line")
                 .requireAnyRef("object", "line")
                 .requireAnyRef("reference", "perpendicular_to")
                 .optionalParams("tolerance"));
         add(relations, spec("geometry", "parallel_through")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("line", "object")
                 .requireAnyRef("line", "object")
                 .requireAnyRef("through_point", "point")
                 .requireAnyRef("reference", "parallel_to")
@@ -210,6 +220,7 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("geometry", "perpendicular_through")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("line", "object")
                 .requireAnyRef("line", "object")
                 .requireAnyRef("through_point", "point")
                 .requireAnyRef("reference", "perpendicular_to")
@@ -217,6 +228,7 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("geometry", "perpendicular_bisector")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("bisector", "line", "object")
                 .requireAnyRef("bisector", "line", "object")
                 .requireAnyRef("endpoint_a", "point_a", "start")
                 .requireAnyRef("endpoint_b", "point_b", "end")
@@ -224,6 +236,7 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("geometry", "circle_through")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("circle", "object")
                 .requireAnyRef("circle", "object")
                 .requireRef("points")
                 .optionalRefs("center")
@@ -244,12 +257,14 @@ public final class StoryboardConstraintCatalog {
                 .optionalParams("side", "tolerance"));
         add(relations, spec("geometry", "collinear")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("points")
                 .requireRef("points")
                 .optionalParams("tolerance"));
 
         add(relations, spec("measurement", "angle_between")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("marker")
                 .requireRef("marker")
                 .requireRef("vertex")
                 .requireAnyRef("line_a", "start_boundary", "ray_a")
@@ -262,6 +277,7 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("measurement", "arc_sweep")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("marker", "arc")
                 .requireAnyRef("marker", "arc")
                 .requireAnyRef("center", "anchor", "vertex")
                 .requireRef("start_boundary")
@@ -273,6 +289,7 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("measurement", "right_angle_at")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("marker")
                 .requireRef("marker")
                 .requireRef("vertex")
                 .requireRef("start_boundary")
@@ -280,22 +297,26 @@ public final class StoryboardConstraintCatalog {
                 .optionalParams("side_of_reference", "tolerance"));
         add(relations, spec("measurement", "equal_length")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("members")
                 .requireRef("members")
                 .optionalRefs("reference")
                 .optionalParams("tolerance"));
         add(relations, spec("measurement", "equal_angle")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("members")
                 .requireRef("members")
                 .optionalRefs("reference")
                 .optionalParams("tolerance"));
         add(relations, spec("measurement", "equal_measure_group")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("members")
                 .requireRef("members")
                 .optionalRefs("reference")
                 .optionalParams("measure", "group", "tolerance")
                 .enumParam("measure", "angle", "length", "distance_to_line", "radius", "area"));
         add(relations, spec("measurement", "distance_between")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("measurement", "label", "object")
                 .requireAnyRef("measurement", "label", "object")
                 .requireAnyRef("start", "point_a")
                 .requireAnyRef("end", "point_b")
@@ -303,6 +324,7 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("geometry", "minimum_of")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("marker", "point")
                 .requireAnyRef("marker", "point")
                 .requireAnyRef("support", "object")
                 .optionalParams("objective", "range", "tolerance"));
@@ -317,17 +339,20 @@ public final class StoryboardConstraintCatalog {
                 .optionalParams("range", "speed", "loop", "tolerance"));
         add(relations, spec("motion", "moves_along_range")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("object", "point")
                 .requireAnyRef("object", "point")
                 .requireParam("range")
                 .optionalParams("coordinate_space", "speed", "loop"));
         add(relations, spec("motion", "slider_driven")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("object", "target")
                 .requireAnyRef("object", "target")
                 .optionalRefs("slider")
                 .requireParam("range")
                 .optionalParams("parameter", "speed", "loop"));
         add(relations, spec("motion", "follows_path")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("object", "point")
                 .requireAnyRef("object", "point")
                 .requireAnyRef("path", "support")
                 .optionalParams("range", "speed", "loop"));
@@ -343,6 +368,7 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("attachment", "fixed_offset_from")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("object", "label", "attached")
                 .requireAnyRef("object", "label", "attached")
                 .requireRef("anchor")
                 .requireParam("offset")
@@ -350,6 +376,7 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("attachment", "anchored_to")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
+                .ownerRefs("object", "attached")
                 .requireAnyRef("object", "attached")
                 .requireRef("anchor")
                 .optionalParams("offset", "coordinate_space", "side"));
@@ -362,50 +389,60 @@ public final class StoryboardConstraintCatalog {
 
         add(relations, spec("layout", "keep_inside_safe_area")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("object", "objects")
                 .requireAnyRef("object", "objects")
                 .optionalParams("margin", "coordinate_space"));
         add(relations, spec("layout", "avoid_overlap")
                 .scopes(Scope.SCENE)
+                .ownerRefs("objects")
                 .requireRef("objects")
                 .optionalParams("padding", "priority"));
         add(relations, spec("layout", "maintain_clearance")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("object", "objects")
                 .requireAnyRef("object", "objects")
                 .optionalRefs("from", "reference")
                 .requireParam("clearance")
                 .optionalParams("coordinate_space", "priority"));
         add(relations, spec("layout", "group_alignment")
                 .scopes(Scope.SCENE)
+                .ownerRefs("objects")
                 .requireRef("objects")
                 .requireParam("alignment")
                 .optionalParams("axis", "spacing"));
 
         add(relations, spec("visibility", "visible_during")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("object", "objects")
                 .requireAnyRef("object", "objects")
                 .requireParam("scenes")
                 .optionalParams("opacity"));
         add(relations, spec("visibility", "hidden_after")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("object", "objects")
                 .requireAnyRef("object", "objects")
                 .requireParam("scene"));
         add(relations, spec("visibility", "fade_with")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("object", "objects")
                 .requireAnyRef("object", "objects")
                 .requireAnyRef("anchor", "reference"));
 
         add(relations, spec("style", "style_matches")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("object", "objects")
                 .requireAnyRef("object", "objects")
                 .requireAnyRef("reference", "concept")
                 .optionalParams("property", "tolerance"));
 
         add(relations, spec("lifecycle", "persistent_across_scenes")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("object", "objects")
                 .requireAnyRef("object", "objects")
                 .requireParam("scenes"));
         add(relations, spec("lifecycle", "exits_after_scene")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("object", "objects")
                 .requireAnyRef("object", "objects")
                 .requireParam("scene"));
 
@@ -608,21 +645,8 @@ public final class StoryboardConstraintCatalog {
             if (!builder.ownerRefRoles.isEmpty()) {
                 return new LinkedHashSet<>(builder.ownerRefRoles);
             }
-            List<String> preferred = List.of(
-                    "object", "objects", "point", "label", "attached", "marker", "arc", "line",
-                    "ray", "segment", "connector", "image", "projection", "midpoint", "intersection",
-                    "measurement", "circle", "bisector");
-            Set<String> allRoles = new LinkedHashSet<>();
-            for (Set<String> group : builder.requiredRefGroups) {
-                allRoles.addAll(group);
-            }
-            for (String role : preferred) {
-                if (allRoles.contains(role)) {
-                    return Set.of(role);
-                }
-            }
             if (!builder.requiredRefGroups.isEmpty()) {
-                return Set.of(builder.requiredRefGroups.get(0).iterator().next());
+                return new LinkedHashSet<>(builder.requiredRefGroups.get(0));
             }
             return Set.of();
         }

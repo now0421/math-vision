@@ -82,6 +82,33 @@ public final class StoryboardConstraintUtils {
         return ids;
     }
 
+    public static List<Set<String>> requiredDependencyIdGroups(StoryboardConstraint constraint) {
+        List<Set<String>> groups = new ArrayList<>();
+        if (constraint == null || constraint.getRefs() == null) {
+            return groups;
+        }
+        RelationSpec spec = StoryboardConstraintCatalog.relation(constraint.getRelation());
+        if (spec == null) {
+            return groups;
+        }
+        Set<String> ownerRoles = spec.ownerRefRoles();
+        Set<String> owners = ownerIds(constraint);
+        for (Set<String> requiredRoles : spec.requiredRefGroups()) {
+            if (requiredRoles.stream().anyMatch(ownerRoles::contains)) {
+                continue;
+            }
+            Set<String> ids = new LinkedHashSet<>();
+            for (String role : requiredRoles) {
+                collectRefIds(constraint.getRefs().get(role), ids);
+            }
+            ids.removeAll(owners);
+            if (!ids.isEmpty()) {
+                groups.add(ids);
+            }
+        }
+        return groups;
+    }
+
     public static boolean isAttachmentConstraint(StoryboardConstraint constraint) {
         return constraint != null && StoryboardConstraintCatalog.isAttachmentRelation(constraint.getRelation());
     }

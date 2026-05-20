@@ -792,8 +792,12 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     }
 
     private static String extractConstraintTargetId(Narrative.StoryboardConstraint c) {
+        for (String ownerId : StoryboardConstraintUtils.ownerIds(c)) {
+            if (ownerId != null && !ownerId.isBlank()) {
+                return ownerId;
+            }
+        }
         if (c.getRefs() == null) return null;
-        // Most constraints identify a target point/object in refs
         for (String key : new String[]{"point", "object", "source", "label", "segment"}) {
             Object val = c.getRefs().get(key);
             if (val instanceof String && !((String) val).isBlank()) {

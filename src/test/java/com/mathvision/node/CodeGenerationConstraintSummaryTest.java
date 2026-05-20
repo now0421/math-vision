@@ -6,7 +6,6 @@ import com.mathvision.model.Narrative.StoryboardScene;
 import com.mathvision.model.Narrative.StoryboardAction;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -100,6 +99,24 @@ class CodeGenerationConstraintSummaryTest {
         assertTrue(summary.contains("moves_on_object"), "Should find constraint from action target");
     }
 
+    @Test
+    void sceneLevelConstraintSummaryUsesCatalogOwnerRoles() {
+        StoryboardScene scene = new StoryboardScene();
+        scene.setConstraints(List.of(reflectionConstraint()));
+        scene.setPersistentObjects(List.of(stubObject("B1", "point")));
+
+        Map<String, StoryboardObject> registry = new LinkedHashMap<>();
+        registry.put("B", stubStoryboardObject("B", "point"));
+        registry.put("l", stubStoryboardObject("l", "line"));
+        registry.put("B1", stubStoryboardObject("B1", "point"));
+
+        String summary = CodeGenerationNode.buildSceneConstraintSummary(scene, registry);
+
+        assertTrue(summary.contains("B1(point): geometry/reflection_across"), summary);
+        assertTrue(summary.contains("owners=[B1]"), summary);
+        assertFalse(summary.contains("l(line): geometry/reflection_across"), summary);
+    }
+
     // --- helpers ---
 
     private static StoryboardObject stubObject(String id, String kind) {
@@ -118,6 +135,15 @@ class CodeGenerationConstraintSummaryTest {
         StoryboardObject obj = stubObject(id, kind);
         obj.setConstraints(List.of(constraints));
         return obj;
+    }
+
+    private static StoryboardConstraint reflectionConstraint() {
+        StoryboardConstraint constraint = new StoryboardConstraint();
+        constraint.setDomain("geometry");
+        constraint.setRelation("reflection_across");
+        constraint.setRefs(Map.of("image", "B1", "source", "B", "mirror", "l"));
+        constraint.setStrength("hard");
+        return constraint;
     }
 
     private static StoryboardConstraint constraint(String domain, String relation,

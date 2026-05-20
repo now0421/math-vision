@@ -490,6 +490,45 @@ class StoryboardValidationNodeTest {
         assertTrue(prompt.contains("no character code is greater than 0x7F"));
     }
 
+    @Test
+    void reportsScenePatchAndActionTargetsMissingFromRegistry() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(registryObject("A", "point", "Point A", null)),
+                List.of(
+                        scenePatch("A", boxPlacement("world", -0.1, 0.1, -0.1, 0.1)),
+                        scenePatch("ghost", boxPlacement("world", 0.0, 0.1, 0.0, 0.1))));
+        Narrative.StoryboardAction action = new Narrative.StoryboardAction();
+        action.setOrder(1);
+        action.setType("move");
+        action.setTargets(List.of("ghostAction"));
+        action.setDescription("Move the missing object.");
+        storyboard.getScenes().get(0).setActions(List.of(action));
+
+        List<String> issues = node.validate(storyboard);
+        String joinedIssues = String.join("\n", issues);
+
+        assertTrue(joinedIssues.contains("entering_objects[1]: references unknown object_registry id 'ghost'"),
+                () -> joinedIssues);
+        assertTrue(joinedIssues.contains("actions[0]: targets references unknown object_registry id 'ghostAction'"),
+                () -> joinedIssues);
+    }
+
+    @Test
+    void reportsDuplicateRegistryObjectIds() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(
+                        registryObject("A", "point", "Point A", null),
+                        registryObject("A", "point", "Duplicate point A", null)),
+                List.of(scenePatch("A", boxPlacement("world", -0.1, 0.1, -0.1, 0.1))));
+
+        List<String> issues = node.validate(storyboard);
+        String joinedIssues = String.join("\n", issues);
+
+        assertTrue(joinedIssues.contains("object_registry: duplicate object id 'A'"), () -> joinedIssues);
+    }
+
     private StoryboardValidationNode prepareNode(String outputTarget) {
         StoryboardValidationNode node = new StoryboardValidationNode();
         WorkflowConfig config = new WorkflowConfig();

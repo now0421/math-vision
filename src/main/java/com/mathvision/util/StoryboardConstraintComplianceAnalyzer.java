@@ -236,6 +236,7 @@ public final class StoryboardConstraintComplianceAnalyzer {
     private Violation analyzeDependencyImplementation(StoryboardConstraint constraint, String code, boolean geoGebra) {
         String ownerId = firstOwnerId(constraint);
         Set<String> dependencies = StoryboardConstraintUtils.dependencyIds(constraint);
+        List<Set<String>> requiredDependencyGroups = StoryboardConstraintUtils.requiredDependencyIdGroups(constraint);
         if (ownerId == null || dependencies.isEmpty()) {
             return null;
         }
@@ -251,11 +252,12 @@ public final class StoryboardConstraintComplianceAnalyzer {
                         "derived object '" + ownerId + "' is defined as free coordinates: " + abbreviate(definition),
                         "Use a native dependency command such as Intersect, Reflect, Midpoint, Angle, or Segment.");
             }
-            if (!mentionsAnyDefinitionDependency(definition, dependencies)) {
+            Set<String> missingGroup = firstMissingDefinitionDependencyGroup(definition, requiredDependencyGroups);
+            if (missingGroup != null) {
                 return violation(constraint, ownerId,
-                        "derived object '" + ownerId + "' definition does not reference source refs " + dependencies
-                                + ": " + abbreviate(definition),
-                        "Reference the source refs in the native construction command.");
+                        "derived object '" + ownerId + "' definition does not reference required source ref group "
+                                + missingGroup + ": " + abbreviate(definition),
+                        "Reference at least one source ref from each required dependency group in the native construction command.");
             }
             return null;
         }
@@ -265,10 +267,12 @@ public final class StoryboardConstraintComplianceAnalyzer {
                     "derived object '" + ownerId + "' does not appear in generated Manim code",
                     "Create the derived object from its source refs.");
         }
-        if (!mentionsAnyDefinitionDependency(findObjectLines(code, ownerId), dependencies)) {
+        String objectLines = findObjectLines(code, ownerId);
+        Set<String> missingGroup = firstMissingDefinitionDependencyGroup(objectLines, requiredDependencyGroups);
+        if (missingGroup != null) {
             return violation(constraint, ownerId,
-                    "derived object '" + ownerId + "' is not constructed from source refs " + dependencies,
-                    "Compute or redraw it from the referenced objects instead of hardcoded placement coordinates.");
+                    "derived object '" + ownerId + "' is not constructed from required source ref group " + missingGroup,
+                    "Compute or redraw it from at least one source ref in each required dependency group instead of hardcoded placement coordinates.");
         }
         if (dependencies.stream().anyMatch(this::isDynamicObject) && !hasDynamicUpdateFor(code, ownerId)) {
             return violation(constraint, ownerId,
@@ -482,16 +486,26 @@ public final class StoryboardConstraintComplianceAnalyzer {
         return rhs.matches("^\\(?\\s*-?\\d+(?:\\.\\d+)?\\s*,\\s*-?\\d+(?:\\.\\d+)?(?:\\s*,\\s*-?\\d+(?:\\.\\d+)?)?\\s*\\)?$");
     }
 
-    private boolean mentionsAnyDefinitionDependency(String text, Set<String> dependencies) {
-        if (text == null || dependencies == null || dependencies.isEmpty()) {
-            return false;
+    private Set<String> firstMissingDefinitionDependencyGroup(String text, List<Set<String>> dependencyGroups) {
+        if (text == null || dependencyGroups == null || dependencyGroups.isEmpty()) {
+            return null;
         }
-        for (String dependency : dependencies) {
-            if (containsIdentifier(text, dependency)) {
-                return true;
+        for (Set<String> dependencyGroup : dependencyGroups) {
+            if (dependencyGroup == null || dependencyGroup.isEmpty()) {
+                continue;
+            }
+            boolean groupMatched = false;
+            for (String dependency : dependencyGroup) {
+                if (containsIdentifier(text, dependency)) {
+                    groupMatched = true;
+                    break;
+                }
+            }
+            if (!groupMatched) {
+                return dependencyGroup;
             }
         }
-        return false;
+        return null;
     }
 
     private boolean mentionsObject(String code, String objectId) {

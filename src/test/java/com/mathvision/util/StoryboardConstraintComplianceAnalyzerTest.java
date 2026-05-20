@@ -195,6 +195,71 @@ class StoryboardConstraintComplianceAnalyzerTest {
         assertEquals(List.of(), violations);
     }
 
+    @Test
+    void connectorOwnerAliasIsRecognized() {
+        Storyboard storyboard = storyboard(
+                object("A", "point"),
+                object("B", "point"),
+                object("AB", "segment", constraint("AB_connects", "geometry", "connects_points",
+                        Map.of("segment", "AB", "start", "A", "end", "B"), Map.of(), "hard")));
+
+        List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
+                storyboard,
+                WorkflowConfig.OUTPUT_TARGET_GEOGEBRA,
+                String.join("\n",
+                        "A = (0, 0)",
+                        "B = (2, 0)"));
+
+        assertTrue(violations.stream().anyMatch(violation ->
+                "connects_points".equals(violation.getRelation())
+                        && "AB".equals(violation.getOwner())
+                        && violation.getEvidence().contains("not defined")));
+    }
+
+    @Test
+    void reflectionOwnerUsesImageInsteadOfMirrorLine() {
+        Storyboard storyboard = storyboard(
+                object("B", "point"),
+                object("l", "line"),
+                object("B1", "point", constraint("B1_reflection", "geometry", "reflection_across",
+                        Map.of("image", "B1", "source", "B", "mirror", "l"), Map.of(), "hard")));
+
+        List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
+                storyboard,
+                WorkflowConfig.OUTPUT_TARGET_GEOGEBRA,
+                String.join("\n",
+                        "B = (2, 0)",
+                        "l = Line(A, B)"));
+
+        assertTrue(violations.stream().anyMatch(violation ->
+                "reflection_across".equals(violation.getRelation())
+                        && "B1".equals(violation.getOwner())
+                        && violation.getEvidence().contains("not defined")));
+    }
+
+    @Test
+    void derivedConstructionMustReferenceEveryRequiredDependencyGroup() {
+        Storyboard storyboard = storyboard(
+                object("A", "point"),
+                object("B", "point"),
+                object("l", "line"),
+                object("AB", "segment"),
+                object("P", "point", constraint("P_intersection", "geometry", "intersection_of",
+                        Map.of("point", "P", "object_a", "AB", "object_b", "l"), Map.of(), "hard")));
+
+        List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
+                storyboard,
+                WorkflowConfig.OUTPUT_TARGET_GEOGEBRA,
+                String.join("\n",
+                        "AB = Segment(A, B)",
+                        "P = Intersect(AB, c)"));
+
+        assertTrue(violations.stream().anyMatch(violation ->
+                "intersection_of".equals(violation.getRelation())
+                        && "P".equals(violation.getOwner())
+                        && violation.getEvidence().contains("required source ref group")));
+    }
+
     private Storyboard storyboard(StoryboardObject... objects) {
         Storyboard storyboard = new Storyboard();
         storyboard.setObjectRegistry(List.of(objects));

@@ -340,12 +340,106 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         }
 
         // All remaining checks use the original storyboard
+        issues.addAll(validateStoryboardObjectStructure(storyboard));
         issues.addAll(validateAsciiText(storyboard));
         issues.addAll(validateStoryboardColors(storyboard));
         issues.addAll(validateStructuredConstraints(storyboard));
         issues.addAll(validateGeometricMarkerDefinitions(storyboard));
 
         return issues;
+    }
+
+    private List<String> validateStoryboardObjectStructure(Storyboard storyboard) {
+        List<String> issues = new ArrayList<>();
+        if (storyboard == null) {
+            return issues;
+        }
+
+        Set<String> registryIds = new LinkedHashSet<>();
+        Set<String> duplicateRegistryIds = new LinkedHashSet<>();
+        if (storyboard.getObjectRegistry() != null) {
+            for (int i = 0; i < storyboard.getObjectRegistry().size(); i++) {
+                StoryboardObject object = storyboard.getObjectRegistry().get(i);
+                String id = StoryboardPatchResolver.objectId(object);
+                if (id == null) {
+                    issues.add("object_registry[" + i + "]: missing id");
+                    continue;
+                }
+                if (!registryIds.add(id)) {
+                    duplicateRegistryIds.add(id);
+                }
+                if (object.getKind() == null || object.getKind().isBlank()) {
+                    issues.add("object_registry object '" + id + "': missing kind");
+                }
+            }
+        }
+        for (String id : duplicateRegistryIds) {
+            issues.add("object_registry: duplicate object id '" + id + "'");
+        }
+
+        if (storyboard.getScenes() != null) {
+            for (int i = 0; i < storyboard.getScenes().size(); i++) {
+                StoryboardScene scene = storyboard.getScenes().get(i);
+                String sceneLabel = "scene " + (i + 1) + " (" + (scene != null ? scene.getSceneId() : null) + ")";
+                if (scene == null) {
+                    continue;
+                }
+                validateScenePatchReferences(sceneLabel, "entering_objects", scene.getEnteringObjects(), registryIds, issues);
+                validateScenePatchReferences(sceneLabel, "persistent_objects", scene.getPersistentObjects(), registryIds, issues);
+                validateScenePatchReferences(sceneLabel, "exiting_objects", scene.getExitingObjects(), registryIds, issues);
+                validateActionTargetReferences(sceneLabel, scene.getActions(), registryIds, issues);
+            }
+        }
+        return issues;
+    }
+
+    private void validateScenePatchReferences(String sceneLabel,
+                                              String fieldName,
+                                              List<StoryboardObject> objects,
+                                              Set<String> registryIds,
+                                              List<String> issues) {
+        if (objects == null) {
+            return;
+        }
+        Set<String> seenIds = new LinkedHashSet<>();
+        for (int i = 0; i < objects.size(); i++) {
+            StoryboardObject object = objects.get(i);
+            String id = StoryboardPatchResolver.objectId(object);
+            String itemLabel = sceneLabel + " " + fieldName + "[" + i + "]";
+            if (id == null) {
+                issues.add(itemLabel + ": missing id");
+                continue;
+            }
+            if (!seenIds.add(id)) {
+                issues.add(itemLabel + ": duplicate object id '" + id + "' in " + fieldName);
+            }
+            if (!registryIds.contains(id)) {
+                issues.add(itemLabel + ": references unknown object_registry id '" + id + "'");
+            }
+        }
+    }
+
+    private void validateActionTargetReferences(String sceneLabel,
+                                                List<Narrative.StoryboardAction> actions,
+                                                Set<String> registryIds,
+                                                List<String> issues) {
+        if (actions == null) {
+            return;
+        }
+        for (int i = 0; i < actions.size(); i++) {
+            Narrative.StoryboardAction action = actions.get(i);
+            if (action == null || action.getTargets() == null) {
+                continue;
+            }
+            for (String target : action.getTargets()) {
+                String id = target != null ? target.trim() : "";
+                if (id.isEmpty()) {
+                    issues.add(sceneLabel + " actions[" + i + "]: targets contains a blank id");
+                } else if (!registryIds.contains(id)) {
+                    issues.add(sceneLabel + " actions[" + i + "]: targets references unknown object_registry id '" + id + "'");
+                }
+            }
+        }
     }
 
     private List<String> validateGeometricMarkerDefinitions(Storyboard storyboard) {

@@ -1494,7 +1494,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
 
         if (source.getObjectRegistry() != null) {
             for (StoryboardObject object : source.getObjectRegistry()) {
-                putStoryboardObject(objects, object);
+                putStoryboardObject(objects, object, false);
             }
         }
         if (source.getScenes() != null) {
@@ -1504,7 +1504,6 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 }
                 putStoryboardObjects(objects, scene.getEnteringObjects());
                 putStoryboardObjects(objects, scene.getPersistentObjects());
-                putStoryboardObjects(objects, scene.getExitingObjects());
             }
         }
         return objects;
@@ -1515,13 +1514,13 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             return;
         }
         for (StoryboardObject object : values) {
-            putStoryboardObject(objects, object);
+            putStoryboardObject(objects, object, true);
         }
     }
 
-    private void putStoryboardObject(Map<String, StoryboardObject> objects, StoryboardObject object) {
+    private void putStoryboardObject(Map<String, StoryboardObject> objects, StoryboardObject object, boolean overwrite) {
         String objectId = StoryboardPatchResolver.objectId(object);
-        if (objectId != null && !objectId.isBlank()) {
+        if (objectId != null && !objectId.isBlank() && (overwrite || !objects.containsKey(objectId))) {
             objects.put(objectId, object);
         }
     }
