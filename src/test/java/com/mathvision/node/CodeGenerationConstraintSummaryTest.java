@@ -26,7 +26,7 @@ class CodeGenerationConstraintSummaryTest {
 
         Map<String, StoryboardObject> registry = new LinkedHashMap<>();
         registry.put("P", objectWithConstraints("P", "point",
-                constraint("geometry", "lies_on", "P", "river", null, "P must stay on the river"),
+                constraint("constraint", "lies_on", "P", "river", null, "P must stay on the river"),
                 constraint("motion", "moves_on_object", "P", "river",
                         Map.of("range", "visible_line"), "P will slide along the river")));
         registry.put("river", stubStoryboardObject("river", "line"));
@@ -112,9 +112,75 @@ class CodeGenerationConstraintSummaryTest {
 
         String summary = CodeGenerationNode.buildSceneConstraintSummary(scene, registry);
 
-        assertTrue(summary.contains("B1(point): geometry/reflection_across"), summary);
+        assertTrue(summary.contains("B1(point): construction/reflection_across"), summary);
         assertTrue(summary.contains("owners=[B1]"), summary);
-        assertFalse(summary.contains("l(line): geometry/reflection_across"), summary);
+        assertFalse(summary.contains("l(line): construction/reflection_across"), summary);
+    }
+
+    @Test
+    void summarizesAngularMarkerConstraintsWithDisambiguationParameters() {
+        StoryboardScene scene = new StoryboardScene();
+        scene.setPersistentObjects(List.of(stubObject("sweep", "arc_marker"), stubObject("right", "right_angle_marker")));
+
+        Map<String, StoryboardObject> registry = new LinkedHashMap<>();
+        registry.put("O", stubStoryboardObject("O", "point"));
+        registry.put("OA", stubStoryboardObject("OA", "ray"));
+        registry.put("OB", stubStoryboardObject("OB", "ray"));
+        registry.put("sweep", objectWithConstraints("sweep", "arc_marker",
+                angularConstraint("marker", "arc_sweep",
+                        Map.of("arc", "sweep", "center", "O", "start_boundary", "OA", "end_boundary", "OB"),
+                        Map.of("direction", "counterclockwise", "sector", "minor"),
+                        "Sweep from OA to OB")));
+        registry.put("right", objectWithConstraints("right", "right_angle_marker",
+                angularConstraint("marker", "right_angle_at",
+                        Map.of("marker", "right", "vertex", "O", "start_boundary", "OA", "end_boundary", "OB"),
+                        Map.of("side_of_reference", "inside"),
+                        "Right angle side is inside")));
+
+        String summary = CodeGenerationNode.buildSceneConstraintSummary(scene, registry);
+
+        assertTrue(summary.contains("arc_sweep"), summary);
+        assertTrue(summary.contains("right_angle_at"), summary);
+        assertTrue(summary.contains("counterclockwise"), summary);
+        assertTrue(summary.contains("side_of_reference=inside") || summary.contains("side_of_reference"), summary);
+    }
+
+    @Test
+    void explicitPointPlacementIsNotTaggedCoordinateDerived() {
+        StoryboardScene scene = new StoryboardScene();
+        scene.setPersistentObjects(List.of(stubObject("P", "point")));
+
+        Map<String, StoryboardObject> registry = new LinkedHashMap<>();
+        registry.put("P", objectWithConstraints("P", "point",
+                storyboardConstraint("placement", "point_at",
+                        Map.of("point", "P"),
+                        Map.of("coordinate", List.of(1, 2)),
+                        "P has fixed coordinates")));
+
+        String summary = CodeGenerationNode.buildSceneConstraintSummary(scene, registry);
+
+        assertTrue(summary.contains("P(point): placement/point_at"), summary);
+        assertFalse(summary.contains("[coordinate-derived]"), summary);
+        assertFalse(summary.contains("[motion-sensitive]"), summary);
+    }
+
+    @Test
+    void dependencyBasedConstructionStillTaggedCoordinateDerived() {
+        StoryboardScene scene = new StoryboardScene();
+        scene.setPersistentObjects(List.of(stubObject("M", "point")));
+
+        Map<String, StoryboardObject> registry = new LinkedHashMap<>();
+        registry.put("A", stubStoryboardObject("A", "point"));
+        registry.put("B", stubStoryboardObject("B", "point"));
+        registry.put("M", objectWithConstraints("M", "point",
+                storyboardConstraint("construction", "midpoint_of",
+                        Map.of("point", "M", "endpoint_a", "A", "endpoint_b", "B"),
+                        Map.of(),
+                        "M is midpoint of AB")));
+
+        String summary = CodeGenerationNode.buildSceneConstraintSummary(scene, registry);
+
+        assertTrue(summary.contains("M(point): construction/midpoint_of [coordinate-derived] [motion-sensitive]"), summary);
     }
 
     // --- helpers ---
@@ -139,10 +205,40 @@ class CodeGenerationConstraintSummaryTest {
 
     private static StoryboardConstraint reflectionConstraint() {
         StoryboardConstraint constraint = new StoryboardConstraint();
-        constraint.setDomain("geometry");
+        constraint.setDomain("construction");
         constraint.setRelation("reflection_across");
         constraint.setRefs(Map.of("image", "B1", "source", "B", "mirror", "l"));
         constraint.setStrength("hard");
+        return constraint;
+    }
+
+    private static StoryboardConstraint angularConstraint(String domain,
+                                                          String relation,
+                                                          Map<String, Object> refs,
+                                                          Map<String, Object> parameters,
+                                                          String reason) {
+        StoryboardConstraint constraint = new StoryboardConstraint();
+        constraint.setDomain(domain);
+        constraint.setRelation(relation);
+        constraint.setRefs(refs);
+        constraint.setParameters(parameters);
+        constraint.setStrength("hard");
+        constraint.setReason(reason);
+        return constraint;
+    }
+
+    private static StoryboardConstraint storyboardConstraint(String domain,
+                                                             String relation,
+                                                             Map<String, Object> refs,
+                                                             Map<String, Object> parameters,
+                                                             String reason) {
+        StoryboardConstraint constraint = new StoryboardConstraint();
+        constraint.setDomain(domain);
+        constraint.setRelation(relation);
+        constraint.setRefs(refs);
+        constraint.setParameters(parameters);
+        constraint.setStrength("hard");
+        constraint.setReason(reason);
         return constraint;
     }
 

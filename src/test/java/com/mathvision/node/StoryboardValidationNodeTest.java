@@ -211,7 +211,7 @@ class StoryboardValidationNodeTest {
         StoryboardObject reflectedPoint = registryObject("Bprime", "point", "Reflected point", null);
         reflectedPoint.setConstraints(List.of(constraint(
                 "Bprime_reflection",
-                "geometry",
+                "construction",
                 "reflection_across",
                 Map.of("image", "Bprime"),
                 Map.of(),
@@ -235,7 +235,7 @@ class StoryboardValidationNodeTest {
         StoryboardObject lineL = registryObject("l", "line", "Reference line", null);
         lineL.setConstraints(List.of(constraint(
                 "l_through_P_A",
-                "geometry",
+                "construction",
                 "line_through_points",
                 Map.of("line", "l", "point_a", "P", "point_b", "A"),
                 Map.of(),
@@ -244,7 +244,7 @@ class StoryboardValidationNodeTest {
         StoryboardObject angle = registryObject("angleIn", "angle_marker", "Angle at P", null);
         angle.setConstraints(List.of(constraint(
                 "angleIn_sector",
-                "measurement",
+                "marker",
                 "angle_between",
                 Map.of("marker", "angleIn", "vertex", "P", "start_boundary", "l", "end_boundary", "A"),
                 Map.of("sector", "smaller", "side_of_reference", "same_as_end_boundary"),
@@ -267,7 +267,7 @@ class StoryboardValidationNodeTest {
         StoryboardObject lineL = registryObject("l", "line", "Mirror line", null);
         pointP.setConstraints(List.of(constraint(
                 "bad_reflection",
-                "measurement",
+                "metric",
                 "reflection_across",
                 Map.of("image", "P", "source", "A", "axis", "l", "extra", "A"),
                 Map.of("mirror", "l"),
@@ -279,7 +279,7 @@ class StoryboardValidationNodeTest {
         List<String> issues = node.validate(storyboard);
         String joinedIssues = String.join("\n", issues);
 
-        assertTrue(joinedIssues.contains("domain 'measurement' does not match relation 'reflection_across' domain 'geometry'"),
+        assertTrue(joinedIssues.contains("domain 'metric' does not match relation 'reflection_across' domain 'construction'"),
                 () -> joinedIssues);
         assertTrue(joinedIssues.contains("strength must be hard, repair_hard, or soft"), () -> joinedIssues);
         assertTrue(joinedIssues.contains("does not allow refs role 'extra'"), () -> joinedIssues);
@@ -296,7 +296,7 @@ class StoryboardValidationNodeTest {
         StoryboardObject angle = registryObject("angleIn", "angle_marker", "Angle at P", null);
         angle.setConstraints(List.of(constraint(
                 "angleIn_sector",
-                "measurement",
+                "marker",
                 "angle_between",
                 Map.of("marker", "angleIn", "vertex", "P", "start_boundary", "l", "end_boundary", "A"),
                 Map.of(),
@@ -320,7 +320,7 @@ class StoryboardValidationNodeTest {
         StoryboardObject reflectedPoint = registryObject("Bprime", "point", "Reflected point", null);
         reflectedPoint.setConstraints(List.of(constraint(
                 "Bprime_reflection",
-                "geometry",
+                "construction",
                 "reflection_across",
                 Map.of("image", "Bprime", "source", "B", "mirror", "river"),
                 Map.of(),
@@ -491,6 +491,70 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
+    void formatsOverlapDependencyChainForBothObjects() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardObject pointA = registryObject("A", "point", "Point A", null);
+        StoryboardObject axis = registryObject("axis", "line", "Axis", null);
+        StoryboardObject midpoint = registryObject("M", "point", "Midpoint", null);
+        midpoint.setConstraints(List.of(constraint(
+                "M_midpoint",
+                "construction",
+                "midpoint_of",
+                Map.of("midpoint", "M", "endpoint_a", "A", "endpoint_b", "axis"),
+                Map.of(),
+                "hard")));
+        StoryboardObject reflected = registryObject("Aprime", "point", "Reflected point", null);
+        reflected.setConstraints(List.of(constraint(
+                "Aprime_reflection",
+                "construction",
+                "reflection_across",
+                Map.of("image", "Aprime", "source", "A", "mirror", "axis"),
+                Map.of(),
+                "hard")));
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(pointA, axis, midpoint, reflected),
+                List.of(
+                        scenePatch("A", boxPlacement("world", -1.0, -0.8, 0.0, 0.2)),
+                        scenePatch("axis", yOnlyPlacement("world", 0.0)),
+                        scenePatch("M", boxPlacement("world", -0.1, 0.6, -0.1, 0.6)),
+                        scenePatch("Aprime", boxPlacement("world", 0.0, 0.7, 0.0, 0.7))));
+
+        List<String> issues = node.validate(storyboard);
+        String joinedIssues = String.join("\n", issues);
+
+        assertTrue(joinedIssues.contains("objects 'M' and 'Aprime' overlap"), () -> joinedIssues);
+        assertTrue(joinedIssues.contains("- M depends on [A, axis]"), () -> joinedIssues);
+        assertTrue(joinedIssues.contains("- Aprime depends on [A, axis]"), () -> joinedIssues);
+        assertTrue(joinedIssues.contains("midpoint_of"), () -> joinedIssues);
+        assertTrue(joinedIssues.contains("reflection_across"), () -> joinedIssues);
+    }
+
+    @Test
+    void retainsTwoRoundsOfStoryboardFixHistory() {
+        StoryboardValidationNode node = new StoryboardValidationNode();
+        WorkflowConfig config = new WorkflowConfig();
+        config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(registryObject("title", "text", "Main title", null)),
+                List.of(scenePatch("title", boxPlacement("screen", 6.9, 7.5, 2.0, 2.7))));
+        RepeatingStoryboardAiClient aiClient = new RepeatingStoryboardAiClient(storyboard);
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.CONFIG, config);
+        ctx.put(WorkflowKeys.NARRATIVE, new Narrative("Demo concept", "Demo description", storyboard));
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+
+        Narrative prepNarrative = node.prep(ctx);
+        node.exec(prepNarrative);
+
+        assertEquals(3, aiClient.toolCalls.get());
+        assertTrue(aiClient.snapshotSizes.get(0) < aiClient.snapshotSizes.get(1), aiClient.snapshotSizes.toString());
+        assertTrue(aiClient.snapshotSizes.get(1) < aiClient.snapshotSizes.get(2), aiClient.snapshotSizes.toString());
+        assertTrue(aiClient.roleSnapshots.get(1).contains("assistant"), aiClient.roleSnapshots.toString());
+        assertTrue(aiClient.roleSnapshots.get(2).contains("assistant"), aiClient.roleSnapshots.toString());
+    }
+
+    @Test
     void reportsScenePatchAndActionTargetsMissingFromRegistry() {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(
@@ -527,6 +591,145 @@ class StoryboardValidationNodeTest {
         String joinedIssues = String.join("\n", issues);
 
         assertTrue(joinedIssues.contains("object_registry: duplicate object id 'A'"), () -> joinedIssues);
+    }
+
+    @Test
+    void reportsArcSweepAndRightAngleMarkerDefinitionIssues() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardObject pointO = registryObject("O", "point", "Center", null);
+        StoryboardObject pointA = registryObject("A", "point", "Point A", null);
+        StoryboardObject pointB = registryObject("B", "point", "Point B", null);
+        StoryboardObject rayOA = registryObject("OA", "ray", "Ray OA", null);
+        rayOA.setConstraints(List.of(constraint(
+                "OA_ray",
+                "construction",
+                "ray_from_to",
+                Map.of("ray", "OA", "start", "O", "through", "A"),
+                Map.of(),
+                "hard")));
+        StoryboardObject rayOB = registryObject("OB", "ray", "Ray OB", null);
+        rayOB.setConstraints(List.of(constraint(
+                "OB_ray",
+                "construction",
+                "ray_from_to",
+                Map.of("ray", "OB", "start", "O", "through", "B"),
+                Map.of(),
+                "hard")));
+        StoryboardObject arc = registryObject("sweep", "arc_marker", "Sweep", null);
+        arc.setConstraints(List.of(constraint(
+                "bad_sweep",
+                "marker",
+                "arc_sweep",
+                Map.of("arc", "sweep", "center", "O", "start_boundary", "OA", "end_boundary", "OA"),
+                Map.of("direction", "counterclockwise"),
+                "hard")));
+        StoryboardObject right = registryObject("right", "right_angle_marker", "Right angle", null);
+        right.setConstraints(List.of(constraint(
+                "bad_right",
+                "marker",
+                "right_angle_at",
+                Map.of("marker", "right", "vertex", "O", "start_boundary", "OA", "end_boundary", "OB"),
+                Map.of(),
+                "hard")));
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(pointO, pointA, pointB, rayOA, rayOB, arc, right),
+                List.of());
+
+        List<String> issues = node.validate(storyboard);
+        String joinedIssues = String.join("\n", issues);
+
+        assertTrue(joinedIssues.contains("requires parameter 'sector'"), () -> joinedIssues);
+        assertTrue(joinedIssues.contains("distinct start_boundary and end_boundary"), () -> joinedIssues);
+        assertTrue(joinedIssues.contains("requires parameter 'side_of_reference'"), () -> joinedIssues);
+    }
+
+    @Test
+    void reportsArcSweepBoundaryThatMissesAnchor() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardObject pointO = registryObject("O", "point", "Center", null);
+        StoryboardObject pointA = registryObject("A", "point", "Point A", null);
+        StoryboardObject pointB = registryObject("B", "point", "Point B", null);
+        StoryboardObject pointQ = registryObject("Q", "point", "Wrong center", null);
+        StoryboardObject rayQA = registryObject("QA", "ray", "Ray QA", null);
+        rayQA.setConstraints(List.of(constraint(
+                "QA_ray",
+                "construction",
+                "ray_from_to",
+                Map.of("ray", "QA", "start", "Q", "through", "A"),
+                Map.of(),
+                "hard")));
+        StoryboardObject rayOB = registryObject("OB", "ray", "Ray OB", null);
+        rayOB.setConstraints(List.of(constraint(
+                "OB_ray",
+                "construction",
+                "ray_from_to",
+                Map.of("ray", "OB", "start", "O", "through", "B"),
+                Map.of(),
+                "hard")));
+        StoryboardObject arc = registryObject("sweep", "arc_marker", "Sweep", null);
+        arc.setConstraints(List.of(constraint(
+                "sweep_arc",
+                "marker",
+                "arc_sweep",
+                Map.of("arc", "sweep", "center", "O", "start_boundary", "QA", "end_boundary", "OB"),
+                Map.of("direction", "counterclockwise", "sector", "minor"),
+                "hard")));
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(pointO, pointA, pointB, pointQ, rayQA, rayOB, arc),
+                List.of());
+
+        List<String> issues = node.validate(storyboard);
+        String joinedIssues = String.join("\n", issues);
+
+        assertTrue(joinedIssues.contains("QA"), () -> joinedIssues);
+        assertTrue(joinedIssues.contains("may not pass through the declared vertex/anchor"), () -> joinedIssues);
+    }
+
+    @Test
+    void acceptsArcSweepAndRightAngleWithRequiredDisambiguation() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardObject pointO = registryObject("O", "point", "Center", null);
+        StoryboardObject pointA = registryObject("A", "point", "Point A", null);
+        StoryboardObject pointB = registryObject("B", "point", "Point B", null);
+        StoryboardObject rayOA = registryObject("OA", "ray", "Ray OA", null);
+        rayOA.setConstraints(List.of(constraint(
+                "OA_ray",
+                "construction",
+                "ray_from_to",
+                Map.of("ray", "OA", "start", "O", "through", "A"),
+                Map.of(),
+                "hard")));
+        StoryboardObject rayOB = registryObject("OB", "ray", "Ray OB", null);
+        rayOB.setConstraints(List.of(constraint(
+                "OB_ray",
+                "construction",
+                "ray_from_to",
+                Map.of("ray", "OB", "start", "O", "through", "B"),
+                Map.of(),
+                "hard")));
+        StoryboardObject arc = registryObject("sweep", "arc_marker", "Sweep", null);
+        arc.setConstraints(List.of(constraint(
+                "sweep_arc",
+                "marker",
+                "arc_sweep",
+                Map.of("arc", "sweep", "center", "O", "start_boundary", "OA", "end_boundary", "OB"),
+                Map.of("direction", "counterclockwise", "sector", "minor"),
+                "hard")));
+        StoryboardObject right = registryObject("right", "right_angle_marker", "Right angle", null);
+        right.setConstraints(List.of(constraint(
+                "right_angle",
+                "marker",
+                "right_angle_at",
+                Map.of("marker", "right", "vertex", "O", "start_boundary", "OA", "end_boundary", "OB"),
+                Map.of("side_of_reference", "inside"),
+                "hard")));
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(pointO, pointA, pointB, rayOA, rayOB, arc, right),
+                List.of());
+
+        List<String> issues = node.validate(storyboard);
+
+        assertTrue(issues.isEmpty(), () -> String.join("\n", issues));
     }
 
     private StoryboardValidationNode prepareNode(String outputTarget) {
@@ -643,6 +846,8 @@ class StoryboardValidationNodeTest {
     private static final class RepeatingStoryboardAiClient implements AiClient {
         private final Storyboard storyboard;
         private final AtomicInteger toolCalls = new AtomicInteger();
+        private final List<Integer> snapshotSizes = new ArrayList<>();
+        private final List<String> roleSnapshots = new ArrayList<>();
         private int lastSnapshotSize;
         private String lastSnapshotText = "";
 
@@ -660,6 +865,10 @@ class StoryboardValidationNodeTest {
                                                                  String toolsJson) {
             toolCalls.incrementAndGet();
             lastSnapshotSize = snapshot.size();
+            snapshotSizes.add(snapshot.size());
+            roleSnapshots.add(snapshot.stream()
+                    .map(NodeConversationContext.Message::getRole)
+                    .reduce("", (left, right) -> left.isEmpty() ? right : left + "," + right));
             lastSnapshotText = snapshot.stream()
                     .map(NodeConversationContext.Message::getContent)
                     .reduce("", (left, right) -> left + "\n" + right);

@@ -234,6 +234,14 @@ public final class StoryboardConstraintComplianceAnalyzer {
     }
 
     private Violation analyzeDependencyImplementation(StoryboardConstraint constraint, String code, boolean geoGebra) {
+        String relation = normalize(constraint.getRelation());
+        if ("angle_between".equals(relation) || "right_angle_at".equals(relation)) {
+            return analyzeVertexAngularMarkerImplementation(constraint, code, geoGebra);
+        }
+        if ("arc_sweep".equals(relation)) {
+            return analyzeArcSweepImplementation(constraint, code, geoGebra);
+        }
+
         String ownerId = firstOwnerId(constraint);
         Set<String> dependencies = StoryboardConstraintUtils.dependencyIds(constraint);
         List<Set<String>> requiredDependencyGroups = StoryboardConstraintUtils.requiredDependencyIdGroups(constraint);
@@ -280,6 +288,302 @@ public final class StoryboardConstraintComplianceAnalyzer {
                     "Use always_redraw(...) or an updater so the derived construction follows its refs.");
         }
         return null;
+    }
+
+    private Violation analyzeVertexAngularMarkerImplementation(StoryboardConstraint constraint, String code, boolean geoGebra) {
+        String ownerId = firstOwnerId(constraint);
+        String vertexId = firstRef(constraint, "vertex");
+        String firstBoundaryId = firstRef(constraint, "line_a", "start_boundary", "ray_a");
+        String secondBoundaryId = firstRef(constraint, "line_b", "end_boundary", "ray_b");
+        if (ownerId == null || vertexId == null || firstBoundaryId == null || secondBoundaryId == null) {
+            return null;
+        }
+
+        String definition;
+        if (geoGebra) {
+            definition = findGeoGebraDefinition(code, ownerId);
+            if (definition == null) {
+                return violation(constraint, ownerId,
+                        "angular marker '" + ownerId + "' is not defined in GeoGebra code",
+                        "Define it from the declared vertex and ordered boundary refs.");
+            }
+        } else {
+            if (!mentionsObject(code, ownerId)) {
+                return violation(constraint, ownerId,
+                        "angular marker '" + ownerId + "' does not appear in generated Manim code",
+                        "Create the angle marker from the declared vertex and ordered boundary refs.");
+            }
+            definition = findObjectLines(code, ownerId);
+        }
+
+        boolean firstBoundaryPreserved = angleBoundaryPreserved(definition, firstBoundaryId, vertexId);
+        boolean secondBoundaryPreserved = angleBoundaryPreserved(definition, secondBoundaryId, vertexId);
+        boolean vertexPreserved = containsIdentifier(definition, vertexId)
+                || (boundaryPassesThroughVertex(firstBoundaryId, vertexId)
+                && boundaryPassesThroughVertex(secondBoundaryId, vertexId));
+
+        if (!vertexPreserved) {
+            return violation(constraint, ownerId,
+                    "angular marker '" + ownerId + "' does not preserve declared vertex '" + vertexId
+                            + "': " + abbreviate(definition),
+                    "Use the declared vertex directly, or use boundary objects whose structured constraints prove they pass through that vertex.");
+        }
+        if (!firstBoundaryPreserved) {
+            return violation(constraint, ownerId,
+                    "angular marker '" + ownerId + "' does not preserve first ordered boundary ref '"
+                            + firstBoundaryId + "': " + abbreviate(definition),
+                    "Reference the declared first boundary, or derive the implementation from its structured source refs and the declared vertex.");
+        }
+        if (!secondBoundaryPreserved) {
+            return violation(constraint, ownerId,
+                    "angular marker '" + ownerId + "' does not preserve second ordered boundary ref '"
+                            + secondBoundaryId + "': " + abbreviate(definition),
+                    "Reference the declared second boundary, or derive the implementation from its structured source refs and the declared vertex.");
+        }
+
+        String relation = normalize(constraint.getRelation());
+        if ("right_angle_at".equals(relation) && !hasRightAngleImplementationEvidence(definition, geoGebra)) {
+            return violation(constraint, ownerId,
+                    "right-angle marker '" + ownerId + "' is implemented without clear right-angle marker evidence: "
+                            + abbreviate(definition),
+                    "Use RightAngle(...), Angle(..., elbow=True), or a native right-angle-equivalent construction that preserves the declared side.");
+        }
+        String sector = firstParameterText(constraint, "sector");
+        if ("angle_between".equals(relation) && !hasAngleSectorEvidence(definition, sector)) {
+            return violation(constraint, ownerId,
+                    "angle marker '" + ownerId + "' does not visibly preserve declared sector '" + sector
+                            + "': " + abbreviate(definition),
+                    "Set other_angle/quadrant or an equivalent native construction so the declared sector is unambiguous.");
+        }
+        String sideOfReference = firstParameterText(constraint, "side_of_reference");
+        if ("right_angle_at".equals(relation) && !hasSideDisambiguationEvidence(definition, sideOfReference)) {
+            return violation(constraint, ownerId,
+                    "right-angle marker '" + ownerId + "' does not preserve side_of_reference '"
+                            + sideOfReference + "': " + abbreviate(definition),
+                    "Encode the declared side with quadrant, orientation, or a side-specific native construction.");
+        }
+
+        Set<String> dependencies = StoryboardConstraintUtils.dependencyIds(constraint);
+        if (!geoGebra && dependencies.stream().anyMatch(this::isDynamicObject) && !hasDynamicUpdateFor(code, ownerId)) {
+            return violation(constraint, ownerId,
+                    "angular marker '" + ownerId + "' depends on moving refs but is not dynamically recomputed",
+                    "Use always_redraw(...) or an updater so the angular marker follows its declared vertex and boundaries.");
+        }
+        return null;
+    }
+
+    private Violation analyzeArcSweepImplementation(StoryboardConstraint constraint, String code, boolean geoGebra) {
+        String ownerId = firstOwnerId(constraint);
+        String anchorId = firstRef(constraint, "center", "anchor", "vertex");
+        String startBoundaryId = firstRef(constraint, "start_boundary");
+        String endBoundaryId = firstRef(constraint, "end_boundary");
+        if (ownerId == null || anchorId == null || startBoundaryId == null || endBoundaryId == null) {
+            return null;
+        }
+
+        String definition;
+        String ownerDefinition;
+        if (geoGebra) {
+            definition = findGeoGebraDefinition(code, ownerId);
+            if (definition == null) {
+                return violation(constraint, ownerId,
+                        "arc sweep marker '" + ownerId + "' is not defined in GeoGebra code",
+                        "Define it from the declared anchor/center and ordered sweep boundary refs.");
+            }
+            ownerDefinition = definition;
+        } else {
+            if (!mentionsObject(code, ownerId)) {
+                return violation(constraint, ownerId,
+                        "arc sweep marker '" + ownerId + "' does not appear in generated Manim code",
+                        "Create the arc sweep marker from the declared anchor/center and ordered boundary refs.");
+            }
+            definition = findObjectLines(code, ownerId);
+            ownerDefinition = findObjectOwnLines(code, ownerId);
+        }
+
+        if (!containsIdentifier(ownerDefinition, anchorId)) {
+            return violation(constraint, ownerId,
+                    "arc sweep marker '" + ownerId + "' does not preserve declared anchor/center '" + anchorId
+                            + "': " + abbreviate(definition),
+                    "Use the declared center/anchor/vertex directly so the sweep is attached to the intended geometry.");
+        }
+        if (!sweepBoundaryPreserved(definition, startBoundaryId)) {
+            return violation(constraint, ownerId,
+                    "arc sweep marker '" + ownerId + "' does not preserve ordered start boundary ref '"
+                            + startBoundaryId + "': " + abbreviate(definition),
+                    "Reference the declared start boundary, or derive it from that boundary's structured source refs.");
+        }
+        if (!sweepBoundaryPreserved(definition, endBoundaryId)) {
+            return violation(constraint, ownerId,
+                    "arc sweep marker '" + ownerId + "' does not preserve ordered end boundary ref '"
+                            + endBoundaryId + "': " + abbreviate(definition),
+                    "Reference the declared end boundary, or derive it from that boundary's structured source refs.");
+        }
+        if (orderedRefsAppearReversed(ownerDefinition, startBoundaryId, endBoundaryId)) {
+            return violation(constraint, ownerId,
+                    "arc sweep marker '" + ownerId + "' appears to reverse ordered boundaries '"
+                            + startBoundaryId + "' and '" + endBoundaryId + "': " + abbreviate(definition),
+                    "Construct the sweep in declared start_boundary -> end_boundary order.");
+        }
+        String direction = firstParameterText(constraint, "direction");
+        String sector = firstParameterText(constraint, "sector");
+        if (!hasArcDirectionSectorEvidence(definition, direction, sector)) {
+            return violation(constraint, ownerId,
+                    "arc sweep marker '" + ownerId + "' does not visibly preserve direction/sector '"
+                            + direction + "/" + sector + "': " + abbreviate(definition),
+                    "Encode the declared sweep direction and sector with ordered construction, start_angle/angle, or equivalent native command evidence.");
+        }
+
+        Set<String> dependencies = StoryboardConstraintUtils.dependencyIds(constraint);
+        if (!geoGebra && dependencies.stream().anyMatch(this::isDynamicObject) && !hasDynamicUpdateFor(code, ownerId)) {
+            return violation(constraint, ownerId,
+                    "arc sweep marker '" + ownerId + "' depends on moving refs but is not dynamically recomputed",
+                    "Use always_redraw(...) or an updater so the arc sweep follows its declared anchor and boundaries.");
+        }
+        return null;
+    }
+
+    private String firstParameterText(StoryboardConstraint constraint, String key) {
+        if (constraint == null || constraint.getParameters() == null || key == null) {
+            return null;
+        }
+        Object value = constraint.getParameters().get(key);
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        return text.isBlank() ? null : text;
+    }
+
+    private boolean hasRightAngleImplementationEvidence(String definition, boolean geoGebra) {
+        if (definition == null || definition.isBlank()) {
+            return false;
+        }
+        if (containsAnyIgnoreCase(definition, "RightAngle(", "elbow=True", "right_angle", "right angle")) {
+            return true;
+        }
+        return geoGebra && containsCommand(definition, "Angle")
+                && containsAnyIgnoreCase(definition, "90", "pi/2", "π/2", "right");
+    }
+
+    private boolean hasAngleSectorEvidence(String definition, String sector) {
+        if (sector == null || sector.isBlank()) {
+            return true;
+        }
+        String normalizedSector = normalize(sector);
+        if (containsAnyIgnoreCase(definition, normalizedSector, "quadrant=")) {
+            return true;
+        }
+        if ("smaller".equals(normalizedSector) || "interior".equals(normalizedSector) || "right".equals(normalizedSector)) {
+            return containsAnyIgnoreCase(definition, "other_angle=False", "other_angle = False", "Angle(", "RightAngle(");
+        }
+        if ("reflex".equals(normalizedSector) || "exterior".equals(normalizedSector)) {
+            return containsAnyIgnoreCase(definition, "other_angle=True", "other_angle = True", "reflex", "exterior");
+        }
+        return true;
+    }
+
+    private boolean hasSideDisambiguationEvidence(String definition, String sideOfReference) {
+        if (sideOfReference == null || sideOfReference.isBlank()) {
+            return true;
+        }
+        return containsAnyIgnoreCase(definition,
+                sideOfReference,
+                "quadrant=",
+                "direction=",
+                "clockwise",
+                "counterclockwise",
+                "side");
+    }
+
+    private boolean hasArcDirectionSectorEvidence(String definition, String direction, String sector) {
+        if (definition == null || definition.isBlank()) {
+            return false;
+        }
+        if (containsAnyIgnoreCase(definition, "ArcBetweenPoints", "start_angle", "angle=", "angle =", "AnnularSector", "Sector(")) {
+            return true;
+        }
+        boolean directionMatched = direction == null || direction.isBlank() || containsAnyIgnoreCase(definition, direction);
+        boolean sectorMatched = sector == null || sector.isBlank() || containsAnyIgnoreCase(definition, sector);
+        return directionMatched && sectorMatched;
+    }
+
+    private boolean orderedRefsAppearReversed(String definition, String startId, String endId) {
+        if (definition == null || startId == null || endId == null || startId.equals(endId)) {
+            return false;
+        }
+        int startIndex = firstIdentifierIndex(definition, startId);
+        int endIndex = firstIdentifierIndex(definition, endId);
+        return startIndex >= 0 && endIndex >= 0 && endIndex < startIndex;
+    }
+
+    private int firstIdentifierIndex(String text, String id) {
+        if (text == null || id == null || id.isBlank()) {
+            return -1;
+        }
+        java.util.regex.Matcher matcher = Pattern.compile("(?<![A-Za-z0-9_])" + Pattern.quote(id) + "(?![A-Za-z0-9_])")
+                .matcher(text);
+        return matcher.find() ? matcher.start() : -1;
+    }
+
+    private boolean angleBoundaryPreserved(String definition, String boundaryId, String vertexId) {
+        if (boundaryId == null || boundaryId.isBlank()) {
+            return false;
+        }
+        if (containsIdentifier(definition, boundaryId)) {
+            return containsIdentifier(definition, vertexId) || boundaryPassesThroughVertex(boundaryId, vertexId);
+        }
+        if (!containsIdentifier(definition, vertexId)) {
+            return false;
+        }
+        for (String sourceId : boundarySourceIds(boundaryId)) {
+            if (!sourceId.equals(vertexId) && containsIdentifier(definition, sourceId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean sweepBoundaryPreserved(String definition, String boundaryId) {
+        if (boundaryId == null || boundaryId.isBlank()) {
+            return false;
+        }
+        if (containsIdentifier(definition, boundaryId)) {
+            return true;
+        }
+        for (String sourceId : boundarySourceIds(boundaryId)) {
+            if (containsIdentifier(definition, sourceId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean boundaryPassesThroughVertex(String boundaryId, String vertexId) {
+        if (boundaryId == null || vertexId == null) {
+            return false;
+        }
+        for (StoryboardConstraint constraint : constraints) {
+            if (StoryboardConstraintUtils.ownerIds(constraint).contains(boundaryId)
+                    && StoryboardConstraintUtils.referencedObjectIds(constraint).contains(vertexId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Set<String> boundarySourceIds(String boundaryId) {
+        Set<String> ids = new LinkedHashSet<>();
+        if (boundaryId == null || boundaryId.isBlank()) {
+            return ids;
+        }
+        for (StoryboardConstraint constraint : constraints) {
+            if (StoryboardConstraintUtils.ownerIds(constraint).contains(boundaryId)) {
+                ids.addAll(StoryboardConstraintUtils.referencedObjectIds(constraint));
+            }
+        }
+        ids.remove(boundaryId);
+        return ids;
     }
 
     private boolean isDynamicObject(String objectId) {
@@ -460,6 +764,20 @@ public final class StoryboardConstraintComplianceAnalyzer {
             int end = Math.min(lines.length - 1, i + 1);
             for (int j = start; j <= end; j++) {
                 matches.append(lines[j]).append('\n');
+            }
+        }
+        return matches.toString();
+    }
+
+    private String findObjectOwnLines(String code, String objectId) {
+        if (code == null || objectId == null || objectId.isBlank()) {
+            return "";
+        }
+        String[] lines = code.split("\\R", -1);
+        StringBuilder matches = new StringBuilder();
+        for (String line : lines) {
+            if (containsIdentifier(line, objectId)) {
+                matches.append(line).append('\n');
             }
         }
         return matches.toString();

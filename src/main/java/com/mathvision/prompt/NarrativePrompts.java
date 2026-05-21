@@ -188,7 +188,7 @@ public final class NarrativePrompts {
                 + "- Apply this normalization map wherever needed: U+2018 and U+2019 -> `'`; U+201C and U+201D -> `\"`; U+2013 and U+2014 -> `-`; U+2212 -> `-`; U+00D7 -> `x`; U+2260 -> `!=`; U+2264 -> `<=`; U+2265 -> `>=`.\n"
                 + "- Repair examples: `hiker` + U+2019 + `s` becomes `hiker's`; `PB'` + U+2014 + `a` becomes `PB' - a`; `right` + U+2014 + `the` becomes `right - the`; `P_test ` + U+2260 + ` P_min` becomes `P_test != P_min`.\n"
                 + "Angle boundary-vertex consistency rules:\n"
-                + "- For every angle_between or angle_at_vertex constraint, each boundary line (line_a, line_b, start_boundary, end_boundary, ray_a, ray_b) must pass through the angle vertex.\n"
+                + "- For every angle_between, right_angle_at, or angle-like arc_sweep constraint, each boundary line (line_a, line_b, start_boundary, end_boundary, ray_a, ray_b) must pass through the declared vertex/anchor.\n"
                 + "- A boundary line passes through the vertex when a structured connector constraint names the vertex as one endpoint (e.g. `connects_points` refs include both endpoints; `line_through_points` or `ray_from_to` refs include the vertex and another point).\n"
                 + "- If no structured constraint shows that a boundary passes through the vertex, the line likely does not pass through the vertex, and the angle will be drawn at the wrong location.\n"
                 + "- Common mistake: using a perpendicular or normal from a different point as the angle boundary. For example, using a perpendicular from A to l as the normal at P_min is wrong if P_min is not on that perpendicular. Instead, create a normal at P_min (a line through P_min perpendicular to l).\n"

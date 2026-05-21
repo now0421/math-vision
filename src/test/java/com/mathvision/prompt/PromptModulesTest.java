@@ -364,6 +364,27 @@ class PromptModulesTest {
         assertTrue(prompt.contains("Treat the error summary as a routing hint"));
     }
 
+    @Test
+    void codegenAndEvaluationPromptsMentionArcSweepAndRightAngleConstraints() {
+        String manimScenePrompt = CodeGenerationPrompts.manimSceneCodeUserPrompt(
+                "{\"scene_id\":\"scene_1\"}", "scene_1", 0, 1);
+        String geogebraScenePrompt = CodeGenerationPrompts.geoGebraSceneCodeUserPrompt(
+                "{\"scene_id\":\"scene_1\"}", "Scene 1", 0, 1);
+        String manimReviewPrompt = codeEvaluationSystemPrompt("Angles", "Demo", "manim");
+        String geogebraReviewPrompt = codeEvaluationSystemPrompt("Angles", "Demo", "geogebra");
+
+        assertTrue(manimScenePrompt.contains("arc_sweep"));
+        assertTrue(manimScenePrompt.contains("right_angle_at"));
+        assertTrue(manimScenePrompt.contains("ordered boundary refs"));
+        assertTrue(geogebraScenePrompt.contains("arc_sweep"));
+        assertTrue(geogebraScenePrompt.contains("right_angle_at"));
+        assertTrue(geogebraScenePrompt.contains("sector, direction, and side"));
+        assertTrue(manimReviewPrompt.contains("right_angle_at"));
+        assertTrue(manimReviewPrompt.contains("arc_sweep"));
+        assertTrue(geogebraReviewPrompt.contains("right_angle_at"));
+        assertTrue(geogebraReviewPrompt.contains("arc_sweep"));
+    }
+
     private String narrativeSystemPrompt(String targetConcept, String targetDescription, String outputTarget) {
         return NarrativePrompts.buildFixedContextPrompt(targetConcept, targetDescription, outputTarget)
                 + NarrativePrompts.buildRulesPrompt(outputTarget);

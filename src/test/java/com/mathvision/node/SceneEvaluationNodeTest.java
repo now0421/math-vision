@@ -333,7 +333,7 @@ class SceneEvaluationNodeTest {
         pointBPrime.setContent("Reflection of B across l");
         pointBPrime.setConstraints(List.of(constraint(
                 "point_Bprime_reflection",
-                "geometry",
+                "construction",
                 "reflection_across",
                 Map.of("image", "point_Bprime", "source", "point_B", "mirror", "line_l"),
                 Map.of(),
@@ -349,7 +349,7 @@ class SceneEvaluationNodeTest {
         scene.setLayoutGoal("Keep explanatory text off the core geometry while B' stays symmetric to B.");
         scene.getConstraints().add(constraint(
                 "scene_reflection_Bprime",
-                "geometry",
+                "construction",
                 "reflection_across",
                 Map.of("image", "point_Bprime", "source", "point_B", "mirror", "line_l"),
                 Map.of(),

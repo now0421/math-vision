@@ -222,6 +222,17 @@ class ToolSchemasTest {
     }
 
     @Test
+    void storyboardSchemaUsesReclassifiedConstraintDomains() {
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"placement\""));
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"construction\""));
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"constraint\""));
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"metric\""));
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"marker\""));
+        assertFalse(ToolSchemas.STORYBOARD.contains("\"geometry\""));
+        assertFalse(ToolSchemas.STORYBOARD.contains("\"measurement\""));
+    }
+
+    @Test
     void sceneDesignSchemaIncludesSceneLevelConstraintsContract() throws Exception {
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         com.fasterxml.jackson.databind.JsonNode schema = mapper.readTree(ToolSchemas.SCENE_DESIGN);

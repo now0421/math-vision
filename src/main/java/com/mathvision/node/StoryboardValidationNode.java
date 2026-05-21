@@ -24,6 +24,7 @@ import com.mathvision.util.StoryboardConstraintCatalog;
 import com.mathvision.util.StoryboardConstraintUtils;
 import com.mathvision.util.StoryboardConstraintCatalog.RelationSpec;
 import com.mathvision.util.StoryboardConstraintCatalog.Scope;
+import com.mathvision.util.StoryboardGeometricMarkerValidator;
 import com.mathvision.util.StoryboardNormalizer;
 import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TargetDescriptionBuilder;
@@ -82,6 +83,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
     private String outputTarget = WorkflowConfig.OUTPUT_TARGET_MANIM;
     private int toolCalls = 0;
     private StoryboardValidationReport storyboardValidationReport;
+    private NodeConversationContext fixConversationContext;
 
     public StoryboardValidationNode() {
         super(1, 0);
@@ -97,6 +99,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         }
         this.toolCalls = 0;
         this.storyboardValidationReport = null;
+        this.fixConversationContext = null;
         return (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
     }
 
@@ -443,126 +446,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
     }
 
     private List<String> validateGeometricMarkerDefinitions(Storyboard storyboard) {
-        List<String> issues = new ArrayList<>();
-        if (storyboard == null || storyboard.getObjectRegistry() == null) {
-            return issues;
-        }
-        for (StoryboardObject object : storyboard.getObjectRegistry()) {
-            if (!isAngleOrArcMarker(object)) {
-                continue;
-            }
-            String objectId = StoryboardPatchResolver.objectId(object);
-            boolean hasStructuredMeasurementConstraint = hasStructuredConstraint(object,
-                    "angle_between", "arc_sweep", "right_angle_at");
-
-            if (isArcMarker(object) && !hasStructuredMeasurementConstraint) {
-                issues.add("object_registry: arc marker '" + objectId
-                        + "' must define the ordered arc sweep with a structured measurement constraint");
-            }
-            if (!hasStructuredMeasurementConstraint) {
-                issues.add("object_registry: angle/arc marker '" + objectId
-                        + "' must define the intended displayed sector with a structured measurement constraint");
-            }
-        }
-
-        // Check that angle boundary lines pass through the angle vertex
-        issues.addAll(validateAngleBoundaryVertexConsistency(storyboard));
-
-        return issues;
-    }
-
-    /**
-     * Validates that for every angle_between constraint, each boundary line
-     * referenced in the constraint passes through (or has the vertex as an
-     * endpoint in) the structured connector refs. This catches cases where a line
-     * at a different location is incorrectly used as an angle boundary,
-     * e.g. using a perpendicular from a different point as the normal at
-     * the vertex.
-     */
-    private List<String> validateAngleBoundaryVertexConsistency(Storyboard storyboard) {
-        List<String> issues = new ArrayList<>();
-        if (storyboard == null || storyboard.getObjectRegistry() == null) {
-            return issues;
-        }
-
-        Map<String, StoryboardObject> registry = new LinkedHashMap<>();
-        for (StoryboardObject obj : storyboard.getObjectRegistry()) {
-            String id = StoryboardPatchResolver.objectId(obj);
-            if (id != null) {
-                registry.put(id, obj);
-            }
-        }
-
-        for (StoryboardObject object : storyboard.getObjectRegistry()) {
-            if (object == null || object.getConstraints() == null) {
-                continue;
-            }
-            for (StoryboardConstraint constraint : object.getConstraints()) {
-                if (constraint == null || constraint.getRefs() == null) {
-                    continue;
-                }
-                String relation = constraint.getRelation();
-                if (relation == null || !normalizeForSemanticCheck(relation).contains(" angle_between ")) {
-                    continue;
-                }
-
-                Map<String, Object> refs = constraint.getRefs();
-                String vertexId = resolveRefId(refs.get("vertex"));
-                if (vertexId == null || vertexId.isBlank()) {
-                    continue;
-                }
-
-                // Collect boundary line refs
-                List<String> boundaryRefKeys = List.of("line_a", "line_b", "start_boundary", "end_boundary", "ray_a", "ray_b");
-                for (String refKey : boundaryRefKeys) {
-                    String boundaryId = resolveRefId(refs.get(refKey));
-                    if (boundaryId == null || boundaryId.isBlank()) {
-                        continue;
-                    }
-
-                    StoryboardObject boundaryObj = registry.get(boundaryId);
-                    if (boundaryObj == null) {
-                        continue;
-                    }
-
-                    if (constraintReferences(boundaryObj, vertexId)) {
-                        continue;
-                    }
-
-                    String boundaryKind = normalizeForSemanticCheck(boundaryObj.getKind());
-                    boolean isSimpleSegmentOrLine = containsAny(boundaryKind, " segment ", " line ", " ray ");
-                    boolean isPerpendicularHelper = hasStructuredConstraint(boundaryObj, "perpendicular_through", "perpendicular_bisector")
-                            || containsAny(normalizeForSemanticCheck(boundaryObj.getContent()), " perpendicular ", " normal ");
-
-                    if (isSimpleSegmentOrLine && !isPerpendicularHelper) {
-                        String objectId = StoryboardPatchResolver.objectId(object);
-                        issues.add("object_registry: angle marker '" + objectId + "' constraint references '"
-                                + boundaryId + "' as " + refKey + ", but '" + boundaryId
-                                + "' has no constraint referencing vertex '" + vertexId
-                                + "'; the boundary line may not pass through the angle vertex");
-                    } else if (isPerpendicularHelper && !constraintReferences(boundaryObj, vertexId)) {
-                        String objectId = StoryboardPatchResolver.objectId(object);
-                        issues.add("object_registry: angle marker '" + objectId + "' constraint references '"
-                                + boundaryId + "' as " + refKey + ", but '" + boundaryId
-                                + "' is a perpendicular/normal that does not reference vertex '"
-                                + vertexId + "'; use a normal at the vertex instead");
-                    }
-                }
-            }
-        }
-        return issues;
-    }
-
-    private boolean constraintReferences(StoryboardObject object, String objectId) {
-        if (object == null || objectId == null || objectId.isBlank() || object.getConstraints() == null) {
-            return false;
-        }
-        for (StoryboardConstraint constraint : object.getConstraints()) {
-            if (StoryboardConstraintUtils.referencedObjectIds(constraint).contains(objectId)) {
-                return true;
-            }
-        }
-        return false;
+        return StoryboardGeometricMarkerValidator.validateStoryboard(storyboard);
     }
 
     /**
@@ -727,6 +611,14 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             case "angle_between":
                 validateRefKind(label, constraint, registryById, "marker",
                         List.of(" angle_marker ", " anglemarker ", " right_angle ", " rightangle ", " arc_marker "), issues);
+                break;
+            case "arc_sweep":
+                validateAnyRefKind(label, constraint, registryById, List.of("marker", "arc"),
+                        List.of(" arc ", " arc_marker ", " angle_marker ", " anglemarker "), issues);
+                break;
+            case "right_angle_at":
+                validateRefKind(label, constraint, registryById, "marker",
+                        List.of(" right_angle ", " rightangle ", " right_angle_marker ", " angle_marker ", " anglemarker "), issues);
                 break;
             default:
                 break;
@@ -934,56 +826,6 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             return;
         }
         issues.add(label + ": refs values must be object ids or nested id lists/maps");
-    }
-
-    private boolean isAngleOrArcMarker(StoryboardObject object) {
-        if (object == null) {
-            return false;
-        }
-        String kind = normalizeForSemanticCheck(object.getKind());
-
-        if (isTextRenderKind(kind)) {
-            return false;
-        }
-
-        return isAngleOrArcMarkerKind(kind) || hasStructuredConstraint(object,
-                "angle_between", "arc_sweep", "right_angle_at");
-    }
-
-    private boolean isArcMarker(StoryboardObject object) {
-        if (object == null) {
-            return false;
-        }
-        String kind = normalizeForSemanticCheck(object.getKind());
-        if (isTextRenderKind(kind)) {
-            return false;
-        }
-        return isArcMarkerKind(kind) || hasStructuredConstraint(object, "arc_sweep");
-    }
-
-    private boolean isAngleOrArcMarkerKind(String kind) {
-        return containsAny(kind,
-                " angle_marker ", " anglemarker ", " arc_marker ", " arc ", " right_angle ", " rightangle ");
-    }
-
-    private boolean isArcMarkerKind(String kind) {
-        return containsAny(kind, " arc ", " arc_marker ");
-    }
-
-    private boolean hasStructuredConstraint(StoryboardObject object, String... relations) {
-        if (object == null || object.getConstraints() == null || object.getConstraints().isEmpty()) {
-            return false;
-        }
-        for (StoryboardConstraint constraint : object.getConstraints()) {
-            if (constraint == null || constraint.getRelation() == null) {
-                continue;
-            }
-            String relation = normalizeForSemanticCheck(constraint.getRelation());
-            if (containsAny(relation, relations)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private boolean isTextRenderKind(String kind) {
@@ -1679,7 +1521,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                             continue;
                         }
 
-                        String blockingIssue = classifyLayoutOverlap(sceneLabel, left, right);
+                        String blockingIssue = classifyLayoutOverlap(sceneLabel, left, right, elements);
                         if (blockingIssue != null) {
                             issues.add(blockingIssue);
                         }
@@ -1744,26 +1586,49 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
 
     private String classifyLayoutOverlap(String sceneLabel,
                                          StoryboardLayoutElement left,
-                                         StoryboardLayoutElement right) {
+                                         StoryboardLayoutElement right,
+                                         List<StoryboardLayoutElement> elements) {
+        String baseIssue;
         boolean leftText = isTextual(left.object);
         boolean rightText = isTextual(right.object);
         if (leftText && rightText) {
-            return sceneLabel + ": text objects '" + left.objectId
+            baseIssue = sceneLabel + ": text objects '" + left.objectId
                     + "' and '" + right.objectId + "' overlap";
-        }
-
-        if (leftText ^ rightText) {
+        } else if (leftText ^ rightText) {
             StoryboardLayoutElement textElement = leftText ? left : right;
             StoryboardLayoutElement otherElement = leftText ? right : left;
             if (isAttachedLabelPair(textElement.object, otherElement.object)) {
                 return null;
             }
-            return sceneLabel + ": text object '" + textElement.objectId
+            baseIssue = sceneLabel + ": text object '" + textElement.objectId
                     + "' overlaps object '" + otherElement.objectId + "'";
+        } else {
+            baseIssue = sceneLabel + ": objects '" + left.objectId
+                    + "' and '" + right.objectId + "' overlap";
         }
+        return formatOverlapIssue(baseIssue, left, right, elements);
+    }
 
-        return sceneLabel + ": objects '" + left.objectId
-                + "' and '" + right.objectId + "' overlap";
+    private String formatOverlapIssue(String baseIssue,
+                                      StoryboardLayoutElement left,
+                                      StoryboardLayoutElement right,
+                                      List<StoryboardLayoutElement> elements) {
+        StringBuilder sb = new StringBuilder(baseIssue);
+        appendDependencyContext(sb, left, elements);
+        appendDependencyContext(sb, right, elements);
+        return sb.toString();
+    }
+
+    private void appendDependencyContext(StringBuilder sb,
+                                         StoryboardLayoutElement element,
+                                         List<StoryboardLayoutElement> elements) {
+        if (sb == null || element == null) {
+            return;
+        }
+        String dependencyContext = formatDependencyContext(element.objectId, element.object, elements);
+        if (!dependencyContext.isBlank()) {
+            sb.append("\n").append(dependencyContext);
+        }
     }
 
     private boolean isTextual(StoryboardObject object) {
@@ -2051,24 +1916,14 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                 return null;
             }
             String storyboardJson = JsonUtils.mapper().writeValueAsString(narrative.getStoryboard());
-            NodeConversationContext conversationContext = new NodeConversationContext(Integer.MAX_VALUE);
-            String systemPrompt = NarrativePrompts.buildRulesPrompt(outputTarget)
-                    + "\n\n" + NarrativePrompts.buildRepairRules(outputTarget);
-            conversationContext.setSystemMessage(systemPrompt);
-            conversationContext.setFixedContextMessage(NarrativePrompts.buildFixedContextPrompt(
-                    narrative.getTargetConcept(),
-                    narrative.getTargetDescription(),
-                    outputTarget,
-                    buildDagChainSummary(narrative.getStoryboard())));
-
+            NodeConversationContext conversationContext = fixConversationContext(narrative);
             String userPrompt = NarrativePrompts.buildCleanupUserPrompt(storyboardJson, issues);
 
             JsonNode fixedData = AiRequestUtils.requestJsonObjectAsync(
                             aiClient,
                             log,
                             "storyboard-fix",
-                            conversationContext.getPinnedMessages(),
-                            conversationContext.getMaxInputTokens(),
+                            conversationContext,
                             SystemPrompts.buildCurrentRequestSection(userPrompt),
                             ToolSchemas.storyboard(outputTarget),
                             () -> toolCalls++)
@@ -2100,6 +1955,22 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             log.warn("LLM fix failed: {}", e.getMessage());
             return null;
         }
+    }
+
+    private NodeConversationContext fixConversationContext(Narrative narrative) {
+        if (fixConversationContext == null) {
+            int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
+            fixConversationContext = new NodeConversationContext(maxInputTokens, 2);
+            String systemPrompt = NarrativePrompts.buildRulesPrompt(outputTarget)
+                    + "\n\n" + NarrativePrompts.buildRepairRules(outputTarget);
+            fixConversationContext.setSystemMessage(systemPrompt);
+            fixConversationContext.setFixedContextMessage(NarrativePrompts.buildFixedContextPrompt(
+                    narrative.getTargetConcept(),
+                    narrative.getTargetDescription(),
+                    outputTarget,
+                    buildDagChainSummary(narrative.getStoryboard())));
+        }
+        return fixConversationContext;
     }
 
     private void preserveStepRefs(Storyboard source, Storyboard target) {

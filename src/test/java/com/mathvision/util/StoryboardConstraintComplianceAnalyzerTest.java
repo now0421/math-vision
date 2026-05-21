@@ -86,7 +86,7 @@ class StoryboardConstraintComplianceAnalyzerTest {
                 object("B", "point", constraint("B_moves", "motion", "moves_on_object",
                         Map.of("point", "B", "support", "l"), Map.of(), "hard")),
                 object("l", "line"),
-                object("AB", "segment", constraint("AB_connects", "geometry", "connects_points",
+                object("AB", "segment", constraint("AB_connects", "construction", "connects_points",
                         Map.of("object", "AB", "start", "A", "end", "B"), Map.of(), "hard")));
 
         List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
@@ -112,7 +112,7 @@ class StoryboardConstraintComplianceAnalyzerTest {
                 object("B", "point", constraint("B_moves", "motion", "moves_on_object",
                         Map.of("point", "B", "support", "l"), Map.of(), "hard")),
                 object("l", "line"),
-                object("AB", "segment", constraint("AB_connects", "geometry", "connects_points",
+                object("AB", "segment", constraint("AB_connects", "construction", "connects_points",
                         Map.of("object", "AB", "start", "A", "end", "B"), Map.of(), "hard")));
 
         List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
@@ -171,13 +171,13 @@ class StoryboardConstraintComplianceAnalyzerTest {
                 object("A", "point"),
                 object("B", "point"),
                 object("l", "line"),
-                object("AB", "segment", constraint("AB_connects", "geometry", "connects_points",
+                object("AB", "segment", constraint("AB_connects", "construction", "connects_points",
                         Map.of("object", "AB", "start", "A", "end", "B"), Map.of(), "hard")),
-                object("B1", "point", constraint("B1_reflection", "geometry", "reflection_across",
+                object("B1", "point", constraint("B1_reflection", "construction", "reflection_across",
                         Map.of("image", "B1", "source", "B", "mirror", "l"), Map.of(), "hard")),
-                object("P", "point", constraint("P_intersection", "geometry", "intersection_of",
+                object("P", "point", constraint("P_intersection", "construction", "intersection_of",
                         Map.of("point", "P", "object_a", "AB", "object_b", "l"), Map.of(), "hard")),
-                object("M", "point", constraint("M_midpoint", "geometry", "midpoint_of",
+                object("M", "point", constraint("M_midpoint", "construction", "midpoint_of",
                         Map.of("point", "M", "endpoint_a", "A", "endpoint_b", "B"), Map.of(), "hard")));
 
         List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
@@ -200,7 +200,7 @@ class StoryboardConstraintComplianceAnalyzerTest {
         Storyboard storyboard = storyboard(
                 object("A", "point"),
                 object("B", "point"),
-                object("AB", "segment", constraint("AB_connects", "geometry", "connects_points",
+                object("AB", "segment", constraint("AB_connects", "construction", "connects_points",
                         Map.of("segment", "AB", "start", "A", "end", "B"), Map.of(), "hard")));
 
         List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
@@ -221,7 +221,7 @@ class StoryboardConstraintComplianceAnalyzerTest {
         Storyboard storyboard = storyboard(
                 object("B", "point"),
                 object("l", "line"),
-                object("B1", "point", constraint("B1_reflection", "geometry", "reflection_across",
+                object("B1", "point", constraint("B1_reflection", "construction", "reflection_across",
                         Map.of("image", "B1", "source", "B", "mirror", "l"), Map.of(), "hard")));
 
         List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
@@ -244,7 +244,7 @@ class StoryboardConstraintComplianceAnalyzerTest {
                 object("B", "point"),
                 object("l", "line"),
                 object("AB", "segment"),
-                object("P", "point", constraint("P_intersection", "geometry", "intersection_of",
+                object("P", "point", constraint("P_intersection", "construction", "intersection_of",
                         Map.of("point", "P", "object_a", "AB", "object_b", "l"), Map.of(), "hard")));
 
         List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
@@ -258,6 +258,278 @@ class StoryboardConstraintComplianceAnalyzerTest {
                 "intersection_of".equals(violation.getRelation())
                         && "P".equals(violation.getOwner())
                         && violation.getEvidence().contains("required source ref group")));
+    }
+
+    @Test
+    void angleLineImplementationPassesWhenBoundariesPassThroughVertex() {
+        Storyboard storyboard = storyboard(
+                object("P", "point"),
+                object("A", "point"),
+                object("N", "point"),
+                object("AP", "segment", constraint("AP_connects", "construction", "connects_points",
+                        Map.of("object", "AP", "start", "P", "end", "A"), Map.of(), "hard")),
+                object("l", "line", constraint("l_through_P", "construction", "line_through_points",
+                        Map.of("line", "l", "point_a", "P", "point_b", "N"), Map.of(), "hard")),
+                object("theta", "angle_marker", constraint("theta_angle", "marker", "angle_between",
+                        Map.of("marker", "theta", "vertex", "P", "line_a", "AP", "line_b", "l"),
+                        Map.of("sector", "smaller"), "hard")));
+
+        List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
+                storyboard,
+                WorkflowConfig.OUTPUT_TARGET_MANIM,
+                String.join("\n",
+                        "P = Dot()",
+                        "A = Dot()",
+                        "N = Dot()",
+                        "AP = Line(P.get_center(), A.get_center())",
+                        "l = Line(P.get_center(), N.get_center())",
+                        "theta = Angle(AP, l, quadrant=(1, 1), other_angle=False)"));
+
+        assertEquals(List.of(), violations);
+    }
+
+    @Test
+    void angleThreePointImplementationPassesWhenPointsComeFromDeclaredBoundaries() {
+        Storyboard storyboard = storyboard(
+                object("P", "point"),
+                object("A", "point"),
+                object("N", "point"),
+                object("AP", "segment", constraint("AP_connects", "construction", "connects_points",
+                        Map.of("object", "AP", "start", "P", "end", "A"), Map.of(), "hard")),
+                object("l", "line", constraint("l_through_P", "construction", "line_through_points",
+                        Map.of("line", "l", "point_a", "P", "point_b", "N"), Map.of(), "hard")),
+                object("theta", "angle_marker", constraint("theta_angle", "marker", "angle_between",
+                        Map.of("marker", "theta", "vertex", "P", "line_a", "AP", "line_b", "l"),
+                        Map.of("sector", "smaller"), "hard")));
+
+        List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
+                storyboard,
+                WorkflowConfig.OUTPUT_TARGET_MANIM,
+                String.join("\n",
+                        "P = Dot()",
+                        "A = Dot()",
+                        "N = Dot()",
+                        "AP = Line(P.get_center(), A.get_center())",
+                        "l = Line(P.get_center(), N.get_center())",
+                        "theta = Angle(Line(P.get_center(), A.get_center()), Line(P.get_center(), N.get_center()), other_angle=False)"));
+
+        assertEquals(List.of(), violations);
+    }
+
+    @Test
+    void angleLineImplementationFailsWhenBoundaryDoesNotPassThroughVertex() {
+        Storyboard storyboard = storyboard(
+                object("P", "point"),
+                object("A", "point"),
+                object("Q", "point"),
+                object("N", "point"),
+                object("AP", "segment", constraint("AP_connects", "construction", "connects_points",
+                        Map.of("object", "AP", "start", "P", "end", "A"), Map.of(), "hard")),
+                object("l", "line", constraint("l_through_Q", "construction", "line_through_points",
+                        Map.of("line", "l", "point_a", "Q", "point_b", "N"), Map.of(), "hard")),
+                object("theta", "angle_marker", constraint("theta_angle", "marker", "angle_between",
+                        Map.of("marker", "theta", "vertex", "P", "line_a", "AP", "line_b", "l"),
+                        Map.of("sector", "smaller"), "hard")));
+
+        List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
+                storyboard,
+                WorkflowConfig.OUTPUT_TARGET_MANIM,
+                String.join("\n",
+                        "P = Dot()",
+                        "A = Dot()",
+                        "Q = Dot()",
+                        "N = Dot()",
+                        "AP = Line(P.get_center(), A.get_center())",
+                        "l = Line(Q.get_center(), N.get_center())",
+                        "theta = Angle(AP, l, quadrant=(1, 1), other_angle=False)"));
+
+        assertTrue(violations.stream().anyMatch(violation ->
+                "angle_between".equals(violation.getRelation())
+                        && "theta".equals(violation.getOwner())
+                        && violation.getEvidence().contains("declared vertex")));
+    }
+
+    @Test
+    void rightAngleImplementationUsesSameVertexBoundarySemantics() {
+        Storyboard storyboard = storyboard(
+                object("P", "point"),
+                object("A", "point"),
+                object("N", "point"),
+                object("AP", "segment", constraint("AP_connects", "construction", "connects_points",
+                        Map.of("object", "AP", "start", "P", "end", "A"), Map.of(), "hard")),
+                object("normal", "line", constraint("normal_through_P", "construction", "line_through_points",
+                        Map.of("line", "normal", "point_a", "P", "point_b", "N"), Map.of(), "hard")),
+                object("right", "right_angle_marker", constraint("right_angle", "marker", "right_angle_at",
+                        Map.of("marker", "right", "vertex", "P", "start_boundary", "AP", "end_boundary", "normal"),
+                        Map.of("side_of_reference", "inside"), "hard")));
+
+        List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
+                storyboard,
+                WorkflowConfig.OUTPUT_TARGET_MANIM,
+                String.join("\n",
+                        "P = Dot()",
+                        "A = Dot()",
+                        "N = Dot()",
+                        "AP = Line(P.get_center(), A.get_center())",
+                        "normal = Line(P.get_center(), N.get_center())",
+                        "right = RightAngle(AP, normal, quadrant=(1, 1))"));
+
+        assertEquals(List.of(), violations);
+    }
+
+    @Test
+    void rightAngleImplementationFailsWhenBoundaryMissesVertex() {
+        Storyboard storyboard = storyboard(
+                object("P", "point"),
+                object("A", "point"),
+                object("Q", "point"),
+                object("N", "point"),
+                object("AP", "segment", constraint("AP_connects", "construction", "connects_points",
+                        Map.of("object", "AP", "start", "P", "end", "A"), Map.of(), "hard")),
+                object("normal", "line", constraint("normal_through_Q", "construction", "line_through_points",
+                        Map.of("line", "normal", "point_a", "Q", "point_b", "N"), Map.of(), "hard")),
+                object("right", "right_angle_marker", constraint("right_angle", "marker", "right_angle_at",
+                        Map.of("marker", "right", "vertex", "P", "start_boundary", "AP", "end_boundary", "normal"),
+                        Map.of("side_of_reference", "inside"), "hard")));
+
+        List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
+                storyboard,
+                WorkflowConfig.OUTPUT_TARGET_MANIM,
+                String.join("\n",
+                        "P = Dot()",
+                        "A = Dot()",
+                        "Q = Dot()",
+                        "N = Dot()",
+                        "AP = Line(P.get_center(), A.get_center())",
+                        "normal = Line(Q.get_center(), N.get_center())",
+                        "right = RightAngle(AP, normal, quadrant=(1, 1))"));
+
+        assertTrue(violations.stream().anyMatch(violation ->
+                "right_angle_at".equals(violation.getRelation())
+                        && "right".equals(violation.getOwner())
+                        && violation.getEvidence().contains("declared vertex")));
+    }
+
+    @Test
+    void arcSweepImplementationPreservesAnchorAndOrderedBoundaries() {
+        Storyboard storyboard = storyboard(
+                object("O", "point"),
+                object("A", "point"),
+                object("B", "point"),
+                object("OA", "ray", constraint("OA_ray", "construction", "ray_from_to",
+                        Map.of("ray", "OA", "start", "O", "through", "A"), Map.of(), "hard")),
+                object("OB", "ray", constraint("OB_ray", "construction", "ray_from_to",
+                        Map.of("ray", "OB", "start", "O", "through", "B"), Map.of(), "hard")),
+                object("sweep", "arc_marker", constraint("sweep_arc", "marker", "arc_sweep",
+                        Map.of("arc", "sweep", "center", "O", "start_boundary", "OA", "end_boundary", "OB"),
+                        Map.of("direction", "counterclockwise", "sector", "minor"), "hard")));
+
+        List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
+                storyboard,
+                WorkflowConfig.OUTPUT_TARGET_MANIM,
+                String.join("\n",
+                        "O = Dot()",
+                        "A = Dot()",
+                        "B = Dot()",
+                        "OA = Line(O.get_center(), A.get_center())",
+                        "OB = Line(O.get_center(), B.get_center())",
+                        "sweep = Arc(radius=0.5).move_arc_center_to(O.get_center())",
+                        "sweep.add_updater(lambda m: m.become(ArcBetweenPoints(OA.get_end(), OB.get_end(), radius=0.5)))"));
+
+        assertEquals(List.of(), violations);
+    }
+
+    @Test
+    void arcSweepImplementationFailsWhenAnchorIsDropped() {
+        Storyboard storyboard = storyboard(
+                object("O", "point"),
+                object("A", "point"),
+                object("B", "point"),
+                object("OA", "ray", constraint("OA_ray", "construction", "ray_from_to",
+                        Map.of("ray", "OA", "start", "O", "through", "A"), Map.of(), "hard")),
+                object("OB", "ray", constraint("OB_ray", "construction", "ray_from_to",
+                        Map.of("ray", "OB", "start", "O", "through", "B"), Map.of(), "hard")),
+                object("sweep", "arc_marker", constraint("sweep_arc", "marker", "arc_sweep",
+                        Map.of("arc", "sweep", "center", "O", "start_boundary", "OA", "end_boundary", "OB"),
+                        Map.of("direction", "counterclockwise", "sector", "minor"), "hard")));
+
+        List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
+                storyboard,
+                WorkflowConfig.OUTPUT_TARGET_MANIM,
+                String.join("\n",
+                        "O = Dot()",
+                        "A = Dot()",
+                        "B = Dot()",
+                        "OA = Line(O.get_center(), A.get_center())",
+                        "OB = Line(O.get_center(), B.get_center())",
+                        "sweep = ArcBetweenPoints(OA.get_end(), OB.get_end(), radius=0.5)"));
+
+        assertTrue(violations.stream().anyMatch(violation ->
+                "arc_sweep".equals(violation.getRelation())
+                        && "sweep".equals(violation.getOwner())
+                        && violation.getEvidence().contains("anchor/center")));
+    }
+
+    @Test
+    void rightAngleImplementationFailsWhenGenericAngleDropsRightAngleSemantics() {
+        Storyboard storyboard = storyboard(
+                object("P", "point"),
+                object("A", "point"),
+                object("N", "point"),
+                object("AP", "segment", constraint("AP_connects", "construction", "connects_points",
+                        Map.of("object", "AP", "start", "P", "end", "A"), Map.of(), "hard")),
+                object("normal", "line", constraint("normal_through_P", "construction", "line_through_points",
+                        Map.of("line", "normal", "point_a", "P", "point_b", "N"), Map.of(), "hard")),
+                object("right", "right_angle_marker", constraint("right_angle", "marker", "right_angle_at",
+                        Map.of("marker", "right", "vertex", "P", "start_boundary", "AP", "end_boundary", "normal"),
+                        Map.of("side_of_reference", "inside"), "hard")));
+
+        List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
+                storyboard,
+                WorkflowConfig.OUTPUT_TARGET_MANIM,
+                String.join("\n",
+                        "P = Dot()",
+                        "A = Dot()",
+                        "N = Dot()",
+                        "AP = Line(P.get_center(), A.get_center())",
+                        "normal = Line(P.get_center(), N.get_center())",
+                        "right = Angle(AP, normal, quadrant=(1, 1), other_angle=False)"));
+
+        assertTrue(violations.stream().anyMatch(violation ->
+                "right_angle_at".equals(violation.getRelation())
+                        && "right".equals(violation.getOwner())
+                        && violation.getEvidence().contains("right-angle marker evidence")));
+    }
+
+    @Test
+    void arcSweepImplementationFailsWhenBoundariesAppearReversed() {
+        Storyboard storyboard = storyboard(
+                object("O", "point"),
+                object("A", "point"),
+                object("B", "point"),
+                object("OA", "ray", constraint("OA_ray", "construction", "ray_from_to",
+                        Map.of("ray", "OA", "start", "O", "through", "A"), Map.of(), "hard")),
+                object("OB", "ray", constraint("OB_ray", "construction", "ray_from_to",
+                        Map.of("ray", "OB", "start", "O", "through", "B"), Map.of(), "hard")),
+                object("sweep", "arc_marker", constraint("sweep_arc", "marker", "arc_sweep",
+                        Map.of("arc", "sweep", "center", "O", "start_boundary", "OA", "end_boundary", "OB"),
+                        Map.of("direction", "counterclockwise", "sector", "minor"), "hard")));
+
+        List<StoryboardConstraintComplianceAnalyzer.Violation> violations = analyzer.analyze(
+                storyboard,
+                WorkflowConfig.OUTPUT_TARGET_MANIM,
+                String.join("\n",
+                        "O = Dot()",
+                        "A = Dot()",
+                        "B = Dot()",
+                        "OA = Line(O.get_center(), A.get_center())",
+                        "OB = Line(O.get_center(), B.get_center())",
+                        "sweep = always_redraw(lambda: ArcBetweenPoints(OB.get_end(), OA.get_end(), angle=PI/2).move_arc_center_to(O.get_center()))"));
+
+        assertTrue(violations.stream().anyMatch(violation ->
+                "arc_sweep".equals(violation.getRelation())
+                        && "sweep".equals(violation.getOwner())
+                        && violation.getEvidence().contains("reverse ordered boundaries")));
     }
 
     private Storyboard storyboard(StoryboardObject... objects) {

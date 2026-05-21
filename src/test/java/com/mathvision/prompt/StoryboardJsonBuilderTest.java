@@ -28,7 +28,7 @@ class StoryboardJsonBuilderTest {
         StoryboardObject pmin = objectWithPlacement("Pmin", "point", 0.6, -1.0);
         pmin.setConstraints(List.of(constraint(
                 "Pmin_intersection",
-                "geometry",
+                "construction",
                 "intersection_of",
                 Map.of("point", "Pmin", "object_a", "ABprime", "object_b", "l"),
                 Map.of(),
@@ -65,7 +65,7 @@ class StoryboardJsonBuilderTest {
         StoryboardObject reflected = objectWithPlacement("A_ref", "point", -3.0, -3.0);
         reflected.setConstraints(List.of(constraint(
                 "A_ref_reflection",
-                "geometry",
+                "construction",
                 "reflection_across",
                 Map.of("image", "A_ref", "source", "A", "mirror", "l"),
                 Map.of(),
@@ -78,7 +78,7 @@ class StoryboardJsonBuilderTest {
         scene.setTitle("Reflection");
         scene.setConstraints(List.of(constraint(
                 "reflection_group",
-                "geometry",
+                "metric",
                 "equal_measure_group",
                 Map.of("members", List.of("A_ref", "A"), "reference", "l"),
                 Map.of("measure", "distance_to_line"),

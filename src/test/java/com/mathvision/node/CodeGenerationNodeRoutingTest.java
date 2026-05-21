@@ -257,7 +257,7 @@ class CodeGenerationNodeRoutingTest {
         pmin.setKind("point");
         pmin.setConstraints(List.of(constraint(
                 "Pmin_intersection",
-                "geometry",
+                "construction",
                 "intersection_of",
                 Map.of("point", "Pmin", "object_a", "ABprime", "object_b", "l"),
                 Map.of(),

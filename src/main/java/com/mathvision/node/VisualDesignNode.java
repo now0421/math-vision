@@ -5,6 +5,7 @@ import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
 import com.mathvision.model.Narrative;
 import com.mathvision.model.Narrative.Storyboard;
+import com.mathvision.model.Narrative.StoryboardConstraint;
 import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.Narrative.StoryboardScene;
 import com.mathvision.model.WorkflowKeys;
@@ -17,8 +18,10 @@ import com.mathvision.util.AiRequestUtils;
 import com.mathvision.util.ConcurrencyUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.StoryboardGeometricMarkerValidator;
 import com.mathvision.util.StoryboardNormalizer;
 import com.mathvision.util.StoryboardPatchResolver;
+import com.mathvision.util.StoryboardConstraintUtils;
 import com.mathvision.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -30,8 +33,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -211,7 +216,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
             List<StoryboardObject> batchVisibleObjectSnapshot,
             List<String> batchPaletteSnapshot) {
         return designNodeWithRetry(node, batchConversationSnapshot,
-                batchVisibleObjectSnapshot, batchPaletteSnapshot, maxSceneRetries, maxSceneRetries);
+                batchVisibleObjectSnapshot, batchPaletteSnapshot, maxSceneRetries, maxSceneRetries, null);
     }
 
     private CompletableFuture<SceneDesignResult> designNodeWithRetry(
@@ -220,7 +225,8 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
             List<StoryboardObject> visibleObjectSnapshot,
             List<String> paletteSnapshot,
             int maxRetries,
-            int retriesLeft) {
+            int retriesLeft,
+            SceneDesignRejection previousRejection) {
         StringBuilder userPrompt = new StringBuilder();
         userPrompt.append(buildCurrentStepPrompt(node));
 
@@ -240,6 +246,9 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                 : "Colors already used: " + String.join(", ", paletteSnapshot)
                   + ". Prefer harmonious contrast and avoid unnecessary repetition.";
         userPrompt.append("\n").append(paletteContext);
+        if (previousRejection != null) {
+            userPrompt.append("\n\n").append(buildSceneRejectionRetryBlock(previousRejection));
+        }
         String userPromptText = SystemPrompts.buildCurrentRequestSection(userPrompt.toString());
 
         return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonObjectResultAsync(
@@ -260,6 +269,17 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                             result != null ? result.getPayload() : null
                     );
                     if (designResult.scene != null) {
+                        List<String> semanticIssues = StoryboardGeometricMarkerValidator.validateSceneDesign(
+                                designResult.scene, designResult.newObjects, visibleObjectSnapshot);
+                        if (!semanticIssues.isEmpty()) {
+                            if (retriesLeft > 0) {
+                                log.warn("  Scene design for '{}' failed geometric marker validation, retrying ({} left): {}",
+                                        node.getStep(), retriesLeft, semanticIssues);
+                                return SceneDesignResult.rejected(node, userPromptText, designResult, semanticIssues);
+                            }
+                            log.warn("  Scene design for '{}' still has geometric marker validation issues after {} retries; keeping final scene for storyboard validation: {}",
+                                    node.getStep(), maxRetries, semanticIssues);
+                        }
                         log.debug("  Scene designed for: {}", node.getStep());
                         return designResult;
                     }
@@ -274,6 +294,16 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                     return designResult;
                 })
                 .thenCompose(designResult -> {
+                    if (designResult instanceof RejectedSceneDesignResult) {
+                        RejectedSceneDesignResult rejected = (RejectedSceneDesignResult) designResult;
+                        return designNodeWithRetry(node,
+                                conversationContext.getMessages(),
+                                snapshotVisibleObjectRegistry(),
+                                snapshotPalette(),
+                                maxRetries,
+                                retriesLeft - 1,
+                                new SceneDesignRejection(rejected.rejectedResult, rejected.issues));
+                    }
                     if (designResult != null) {
                         return CompletableFuture.completedFuture(designResult);
                     }
@@ -283,7 +313,8 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                             snapshotVisibleObjectRegistry(),
                             snapshotPalette(),
                             maxRetries,
-                            retriesLeft - 1);
+                            retriesLeft - 1,
+                            null);
                 })
                 .exceptionally(error -> {
                     Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
@@ -296,7 +327,8 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                                 snapshotVisibleObjectRegistry(),
                                 snapshotPalette(),
                                 maxRetries,
-                                retriesLeft - 1).join();
+                                retriesLeft - 1,
+                                null).join();
                     }
                     log.error("  Visual design for '{}' failed after {} retries: {}",
                             node.getStep(), maxRetries, cause.getMessage());
@@ -412,6 +444,11 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                 continue;
             }
             if (result.scene != null) {
+                stripCoordinateDerivedPlacements(
+                        result.scene,
+                        result.newObjects,
+                        registryDefinitions,
+                        batchVisibleObjectSnapshot);
                 collectedScenes.add(result.scene);
                 Map<String, StoryboardObject> sceneVisibleState = computeSceneVisibleState(
                         result.scene,
@@ -431,6 +468,70 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         synchronized (visibleObjectRegistry) {
             visibleObjectRegistry.clear();
             visibleObjectRegistry.putAll(mergedBatchVisibleState);
+        }
+    }
+
+    private void stripCoordinateDerivedPlacements(StoryboardScene scene,
+                                                   List<StoryboardObject> newObjects,
+                                                   Map<String, StoryboardObject> registryDefinitions,
+                                                   List<StoryboardObject> batchVisibleObjectSnapshot) {
+        Set<String> ownerIds = collectCoordinateDerivedOwnerIds(scene, newObjects, registryDefinitions, batchVisibleObjectSnapshot);
+        if (ownerIds.isEmpty()) {
+            return;
+        }
+        stripPlacementFromPatches(scene.getEnteringObjects(), ownerIds);
+        stripPlacementFromPatches(scene.getPersistentObjects(), ownerIds);
+    }
+
+    private Set<String> collectCoordinateDerivedOwnerIds(StoryboardScene scene,
+                                                         List<StoryboardObject> newObjects,
+                                                         Map<String, StoryboardObject> registryDefinitions,
+                                                         List<StoryboardObject> batchVisibleObjectSnapshot) {
+        Set<String> ownerIds = new LinkedHashSet<>();
+        collectCoordinateDerivedOwnerIds(ownerIds, scene != null ? scene.getConstraints() : null);
+        collectCoordinateDerivedOwnerIds(ownerIds, objectConstraints(scene != null ? scene.getEnteringObjects() : null));
+        collectCoordinateDerivedOwnerIds(ownerIds, objectConstraints(scene != null ? scene.getPersistentObjects() : null));
+        collectCoordinateDerivedOwnerIds(ownerIds, objectConstraints(newObjects));
+        collectCoordinateDerivedOwnerIds(ownerIds, objectConstraints(batchVisibleObjectSnapshot));
+        if (registryDefinitions != null) {
+            collectCoordinateDerivedOwnerIds(ownerIds, objectConstraints(new ArrayList<>(registryDefinitions.values())));
+        }
+        return ownerIds;
+    }
+
+    private List<StoryboardConstraint> objectConstraints(List<StoryboardObject> objects) {
+        List<StoryboardConstraint> constraints = new ArrayList<>();
+        if (objects == null) {
+            return constraints;
+        }
+        for (StoryboardObject object : objects) {
+            if (object != null && object.getConstraints() != null) {
+                constraints.addAll(object.getConstraints());
+            }
+        }
+        return constraints;
+    }
+
+    private void collectCoordinateDerivedOwnerIds(Set<String> ownerIds, List<StoryboardConstraint> constraints) {
+        if (constraints == null) {
+            return;
+        }
+        for (StoryboardConstraint constraint : constraints) {
+            if (StoryboardConstraintUtils.isCoordinateDerivedConstraint(constraint)) {
+                ownerIds.addAll(StoryboardConstraintUtils.ownerIds(constraint));
+            }
+        }
+    }
+
+    private void stripPlacementFromPatches(List<StoryboardObject> patches, Set<String> ownerIds) {
+        if (patches == null || ownerIds == null || ownerIds.isEmpty()) {
+            return;
+        }
+        for (StoryboardObject patch : patches) {
+            String id = objectId(patch);
+            if (id != null && ownerIds.contains(id)) {
+                patch.setPlacement(null);
+            }
         }
     }
 
@@ -786,6 +887,28 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         return sb.toString().trim();
     }
 
+    private String buildSceneRejectionRetryBlock(SceneDesignRejection rejection) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Previous scene design was rejected by local geometric-marker validation.\n");
+        sb.append("Regenerate the FULL `scene` and `new_objects` response for the same knowledge node; do not return a partial patch.\n");
+        sb.append("Fix these issues exactly:\n");
+        for (String issue : rejection.issues) {
+            sb.append("- ").append(issue).append("\n");
+        }
+        sb.append("Geometric marker repair requirements:\n");
+        sb.append("- `angle_marker` objects need `marker/angle_between` with marker, vertex, ordered start/end boundaries, and sector.\n");
+        sb.append("- `arc` or `arc_marker` objects need `marker/arc_sweep` with marker/arc, center/anchor/vertex, start_boundary, end_boundary, direction, and sector.\n");
+        sb.append("- `right_angle_marker` objects need `marker/right_angle_at` with marker, vertex, start_boundary, end_boundary, and side_of_reference.\n");
+        sb.append("- Object refs must name existing registry ids or ids introduced in this response; never put object ids in parameters.\n");
+        if (rejection.rejectedResult != null) {
+            sb.append("Rejected response for reference:\n");
+            sb.append(JsonUtils.toPrettyJson(Map.of(
+                    "scene", rejection.rejectedResult.scene,
+                    "new_objects", rejection.rejectedResult.newObjects)));
+        }
+        return sb.toString();
+    }
+
     private List<String> snapshotPalette() {
         List<String> palette = new ArrayList<>(globalColorPalette);
         palette.sort(String.CASE_INSENSITIVE_ORDER);
@@ -802,7 +925,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         }
     }
 
-    private static final class SceneDesignResult {
+    private static class SceneDesignResult {
         private final KnowledgeNode node;
         private final String userPrompt;
         private final String assistantTranscript;
@@ -826,6 +949,37 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
 
         private static SceneDesignResult failed(KnowledgeNode node, String userPrompt) {
             return new SceneDesignResult(node, userPrompt, "", null, List.of(), List.of());
+        }
+
+        private static SceneDesignResult rejected(KnowledgeNode node,
+                                                  String userPrompt,
+                                                  SceneDesignResult rejectedResult,
+                                                  List<String> issues) {
+            return new RejectedSceneDesignResult(node, userPrompt, rejectedResult, issues);
+        }
+    }
+
+    private static final class RejectedSceneDesignResult extends SceneDesignResult {
+        private final SceneDesignResult rejectedResult;
+        private final List<String> issues;
+
+        private RejectedSceneDesignResult(KnowledgeNode node,
+                                          String userPrompt,
+                                          SceneDesignResult rejectedResult,
+                                          List<String> issues) {
+            super(node, userPrompt, "", null, List.of(), List.of());
+            this.rejectedResult = rejectedResult;
+            this.issues = issues != null ? issues : List.of();
+        }
+    }
+
+    private static final class SceneDesignRejection {
+        private final SceneDesignResult rejectedResult;
+        private final List<String> issues;
+
+        private SceneDesignRejection(SceneDesignResult rejectedResult, List<String> issues) {
+            this.rejectedResult = rejectedResult;
+            this.issues = issues != null ? issues : List.of();
         }
     }
 }

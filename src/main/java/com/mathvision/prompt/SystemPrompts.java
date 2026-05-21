@@ -42,7 +42,7 @@ public final class SystemPrompts {
                     + "- `id`: unique object identifier used across scenes, registry, and actions.\n"
                     + "- `kind`: geometric or visual type - point, line, segment, ray, circle, polygon, arc, angle_marker, text, etc. Determines the construction or rendering primitive.\n"
                     + "- `content`: mathematical description or display text (e.g. \"A(0, 3)\" or \"x^2 + y^2 = r^2\"). For `text` objects this is the visible string; for geometry objects it is a label or coordinate hint.\n"
-                    + "- `constraints`: machine-readable object-level semantic contract. Each entry has `domain`, `relation`, `refs`, optional `parameters`, `strength`, and `reason`; this is the only source for geometry, dependency, attachment, motion, measurement, lifecycle, and construction semantics.\n"
+                    + "- `constraints`: machine-readable object-level semantic contract. Each entry has `domain`, `relation`, `refs`, optional `parameters`, `strength`, and `reason`; this is the only source for placement, construction, constraint, metric, marker, attachment, motion, layout, visibility, style, and lifecycle semantics.\n"
                     + "- `placement`: structured scene-level visual placement patch with `coordinate_space` plus optional x/y/z `value` or `min/max`; use it for initial layout or allowed visual range, not as the source of geometric dependencies.\n"
                     + "- `style`: optional single typed object of visual properties such as color, fill_color, stroke_color, opacity, stroke_width, line_style, font_size, padding, and z_index. Do not invent custom style keys. Style is pure visual styling for this object only; create separate constrained objects for labels, badges, helper outlines, cards, or callouts that have their own identity.\n";
 
@@ -195,8 +195,8 @@ public final class SystemPrompts {
     public static final String GEOMETRIC_MARKER_AUTHORING_RULES =
             "Geometric marker authoring rules:\n"
                     + "- For angle markers, arcs, right-angle marks, braces, ticks, and similar derived annotations, the storyboard must define the geometry they measure, not just their visual placement.\n"
-                    + "- For any angle or arc that represents an angle, the structured measurement constraint refs must include the marker, vertex/anchor, ordered start boundary, and ordered end boundary source objects.\n"
-                    + "- Also add a structured `constraints` entry with `domain=measurement`, `relation=angle_between` or `arc_sweep`, `refs` naming marker/vertex/start_boundary/end_boundary, and `parameters` naming sector, direction, and side_of_reference when relevant.\n"
+                    + "- For any angle or arc that represents an angle, the structured marker constraint refs must include the marker, vertex/anchor, ordered start boundary, and ordered end boundary source objects.\n"
+                    + "- Also add a structured `constraints` entry with `domain=marker`, `relation=angle_between`, `arc_sweep`, or `right_angle_at`, `refs` naming marker/vertex or center/anchor plus ordered start_boundary/end_boundary, and `parameters` naming sector, direction, and side_of_reference when relevant.\n"
                     + "- For any visual arc drawn from one point/ray to another, say explicitly where the arc starts and where it ends, for example `arc at P from ray P->A to normal ray P->N` or `arc from point U to point V on circle c`.\n"
                     + "- `constraints[].parameters` must say whether the displayed sector is the smaller/interior angle, a reflex/exterior angle, a directed angle, clockwise/counterclockwise sweep, or a specific side of a reference line or normal.\n"
                     + "- Label clearance and visibility are layout constraints only; never replace sector geometry with vague wording such as `quadrant chosen to stay in view` unless the measured sector is also defined.\n"
@@ -396,17 +396,19 @@ public final class SystemPrompts {
 
     /** Angle marker best practices for Manim. */
     public static final String MANIM_ANGLE_MARKER_RULES =
-            "For angle markers, prefer `Angle(...)` built from two lines/rays sharing the true vertex instead of hand-written `Arc(start_angle=..., angle=...)` formulas.\n"
-                    + "When an angle is measured against a normal, helper line, or moving segment, construct both rays from the shared point inside `always_redraw(...)`.\n"
+            "For angle, right-angle, and arc sweep markers, treat the storyboard's `angle_between`, `right_angle_at`, or `arc_sweep` constraint as the semantic source of truth: preserve the declared marker/arc, vertex or center/anchor, ordered boundaries, sector, direction, and side.\n"
+                    + "Choose the documented Manim API form that most faithfully preserves those refs; do not prefer a two-line, three-point, or hand-drawn arc implementation when it drops vertex or sector semantics.\n"
+                    + "Reuse storyboard-declared boundary objects where possible; introduce backend-only helper rays, points, or arcs only when required, and derive them from the declared refs.\n"
+                    + "When an angle is measured against a normal, helper line, or moving segment, construct the relevant boundaries from the shared vertex inside `always_redraw(...)`.\n"
                     + "If the intended angle sector could be ambiguous, explicitly set `quadrant=...`; if the storyboard intends the interior/smaller angle, explicitly keep `other_angle=False`.\n";
 
     /** Angle marker best practices for GeoGebra. */
     public static final String GEOGEBRA_ANGLE_MARKER_RULES =
             "GeoGebra angle marker rules:\n"
-                    + "- Prefer `Angle(Line, Line)` or `Angle(Vector, Vector)` over `Angle(Point, Point, Point)` when the boundary lines, segments, or rays already exist in the construction.\n"
-                    + "- Do not create auxiliary points on existing lines just to use the three-point Angle form. Instead, build Line, Ray, or Vector objects from the existing vertex and boundary points, then call Angle on those objects.\n"
-                    + "- Use `Angle(Point, Point, Point)` only when no line/segment/ray boundary object is available or when the three-point form is genuinely more readable.\n"
-                    + "- When the storyboard describes an angle with a vertex and two boundary rays (e.g. \"angle at P between AP and l\"), construct Line or Ray objects for the boundaries (e.g. `linePA = Line(P, A)`) and use `Angle(linePA, l)` instead of inventing a helper point on l.\n";
+                    + "- Treat `angle_between`, `right_angle_at`, and `arc_sweep` refs as the semantic source of truth: preserve the declared marker/arc, vertex or center/anchor, ordered boundaries, sector, direction, and side.\n"
+                    + "- Choose the documented GeoGebra Angle form that best preserves those refs; do not prefer line-based, vector-based, three-point, or helper-object syntax when it drops vertex or sector semantics.\n"
+                    + "- Reuse storyboard-declared boundary objects where possible. If GeoGebra needs helper rays, lines, vectors, or points, derive them from the declared vertex and boundary refs rather than inventing unrelated proxy objects.\n"
+                    + "- When the storyboard describes an angle with a vertex and two boundary rays (e.g. \"angle at P between AP and l\"), ensure both referenced boundaries actually pass through P before using them to construct the angle marker.\n";
 
     /** Rules for minimizing auxiliary/helper objects in storyboard authoring (Visual Design, Storyboard Validation). */
     public static final String MINIMIZE_HELPER_OBJECTS_AUTHORING_RULES =
@@ -418,16 +420,16 @@ public final class SystemPrompts {
                     + "- A required label, callout, or annotation is not redundant when it gives the learner a distinct name/value, has its own attachment behavior, or is needed to identify the parent object.\n"
                     + "- Keep `new_objects` and `object_registry` lean: do not register objects that can be expressed as style changes, action descriptions, built-in labels, or references to existing ids.\n"
                     + "- When a derived object (angle marker, midpoint, intersection, reflection, etc.) can be fully defined by referencing existing objects, do so directly rather than introducing separate helper/scaffold objects.\n"
-                    + "- For angle markers, define them by referencing the boundary lines, segments, or rays directly in structured `angle_between` or `arc_sweep` constraint refs rather than creating helper point objects on existing lines just to use a three-point form.\n"
+                    + "- For angle, right-angle, and arc sweep markers, define the full measured geometry in structured `angle_between`, `right_angle_at`, or `arc_sweep` constraint refs: marker/arc, vertex or center/anchor, ordered boundaries, and sector/direction parameters.\n"
                     + "- Avoid creating helper points, helper lines, or other scaffolding objects whose sole purpose is to serve as an intermediate input to another object when a direct dependency reference is possible.\n"
                     + "- If an object exists on the construction (a line, a segment, a ray, a circle), reference it directly instead of creating a duplicate or a proxy point on it.\n"
-                    + "- When the target platform has a concise syntax that works with existing objects, prefer that syntax and record the intent in structured `constraints` so downstream code generation can use it.\n";
+                    + "- When the target platform has concise syntax that works with existing objects, record enough structured `constraints` for downstream code generation to use it without losing vertex, side, or sector semantics.\n";
 
     /** Rules for minimizing auxiliary/helper objects in code generation and code repair stages. */
     public static final String MINIMIZE_HELPER_OBJECTS_CODEGEN_RULES =
             "Minimize auxiliary helper objects in generated code:\n"
-                    + "- When the target platform has a direct syntax that works with existing objects, use it instead of creating intermediate helper objects.\n"
-                    + "- Do not create auxiliary points on existing lines, segments, or circles just to use a multi-point syntax form when a direct object-based syntax exists (e.g. use `Angle(Line, Line)` instead of creating a helper point for `Angle(Point, Point, Point)`).\n"
+                    + "- When the target platform has a direct syntax that works with existing objects and preserves the declared constraint semantics, use it instead of creating intermediate helper objects.\n"
+                    + "- Do not create auxiliary points on existing lines, segments, or circles just to satisfy a syntax form when existing declared refs already preserve the same vertex, side, sector, and dependency semantics.\n"
                     + "- Do not create helper lines or segments that merely duplicate existing geometry for the purpose of feeding them into another command.\n"
                     + "- When a construction or measurement can reference an existing named object directly, do so rather than reconstructing an equivalent from scratch.\n"
                     + "- Remove or replace any auxiliary object that exists solely as a workaround for an avoidable syntax limitation.\n";

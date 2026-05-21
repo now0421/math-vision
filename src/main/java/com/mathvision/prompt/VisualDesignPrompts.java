@@ -89,7 +89,8 @@ public final class VisualDesignPrompts {
                     + "- Use the provided object registry, used colors, and style history to preserve meaning across scenes.\n"
                     + "- Record non-obvious palette, transition, or layout decisions in `notes_for_codegen` only when downstream code generation must preserve them as hard constraints.\n"
                     + "- Plan per-scene variation: vary the dominant color, spatial layout, animation entry style, and visual density across scenes. Never use identical visual config for every scene.\n"
-                    + "- Objects whose coordinates can be computed from other elements (e.g. intersections, midpoints, perpendicular feet) do not need `placement`; only objects that require an initial or free position (e.g. a moving point on a line) should carry `placement`.\n"
+                    + "- Objects owned by coordinate-derived relations (e.g. intersections, midpoints, perpendicular feet, attached labels) must not carry scene `placement`; express their position through structured constraint refs and parameters instead.\n"
+                    + "- Objects owned only by non-coordinate-derived relations such as `point_at`, `lies_on`, `moves_on_object`, `fixed_overlay`, or `distance_between` may still carry `placement` when they need an initial, free, or screen-fixed position.\n"
                     + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n";
 
     private static final String MANIM_SYSTEM =
@@ -142,7 +143,7 @@ public final class VisualDesignPrompts {
                     + "- Prefer native GeoGebra labels for named geometric objects such as points, lines, segments, rays, circles, and polygons.\n"
                     + "- If the visible text is just the object's own name or symbol, keep it as the object's native label rather than creating a separate storyboard object. GeoGebra mode must not create independent label companion objects for geometry names.\n"
                     + "- Create separate `text` or `equation` objects only for overlays, formulas, counters, captions, explanatory annotations, or text that is semantically different from the object's native label. Avoid redundant pairs such as `A` plus `aLabel`, `lineL` plus `labelL`, or `circleO` plus `labelO`.\n"
-                    + "- Use `attachment/fixed_overlay` constraints mainly for explanatory text, counters, captions, formulas, and similar viewport-fixed overlays. For geometric points, lines, circles, angle markers, and bullseye-style highlights that belong to the construction, use geometry/motion constraints instead of overlay semantics.\n"
+                    + "- Use `attachment/fixed_overlay` constraints mainly for explanatory text, counters, captions, formulas, and similar viewport-fixed overlays. For geometric points, lines, circles, angle markers, and bullseye-style highlights that belong to the construction, use construction/constraint/motion/marker constraints instead of overlay semantics.\n"
                     + "- Use style changes (color, line thickness, dash style) on existing objects rather than creating visual duplicates on the same endpoints. GeoGebra objects persist globally, so every redundant object adds permanent clutter.\n"
                     + "- Do not mention specific GeoGebra command names in storyboard notes unless they are documented in the active syntax manual; describe unsupported effects generically instead.\n"
                     + SCENE_STYLE_LAYOUT_RULES

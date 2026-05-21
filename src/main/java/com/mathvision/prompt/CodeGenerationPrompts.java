@@ -58,7 +58,7 @@ public final class CodeGenerationPrompts {
                     + "- Keep content inside the readable safe frame and prefer stable anchors plus `arrange`/`next_to`.\n"
                     + "- " + SystemPrompts.COLOR_FORMAT_RULES
                     + "- " + SystemPrompts.MANIM_COLOR_RULES
-                    + "- Do not place a free-floating arc by shifting/rotating it near the vertex, and do not accidentally mark a large exterior angle when the scene intends two small equal angles.\n"
+                    + "- Do not place a free-floating angle, right-angle, or arc sweep marker by shifting/rotating it near the vertex/anchor, and do not accidentally mark a large exterior angle when the scene intends two small equal angles.\n"
                     + "Layout and camera rules:\n"
                     + "- Convert structured `placement`, `camera_anchor`, `camera_plan`, `safe_area_plan`, and `screen_overlay_plan` into concrete Manim layout and camera code.\n"
                     + "- Choose readable absolute coordinates that preserve continuity and keep important content inside the safe frame with at least 0.5 units of clearance from every edge.\n"
@@ -302,7 +302,8 @@ public final class CodeGenerationPrompts {
                         + "  * `lies_on` / `point_on_object`: the point must stay on the referenced object at all times; instantiate it as a point-on-line/curve, not as a free coordinate.\n"
                         + "  * `moves_on_object` with `range`: the point may slide along the referenced object but must NEVER leave it or exceed the specified range; clamp or parameterize the motion accordingly.\n"
                         + "  * `same_side_of`: the object must stay on the specified side of the line.\n"
-                        + "  * `reflection_across`, `midpoint_of`, `intersection_of`, `projection_onto`, `connects_points`, `line_through_points`, `ray_from_to`, `angle_between`: compute the object from its constraint refs; never hardcode placement coordinates that ignore the dependency.\n"
+                        + "  * `reflection_across`, `midpoint_of`, `intersection_of`, `projection_onto`, `connects_points`, `line_through_points`, `ray_from_to`, `angle_between`, `right_angle_at`, `arc_sweep`: compute the object from its constraint refs; never hardcode placement coordinates that ignore the dependency.\n"
+                        + "  * `angle_between` / `right_angle_at` / `arc_sweep`: preserve the declared marker/arc, vertex or center/anchor, ordered boundary refs, sector, direction, and side. Choose a documented Manim API form that keeps those semantics; do not prefer a two-line, three-point, or hand-drawn implementation when it drops any declared ref or sector.\n"
                         + "- For any object with structured constraints that define derived geometry, attachments, connectors, motion, or measurements, compute it from constraint refs or use native Manim/API geometry helpers. Do not instantiate it from hardcoded placement coordinates.\n"
                         + "- Respect storyboard text semantics strictly: `kind=equation` means `MathTex(...)`; `kind=text` and `kind=text_card` mean `Text(...)` unless the content clearly requires math rendering; avoid `Tex(...)` unless the scene explicitly needs non-math LaTeX text.\n"
                         + "- Return the method body via the write_scene_code tool.",
@@ -347,7 +348,8 @@ public final class CodeGenerationPrompts {
                         + "  * `lies_on` / `point_on_object`: construct the point on the referenced object (e.g. PointOn), never as a free coordinate.\n"
                         + "  * `moves_on_object` with `range`: the point may slide along the referenced object but must NEVER leave it or exceed the specified range.\n"
                         + "  * `same_side_of`: the object must stay on the specified side of the line.\n"
-                        + "  * `reflection_across`, `midpoint`, `projection`, `connects_points`, `angle_between`: construct the object from its dependency objects with native GeoGebra commands; never hardcode placement coordinates that ignore the dependency.\n"
+                        + "  * `reflection_across`, `midpoint`, `projection`, `connects_points`, `angle_between`, `right_angle_at`, `arc_sweep`: construct the object from its dependency objects with native GeoGebra commands; never hardcode placement coordinates that ignore the dependency.\n"
+                        + "  * `angle_between` / `right_angle_at` / `arc_sweep`: preserve the declared marker/arc, vertex or center/anchor, ordered boundary refs, sector, direction, and side. Choose a documented GeoGebra form that keeps those semantics; do not prefer line-based, vector-based, three-point, or helper-object syntax when it drops any declared ref or sector.\n"
                         + "- For derived objects such as intersections, reflections, midpoints, projections, connecting segments, and angle markers, construct them from their dependency objects with native GeoGebra commands instead of hardcoded placement coordinates\n"
                         + "- Apply styles and visibility settings\n"
                         + "- Reference shared objects from the skeleton by their established names\n"
