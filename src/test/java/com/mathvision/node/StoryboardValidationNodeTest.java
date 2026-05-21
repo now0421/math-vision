@@ -128,6 +128,87 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
+    void reportsTextOverlapForPersistentAndEnteringObjectsWithValuePlacements() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardScene scene = baseScene("scene_1");
+        StoryboardObject persistent = scenePatch("eqCollapse", valuePlacement("world", 0.0, 3.5));
+        persistent.setStyle(fontStyle(30.0));
+        StoryboardObject entering = scenePatch("finalIneq", valuePlacement("world", 0.0, 3.5));
+        entering.setStyle(fontStyle(32.0));
+        scene.setPersistentObjects(List.of(persistent));
+        scene.setEnteringObjects(List.of(entering));
+
+        Storyboard storyboard = storyboardWithScenes(
+                List.of(
+                        registryObject("eqCollapse", "equation", "AP + PB = AP + PB' = AB'", null),
+                        registryObject("finalIneq", "equation", "AP + PB >= AB' = AP* + PB*", null)),
+                List.of(scene));
+
+        List<String> issues = node.validate(storyboard);
+        String joinedIssues = String.join("\n", issues);
+
+        assertTrue(joinedIssues.contains("text objects 'eqCollapse' and 'finalIneq' overlap"), () -> joinedIssues);
+    }
+
+    @Test
+    void carriesUnexitedObjectsForwardForLayoutValidation() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardScene scene1 = baseScene("scene_1");
+        StoryboardObject eqCollapse = scenePatch("eqCollapse", valuePlacement("world", 0.0, 3.5));
+        eqCollapse.setStyle(fontStyle(30.0));
+        scene1.setEnteringObjects(List.of(eqCollapse));
+
+        StoryboardScene scene2 = baseScene("scene_2");
+        scene2.setEnteringObjects(List.of(scenePatch("diagram", boxPlacement("world", -1.0, 1.0, -1.0, 1.0))));
+
+        StoryboardScene scene3 = baseScene("scene_3");
+        StoryboardObject finalIneq = scenePatch("finalIneq", valuePlacement("world", 0.0, 3.5));
+        finalIneq.setStyle(fontStyle(32.0));
+        scene3.setEnteringObjects(List.of(finalIneq));
+
+        Storyboard storyboard = storyboardWithScenes(
+                List.of(
+                        registryObject("eqCollapse", "equation", "AP + PB = AP + PB' = AB'", null),
+                        registryObject("diagram", "region", "Main diagram", null),
+                        registryObject("finalIneq", "equation", "AP + PB >= AB' = AP* + PB*", null)),
+                List.of(scene1, scene2, scene3));
+
+        List<String> issues = node.validate(storyboard);
+        String joinedIssues = String.join("\n", issues);
+
+        assertTrue(joinedIssues.contains("scene 3 (scene_3): text objects 'eqCollapse' and 'finalIneq' overlap"),
+                () -> joinedIssues);
+    }
+
+    @Test
+    void doesNotCarryExitedObjectsForwardForLayoutValidation() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardScene scene1 = baseScene("scene_1");
+        StoryboardObject eqCollapse = scenePatch("eqCollapse", valuePlacement("world", 0.0, 3.5));
+        eqCollapse.setStyle(fontStyle(30.0));
+        scene1.setEnteringObjects(List.of(eqCollapse));
+
+        StoryboardScene scene2 = baseScene("scene_2");
+        scene2.setExitingObjects(List.of(idOnlyPatch("eqCollapse")));
+
+        StoryboardScene scene3 = baseScene("scene_3");
+        StoryboardObject finalIneq = scenePatch("finalIneq", valuePlacement("world", 0.0, 3.5));
+        finalIneq.setStyle(fontStyle(32.0));
+        scene3.setEnteringObjects(List.of(finalIneq));
+
+        Storyboard storyboard = storyboardWithScenes(
+                List.of(
+                        registryObject("eqCollapse", "equation", "AP + PB = AP + PB' = AB'", null),
+                        registryObject("finalIneq", "equation", "AP + PB >= AB' = AP* + PB*", null)),
+                List.of(scene1, scene2, scene3));
+
+        List<String> issues = node.validate(storyboard);
+        String joinedIssues = String.join("\n", issues);
+
+        assertFalse(joinedIssues.contains("eqCollapse' and 'finalIneq"), () -> joinedIssues);
+    }
+
+    @Test
     void reportsNonTextOverlapWhenBoundsCollide() {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(
@@ -744,23 +825,33 @@ class StoryboardValidationNodeTest {
 
     private Storyboard buildSingleSceneStoryboard(List<StoryboardObject> registryObjects,
                                                   List<StoryboardObject> enteringObjects) {
+        StoryboardScene scene = baseScene("scene_1");
+        scene.setEnteringObjects(new ArrayList<>(enteringObjects));
+        return storyboardWithScenes(registryObjects, List.of(scene));
+    }
+
+    private Storyboard storyboardWithScenes(List<StoryboardObject> registryObjects,
+                                            List<StoryboardScene> scenes) {
+        Storyboard storyboard = new Storyboard();
+        storyboard.setContinuityPlan("Keep object ids stable.");
+        storyboard.setObjectRegistry(new ArrayList<>(registryObjects));
+        storyboard.setScenes(new ArrayList<>(scenes));
+        return storyboard;
+    }
+
+    private StoryboardScene baseScene(String sceneId) {
         StoryboardScene scene = new StoryboardScene();
-        scene.setSceneId("scene_1");
+        scene.setSceneId(sceneId);
         scene.setTitle("Layout validation");
         scene.setGoal("Validate static storyboard geometry.");
         scene.setNarration("Validate positions.");
         scene.setLayoutGoal("Keep everything readable.");
         scene.setSafeAreaPlan("Stay within the frame.");
         scene.setScreenOverlayPlan("No extra overlay.");
-        scene.setEnteringObjects(new ArrayList<>(enteringObjects));
+        scene.setEnteringObjects(new ArrayList<>());
         scene.setPersistentObjects(new ArrayList<>());
         scene.setExitingObjects(new ArrayList<>());
-
-        Storyboard storyboard = new Storyboard();
-        storyboard.setContinuityPlan("Keep object ids stable.");
-        storyboard.setObjectRegistry(new ArrayList<>(registryObjects));
-        storyboard.setScenes(List.of(scene));
-        return storyboard;
+        return scene;
     }
 
     private StoryboardObject registryObject(String id,
@@ -788,6 +879,19 @@ class StoryboardValidationNodeTest {
         object.setId(id);
         object.setPlacement(placement);
         return object;
+    }
+
+    private StoryboardObject idOnlyPatch(String id) {
+        StoryboardObject object = new StoryboardObject();
+        object.setId(id);
+        return object;
+    }
+
+    private Narrative.StoryboardStyle fontStyle(double fontSize) {
+        Narrative.StoryboardStyle style = new Narrative.StoryboardStyle();
+        style.setColor("#FFFFFF");
+        style.setFontSize(fontSize);
+        return style;
     }
 
     private StoryboardConstraint constraint(String id,
@@ -823,6 +927,20 @@ class StoryboardValidationNodeTest {
         placement.setCoordinateSpace(coordinateSpace);
         placement.setY(axis(y, y));
         return placement;
+    }
+
+    private StoryboardPlacement valuePlacement(String coordinateSpace, double x, double y) {
+        StoryboardPlacement placement = new StoryboardPlacement();
+        placement.setCoordinateSpace(coordinateSpace);
+        placement.setX(valueAxis(x));
+        placement.setY(valueAxis(y));
+        return placement;
+    }
+
+    private StoryboardPlacementAxis valueAxis(double value) {
+        StoryboardPlacementAxis axis = new StoryboardPlacementAxis();
+        axis.setValue(value);
+        return axis;
     }
 
     private StoryboardPlacementAxis axis(double min, double max) {

@@ -306,32 +306,15 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         // exclusively for validateSceneLayout and is discarded afterward.
         Storyboard placementEnrichedStoryboard = resolvePlacementEnrichedStoryboard(storyboard);
 
-        Storyboard mergedStoryboard = StoryboardPatchResolver.buildMergedStoryboard(storyboard);
-        Storyboard mergedEnrichedStoryboard = placementEnrichedStoryboard != null
-                ? StoryboardPatchResolver.buildMergedStoryboard(placementEnrichedStoryboard)
-                : null;
+        List<StoryboardScene> layoutScenes = buildValidationLayoutScenes(
+                placementEnrichedStoryboard != null ? placementEnrichedStoryboard : storyboard);
 
         for (int i = 0; i < storyboard.getScenes().size(); i++) {
             StoryboardScene scene = storyboard.getScenes().get(i);
             String label = "scene " + (i + 1) + " (" + scene.getSceneId() + ")";
 
-            // Use enriched storyboard for layout checks (offscreen / overlap)
-            StoryboardScene mergedEnrichedScene = mergedEnrichedStoryboard != null
-                    && mergedEnrichedStoryboard.getScenes() != null
-                    && i < mergedEnrichedStoryboard.getScenes().size()
-                    ? mergedEnrichedStoryboard.getScenes().get(i)
-                    : null;
-            if (mergedEnrichedScene != null) {
-                validateSceneLayout(label, mergedEnrichedScene, issues);
-            } else {
-                // Fallback to original merged storyboard if enrichment failed
-                StoryboardScene mergedScene = mergedStoryboard != null
-                        && mergedStoryboard.getScenes() != null
-                        && i < mergedStoryboard.getScenes().size()
-                        ? mergedStoryboard.getScenes().get(i)
-                        : null;
-                validateSceneLayout(label, mergedScene, issues);
-            }
+            StoryboardScene layoutScene = i < layoutScenes.size() ? layoutScenes.get(i) : null;
+            validateSceneLayout(label, layoutScene, issues);
 
             // Check required fields (using original storyboard)
             if (scene.getTitle() == null || scene.getTitle().isBlank()) {
@@ -350,6 +333,126 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         issues.addAll(validateGeometricMarkerDefinitions(storyboard));
 
         return issues;
+    }
+
+    private List<StoryboardScene> buildValidationLayoutScenes(Storyboard storyboard) {
+        List<StoryboardScene> layoutScenes = new ArrayList<>();
+        if (storyboard == null || storyboard.getScenes() == null) {
+            return layoutScenes;
+        }
+
+        Map<String, StoryboardObject> registryDefinitions = buildRegistryDefinitions(storyboard);
+        Map<String, StoryboardObject> visibleState = new LinkedHashMap<>();
+        for (StoryboardScene scene : storyboard.getScenes()) {
+            if (scene == null) {
+                continue;
+            }
+            Map<String, StoryboardObject> sceneVisibleState = copyObjectMapById(visibleState);
+            applyValidationScenePatches(sceneVisibleState, scene.getPersistentObjects(), registryDefinitions);
+            applyValidationScenePatches(sceneVisibleState, scene.getEnteringObjects(), registryDefinitions);
+            removeValidationSceneObjects(sceneVisibleState, scene.getExitingObjects());
+
+            StoryboardScene layoutScene = new StoryboardScene();
+            layoutScene.setSceneId(scene.getSceneId());
+            layoutScene.setPersistentObjects(new ArrayList<>(copyObjectMapById(sceneVisibleState).values()));
+            layoutScene.setEnteringObjects(new ArrayList<>());
+            layoutScene.setExitingObjects(new ArrayList<>());
+            layoutScenes.add(layoutScene);
+
+            visibleState = sceneVisibleState;
+        }
+        return layoutScenes;
+    }
+
+    private Map<String, StoryboardObject> buildRegistryDefinitions(Storyboard storyboard) {
+        Map<String, StoryboardObject> definitions = new LinkedHashMap<>();
+        if (storyboard == null || storyboard.getObjectRegistry() == null) {
+            return definitions;
+        }
+        for (StoryboardObject object : storyboard.getObjectRegistry()) {
+            String id = StoryboardPatchResolver.objectId(object);
+            if (id == null) {
+                continue;
+            }
+            StoryboardObject copy = StoryboardPatchResolver.copyObject(object);
+            if (copy != null) {
+                copy.setPlacement(null);
+                definitions.put(id, copy);
+            }
+        }
+        return definitions;
+    }
+
+    private Map<String, StoryboardObject> copyObjectMapById(Map<String, StoryboardObject> source) {
+        Map<String, StoryboardObject> copy = new LinkedHashMap<>();
+        if (source == null) {
+            return copy;
+        }
+        for (Map.Entry<String, StoryboardObject> entry : source.entrySet()) {
+            if (entry.getKey() == null) {
+                continue;
+            }
+            StoryboardObject objectCopy = StoryboardPatchResolver.copyObject(entry.getValue());
+            if (objectCopy != null) {
+                copy.put(entry.getKey(), objectCopy);
+            }
+        }
+        return copy;
+    }
+
+    private void applyValidationScenePatches(Map<String, StoryboardObject> visibleState,
+                                             List<StoryboardObject> patches,
+                                             Map<String, StoryboardObject> registryDefinitions) {
+        if (visibleState == null || patches == null) {
+            return;
+        }
+        for (StoryboardObject patch : patches) {
+            String id = StoryboardPatchResolver.objectId(patch);
+            if (id == null) {
+                continue;
+            }
+            StoryboardObject merged = StoryboardPatchResolver.copyObject(visibleState.get(id));
+            if (merged == null && registryDefinitions != null) {
+                merged = StoryboardPatchResolver.copyObject(registryDefinitions.get(id));
+            }
+            if (merged == null) {
+                merged = new StoryboardObject();
+                merged.setId(id);
+            }
+            applyValidationScenePatch(merged, patch);
+            visibleState.put(id, merged);
+        }
+    }
+
+    private void applyValidationScenePatch(StoryboardObject target, StoryboardObject patch) {
+        if (target == null || patch == null) {
+            return;
+        }
+        String id = StoryboardPatchResolver.objectId(patch);
+        if (id != null) {
+            target.setId(id);
+        }
+        if (patch.getPlacement() != null && patch.getPlacement().hasData()) {
+            StoryboardObject patchCopy = StoryboardPatchResolver.copyObject(patch);
+            target.setPlacement(patchCopy != null ? patchCopy.getPlacement() : patch.getPlacement());
+        }
+        if (patch.getStyle() != null && patch.getStyle().hasData()) {
+            StoryboardObject patchCopy = StoryboardPatchResolver.copyObject(patch);
+            target.setStyle(patchCopy != null ? patchCopy.getStyle() : patch.getStyle());
+        }
+    }
+
+    private void removeValidationSceneObjects(Map<String, StoryboardObject> visibleState,
+                                              List<StoryboardObject> exitingObjects) {
+        if (visibleState == null || exitingObjects == null) {
+            return;
+        }
+        for (StoryboardObject exitingObject : exitingObjects) {
+            String id = StoryboardPatchResolver.objectId(exitingObject);
+            if (id != null) {
+                visibleState.remove(id);
+            }
+        }
     }
 
     private List<String> validateStoryboardObjectStructure(Storyboard storyboard) {
@@ -1263,7 +1366,90 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             return null;
         }
 
-        return new StoryboardLayoutBounds(xBounds.min, xBounds.max, yBounds.min, yBounds.max);
+        return inferObjectBounds(object, xBounds, yBounds);
+    }
+
+    private StoryboardLayoutBounds inferObjectBounds(StoryboardObject object,
+                                                     AxisBounds xBounds,
+                                                     AxisBounds yBounds) {
+        if (object == null || xBounds == null || yBounds == null) {
+            return new StoryboardLayoutBounds(
+                    xBounds != null ? xBounds.min : 0.0,
+                    xBounds != null ? xBounds.max : 0.0,
+                    yBounds != null ? yBounds.min : 0.0,
+                    yBounds != null ? yBounds.max : 0.0);
+        }
+        double width = Math.max(xBounds.max - xBounds.min, 0.0);
+        double height = Math.max(yBounds.max - yBounds.min, 0.0);
+        if (width > 1e-9 && height > 1e-9) {
+            return new StoryboardLayoutBounds(xBounds.min, xBounds.max, yBounds.min, yBounds.max);
+        }
+
+        double inferredWidth = width;
+        double inferredHeight = height;
+        boolean inferredSize = false;
+        if (isTextLike(object)) {
+            double fontSize = object.getStyle() != null && object.getStyle().getFontSize() != null
+                    ? object.getStyle().getFontSize()
+                    : 24.0;
+            double textUnitHeight = Math.max(fontSize / 72.0, 0.18);
+            int textLength = visibleTextLength(object);
+            inferredWidth = Math.max(inferredWidth, Math.max(textLength * textUnitHeight * 0.33, textUnitHeight));
+            inferredHeight = Math.max(inferredHeight, textUnitHeight);
+            inferredSize = true;
+        } else if (isPointLike(object)) {
+            double radius = pointRadius(object);
+            inferredWidth = Math.max(inferredWidth, radius * 2.0);
+            inferredHeight = Math.max(inferredHeight, radius * 2.0);
+            inferredSize = true;
+        }
+
+        if (!inferredSize) {
+            return new StoryboardLayoutBounds(xBounds.min, xBounds.max, yBounds.min, yBounds.max);
+        }
+        if (inferredWidth <= 1e-9) {
+            inferredWidth = inferredHeight;
+        }
+        if (inferredHeight <= 1e-9) {
+            inferredHeight = inferredWidth;
+        }
+
+        double centerX = (xBounds.min + xBounds.max) / 2.0;
+        double centerY = (yBounds.min + yBounds.max) / 2.0;
+        return new StoryboardLayoutBounds(
+                round(centerX - inferredWidth / 2.0),
+                round(centerX + inferredWidth / 2.0),
+                round(centerY - inferredHeight / 2.0),
+                round(centerY + inferredHeight / 2.0));
+    }
+
+    private int visibleTextLength(StoryboardObject object) {
+        String text = object != null ? object.getContent() : null;
+        if (text == null || text.isBlank()) {
+            return 1;
+        }
+        return Math.max(text.replaceAll("\\s+", "").length(), 1);
+    }
+
+    private boolean isTextLike(StoryboardObject object) {
+        return object != null && isTextRenderKind(normalizeForSemanticCheck(object.getKind()));
+    }
+
+    private boolean isPointLike(StoryboardObject object) {
+        return object != null && containsAny(normalizeForSemanticCheck(object.getKind()), " point ", " dot ");
+    }
+
+    private double pointRadius(StoryboardObject object) {
+        if (object != null && object.getStyle() != null) {
+            Narrative.StoryboardStyle style = object.getStyle();
+            if (style.getRadius() != null && style.getRadius() > 0.0) {
+                return style.getRadius();
+            }
+            if (style.getPointSize() != null && style.getPointSize() > 0.0) {
+                return style.getPointSize();
+            }
+        }
+        return 0.12;
     }
 
     private String resolveAttachmentAnchorId(StoryboardObject object) {

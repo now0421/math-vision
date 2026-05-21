@@ -52,6 +52,7 @@ _PRE_REMOVAL_ANIMATION_TYPES = {
     "ReplacementTransform",
     "RemoveTextLetterByLetter",
 }
+_RESULT_VISIBLE_ANIMATION_TYPES = _RESULT_ONLY_ANIMATION_TYPES - _PRE_REMOVAL_ANIMATION_TYPES
 _SEMANTIC_NAME_SOURCE_RANK = {
     "class_name": 0,
     "display_text": 1,
@@ -96,6 +97,7 @@ def patch_scene_for_geometry_export(scene_cls):
             self._mathvision_current_play = None
             self._mathvision_object_registry = {}
             self._mathvision_object_ids = {}
+            self._mathvision_result_visible_object_ids = set()
             self._mathvision_next_object_number = 1
             self._mathvision_install_geometry_hook()
             super().setup()
@@ -158,6 +160,7 @@ def patch_scene_for_geometry_export(scene_cls):
             animation_summary = _summarize_play_args(args, play_argument_hints)
             priority_sampling = _is_priority_animation_summary(animation_summary)
             pre_removal_descriptors = _pre_removal_descriptors(args, play_argument_hints)
+            result_visible_descriptors = _result_visible_descriptors(args, play_argument_hints)
             play_record = {
                 "play_index": self._mathvision_play_index,
                 "play_type": _detect_play_type(args),
@@ -236,6 +239,7 @@ def patch_scene_for_geometry_export(scene_cls):
                         source_hint=source_hint,
                         play_index=current_play["play_index"],
                         scene_time=getattr(self, "time", 0.0),
+                        extra_descriptors=result_visible_descriptors,
                     )
                     final_visibility_event = self._mathvision_detect_visibility_change(
                         current_play=current_play,
@@ -339,6 +343,11 @@ def patch_scene_for_geometry_export(scene_cls):
         def _mathvision_register_targets_from_play_args(self, args, source_hint, play_argument_hints=None):
             scene_time = _safe_float(getattr(self, "time", 0.0))
             play_index = self._mathvision_play_index or None
+            result_visible_object_ids = {
+                id(descriptor["mobject"])
+                for descriptor in _result_visible_descriptors(args, play_argument_hints)
+                if _should_track_object(descriptor.get("mobject"))
+            }
             for descriptor in _iter_target_descriptors(args, play_argument_hints=play_argument_hints):
                 mobject = descriptor["mobject"]
                 if not _should_track_object(mobject):
@@ -351,6 +360,8 @@ def patch_scene_for_geometry_export(scene_cls):
                     semantic_hint=descriptor.get("semantic_name"),
                     semantic_hint_source="source_argument",
                 )
+                if id(mobject) in result_visible_object_ids:
+                    self._mathvision_result_visible_object_ids.add(id(mobject))
 
         def _mathvision_expected_removed_object_ids(
             self,
@@ -415,11 +426,13 @@ def patch_scene_for_geometry_export(scene_cls):
                     "first_seen_scene_time_seconds": scene_time,
                     "last_seen_play_index": play_index,
                     "last_seen_scene_time_seconds": scene_time,
+                    "mobject": mobject,
                 }
             else:
                 entry = self._mathvision_object_registry[stable_id]
                 entry["last_seen_play_index"] = play_index
                 entry["last_seen_scene_time_seconds"] = scene_time
+                entry["mobject"] = mobject
                 (
                     entry["semantic_name"],
                     entry["semantic_name_source"],
@@ -431,6 +444,24 @@ def patch_scene_for_geometry_export(scene_cls):
                 )
 
             return self._mathvision_object_registry[stable_id]
+
+        def _mathvision_registered_visible_descriptors(self):
+            descriptors = []
+            for object_id in self._mathvision_result_visible_object_ids:
+                stable_id = self._mathvision_object_ids.get(object_id)
+                entry = self._mathvision_object_registry.get(stable_id) if stable_id is not None else None
+                if entry is None:
+                    continue
+                mobject = entry.get("mobject")
+                if not _should_track_object(mobject):
+                    continue
+                descriptors.append(
+                    {
+                        "mobject": mobject,
+                        "semantic_name": entry.get("semantic_name"),
+                    }
+                )
+            return descriptors
 
         def _mathvision_collect_visible_objects(
             self,
@@ -716,6 +747,7 @@ def patch_scene_for_geometry_export(scene_cls):
                         source_hint=final_source_hint,
                         play_index=self._mathvision_play_index or None,
                         scene_time=final_scene_time,
+                        extra_descriptors=self._mathvision_registered_visible_descriptors(),
                     )
                     if not _sample_matches_scene_state(
                         self._mathvision_samples[-1] if self._mathvision_samples else None,
@@ -869,6 +901,17 @@ def _pre_removal_descriptors(args, play_argument_hints=None):
         descriptors.extend(
             _iter_removal_target_descriptors_from_arg(arg, semantic_hint=semantic_hint)
         )
+    return descriptors
+
+
+def _result_visible_descriptors(args, play_argument_hints=None):
+    descriptors = []
+    play_argument_hints = play_argument_hints or []
+    for index, arg in enumerate(args):
+        if arg is None or arg.__class__.__name__ not in _RESULT_VISIBLE_ANIMATION_TYPES:
+            continue
+        semantic_hint = play_argument_hints[index] if index < len(play_argument_hints) else None
+        descriptors.extend(_iter_mobject_descriptors_from_arg(arg, semantic_hint=semantic_hint))
     return descriptors
 
 
