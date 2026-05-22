@@ -1309,7 +1309,7 @@ def _build_semantic_mobject_record(
     width = _safe_float(getattr(mobject, "width", None))
     height = _safe_float(getattr(mobject, "height", None))
     depth = _safe_float(getattr(mobject, "depth", None))
-    opacity_values = _opacity_values(mobject)
+    opacity_values = _recursive_opacity_values(mobject)
     max_opacity = max(opacity_values) if opacity_values else None
     stroke_width = _safe_float(_call_with_optional_bool(mobject, "get_stroke_width"))
     world_bounds = _compute_bounds(
@@ -1868,6 +1868,13 @@ def _is_visible(points_count, bounds, max_opacity):
         or bounds["depth"] > _EPSILON
         or (max_opacity is not None and max_opacity > _EPSILON)
     )
+
+
+def _recursive_opacity_values(mobject):
+    values = list(_opacity_values(mobject))
+    for child in getattr(mobject, "submobjects", []) or []:
+        values.extend(_recursive_opacity_values(child))
+    return values
 
 
 def _opacity_values(mobject):

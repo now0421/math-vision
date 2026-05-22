@@ -343,14 +343,15 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
 
         Map<String, StoryboardObject> registryDefinitions = buildRegistryDefinitions(storyboard);
         Map<String, StoryboardObject> visibleState = new LinkedHashMap<>();
+        List<StoryboardObject> pendingExitingObjects = List.of();
         for (StoryboardScene scene : storyboard.getScenes()) {
             if (scene == null) {
                 continue;
             }
+            removeValidationSceneObjects(visibleState, pendingExitingObjects);
             Map<String, StoryboardObject> sceneVisibleState = copyObjectMapById(visibleState);
             applyValidationScenePatches(sceneVisibleState, scene.getPersistentObjects(), registryDefinitions);
             applyValidationScenePatches(sceneVisibleState, scene.getEnteringObjects(), registryDefinitions);
-            removeValidationSceneObjects(sceneVisibleState, scene.getExitingObjects());
 
             StoryboardScene layoutScene = new StoryboardScene();
             layoutScene.setSceneId(scene.getSceneId());
@@ -360,6 +361,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             layoutScenes.add(layoutScene);
 
             visibleState = sceneVisibleState;
+            pendingExitingObjects = scene.getExitingObjects() != null ? scene.getExitingObjects() : List.of();
         }
         return layoutScenes;
     }

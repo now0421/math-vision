@@ -27,11 +27,13 @@ public final class CodeGenerationPrompts {
                     + "- If an object's actual coordinates depend on other objects, recompute its coordinates from those source objects or use native backend/API construction helpers; never hardcode a coordinate copied from placement for that object.\n\n"
                     + "- Apply every `notes_for_codegen` item as a mandatory scene-level implementation constraint. If a note gives a concrete range, endpoint, duration, visibility, lifecycle, transform, color, or layout instruction, encode that exact constraint in code rather than replacing it with a similar-looking free movement or ad hoc placement.\n\n"
                     + "Continuity and object-management rules:\n"
-                    + "- Build a stable object registry in local variables or dictionaries when useful so ids can be reused across beats.\n"
+                    + "- Maintain a stable id-to-mobject dictionary on the scene, for example `self.objects = {}` in `construct()` or the first scene method, and store each storyboard id as `self.objects[\"id\"] = mobject` when it is first created.\n"
+                    + "- Reuse existing objects only by storyboard id, e.g. `P = self.objects[\"P\"]`; never infer semantic identity from `self.mobjects[index]`, `self.mobjects[-1]`, creation order, or list position.\n"
+                    + "- `self.mobjects` may be used only for non-semantic whole-scene operations such as `Group(*self.mobjects)` during a complete cleanup; do not use it to retrieve A, B, labels, points, segments, formulas, or markers.\n"
                     + "- Prefer transforming existing mobjects over fading out and redrawing the same concept.\n"
                     + "- Keep a persistent base diagram stable while adding, highlighting, or updating only the necessary layer.\n"
-                    + "- When an action targets an existing id, animate that existing object instead of silently creating a duplicate.\n"
-                    + "- Use clean exits for temporary annotations, comparisons, and overlays rather than leaving them to accumulate.\n\n"
+                    + "- When an action targets an existing id, animate that existing object from `self.objects` instead of silently creating a duplicate.\n"
+                    + "- Use clean exits for temporary annotations, comparisons, and overlays: animate `FadeOut`/`Uncreate` or `self.remove(...)`, but keep the corresponding `self.objects[id]` reference so the same mobject can be re-added or transformed if the storyboard id re-enters later.\n\n"
                     + SystemPrompts.OBJECT_LIFECYCLE_RULES
                     + SystemPrompts.GEOMETRY_CONSTRAINT_RULES + "\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
@@ -52,7 +54,7 @@ public final class CodeGenerationPrompts {
                     + SystemPrompts.MANIM_SCENE_TRANSITION_RULES
                     + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
                     + SystemPrompts.MANIM_NAMING_RULES
-                    + "- Do not store mobjects on `self` just to reuse them across scene methods.\n"
+                    + "- Keep storyboard mobjects that persist across scene methods in `self.objects` by storyboard id; this is the required cross-scene identity store, not an optional convenience.\n"
                     + "- Do not hardcode numeric MathTex subobject indexing.\n"
                     + "- Use `ThreeDScene` only when needed and keep overlays fixed in frame when appropriate.\n"
                     + "- Keep content inside the readable safe frame and prefer stable anchors plus `arrange`/`next_to`.\n"
@@ -273,7 +275,7 @@ public final class CodeGenerationPrompts {
                         + "- `from manim import *` and any other needed imports\n"
                         + "- Constants and shared helper functions if needed\n"
                         + "- `class MainScene(Scene):` (or ThreeDScene if any scene uses 3d)\n"
-                        + "- `def construct(self):` that calls these scene methods in order: %s\n"
+                        + "- `def construct(self):` that initializes `self.objects = {}` before calling these scene methods in order: %s\n"
                         + "- A single indented placeholder line `# __SCENE_METHODS__` inside `MainScene`, after `construct()`\n\n"
                         + "Do NOT implement the scene methods yet and do not create `pass` stubs for them.\n"
                         + "The workflow will insert generated methods at `# __SCENE_METHODS__`.\n"
@@ -294,7 +296,11 @@ public final class CodeGenerationPrompts {
                         + "Generate ONLY the method body for `def %s(self):`.\n"
                         + "- Do not include the `def %s(self):` signature; return only the indented or unindented body statements.\n"
                         + "- If no implementation is possible, return `pass` as the body.\n"
-                        + "- Use variables and objects established in earlier scene methods via `self` if needed.\n"
+                        + "- Use storyboard objects established in earlier scene methods via `self.objects[\"id\"]`; initialize `self.objects` before storing the first object if it does not exist.\n"
+                        + "- The current request may include a Runtime object state block. Every id listed there has already been created in an earlier scene method; reuse `self.objects[\"id\"]` for those ids instead of constructing a replacement mobject.\n"
+                        + "- For currently invisible but already created ids that re-enter this scene, retrieve the existing mobject, update its placement/style as needed, add it back to the scene, and animate it in. Do not recreate the object under the same storyboard id.\n"
+                        + "- When an object exits, remove it from the scene visually but keep its `self.objects[\"id\"]` entry available for later re-entry.\n"
+                        + "- Never retrieve semantic objects with `self.mobjects[index]`, `self.mobjects[-1]`, creation order, or list position. `self.mobjects` is allowed only for whole-scene cleanup such as `Group(*self.mobjects)`.\n"
                         + "- Follow the storyboard's semantic intent; select from storyboard-declared objects, and preserve necessary lifecycle and continuity without rendering every candidate object mechanically.\n"
                         + "- Do not create learner-visible elements outside the storyboard. Backend-only invisible helpers are allowed only when required for calculation or documented API usage.\n"
                         + "- Treat `notes_for_codegen` as mandatory for this scene: implement concrete ranges, endpoints, durations, visibility/lifecycle instructions, transforms, palette notes, and layout constraints exactly when present.\n"
@@ -357,6 +363,7 @@ public final class CodeGenerationPrompts {
                         + "- For derived objects such as intersections, reflections, midpoints, projections, connecting segments, and angle markers, construct them from their dependency objects with native GeoGebra commands instead of hardcoded placement coordinates\n"
                         + "- Apply styles and visibility settings\n"
                         + "- Reference shared objects from the skeleton by their established names\n"
+                        + "- The current request may include a Runtime object state block. Every id listed there has already been constructed in an earlier scene section; update/reuse those names instead of defining replacement objects under the same storyboard id.\n"
                         + "- Return the scene code via the write_scene_code tool.",
                 sceneSectionName, sceneIndex + 1, totalScenes,
                 sceneJson, sceneSectionName));

@@ -186,6 +186,36 @@ class VisualDesignNodeTest {
     }
 
     @Test
+    void visibleObjectRegistryCarriesObjectsUntilTheyExit() {
+        VisibilityLifecycleAiClient aiClient = new VisibilityLifecycleAiClient();
+
+        KnowledgeNode introduce = node("introduce", "Introduce root object", KnowledgeNode.NODE_TYPE_PROBLEM);
+        KnowledgeNode wait = node("wait", "Keep going without listing root", KnowledgeNode.NODE_TYPE_OBSERVATION);
+        KnowledgeNode afterWait = node("afterWait", "After unlisted root persists", KnowledgeNode.NODE_TYPE_DERIVATION);
+
+        KnowledgeGraph graph = graph(
+                List.of(introduce, wait, afterWait),
+                Map.of(
+                        "introduce", List.of("wait"),
+                        "wait", List.of("afterWait")
+                ),
+                List.of("introduce", "wait", "afterWait")
+        );
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.KNOWLEDGE_GRAPH, graph);
+
+        new VisualDesignNode().run(ctx);
+
+        String afterWaitPrompt = aiClient.findUserMessageContaining("- Step: After unlisted root persists");
+
+        assertNotNull(afterWaitPrompt);
+        assertTrue(afterWaitPrompt.contains("rootObj"));
+        assertTrue(afterWaitPrompt.contains("ROOT_VISIBLE_COLOR"));
+    }
+
+    @Test
     void visibleObjectRegistryAddsReenteredObjectsWithLatestStyle() {
         VisibilityLifecycleAiClient aiClient = new VisibilityLifecycleAiClient();
 
@@ -717,6 +747,12 @@ class VisualDesignNodeTest {
         }
         if (userPrompt.contains("- Step: Reenter root object")) {
             return sceneDesignResponse("reenter", null, enteringObject("rootObj", "ROOT_REENTERED_COLOR"), null, null);
+        }
+        if (userPrompt.contains("- Step: Keep going without listing root")) {
+            return sceneDesignResponse("wait", null, null, null, null);
+        }
+        if (userPrompt.contains("- Step: After unlisted root persists")) {
+            return sceneDesignResponse("after_wait", null, enteringObject("afterWaitObj", "AFTER_WAIT_COLOR"), null, registryObject("afterWaitObj"));
         }
         if (userPrompt.contains("- Step: After root exits")) {
             return sceneDesignResponse("after_exit", null, enteringObject("afterExitObj", "AFTER_EXIT_COLOR"), null, registryObject("afterExitObj"));

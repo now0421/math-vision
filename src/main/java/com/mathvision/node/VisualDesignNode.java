@@ -45,12 +45,11 @@ import java.util.stream.Collectors;
 
 /**
  * Stage 1b: Visual Design — generates one StoryboardScene per knowledge-graph
- * node using conversation history for continuity, accumulates a global object
- * registry, and assembles the complete Narrative in post().
+ * node in teaching order using conversation history for continuity, accumulates
+ * a global object registry, and assembles the complete Narrative in post().
  *
- * Dependency-ready batches are processed start-first:
- * - Earlier frontier batches establish reusable motifs before merge nodes run.
- * - Nodes inside the same batch share the same pre-batch conversation/object snapshots.
+ * Scenes are designed sequentially so each node sees the visible object state
+ * left by the immediately preceding scene.
  */
 public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeGraph, String> {
 
@@ -95,9 +94,11 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
 
     @Override
     public KnowledgeGraph exec(KnowledgeGraph graph) {
-        int concurrency = parallelEnabled ? maxConcurrent : 1;
-        log.info("=== Stage 1b: Visual Design (output_target={}, parallel={}, concurrency={}) ===",
-                outputTarget, parallelEnabled, concurrency);
+        int concurrency = 1;
+        log.info("=== Stage 1b: Visual Design (output_target={}, sequential teaching order) ===", outputTarget);
+        if (parallelEnabled && maxConcurrent > 1) {
+            log.info("  Visual design ignores configured parallel concurrency={} to preserve scene-to-scene continuity", maxConcurrent);
+        }
         toolCalls.set(0);
         globalColorPalette.clear();
         collectedScenes.clear();
@@ -151,24 +152,17 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
     }
 
     private KnowledgeGraph designGraph(KnowledgeGraph graph) {
-        List<List<KnowledgeNode>> executionBatches = graph.executionBatches();
+        List<KnowledgeNode> teachingNodes = graph.teachingOrderNodes();
         int expectedSceneCount = teachingOrderIndex.size();
 
         try {
-            for (int batchIndex = 0; batchIndex < executionBatches.size(); batchIndex++) {
-                List<KnowledgeNode> nodes = new ArrayList<>();
-                for (KnowledgeNode node : executionBatches.get(batchIndex)) {
-                    if (shouldDesignNode(node)) {
-                        nodes.add(node);
-                    }
-                }
-                if (nodes.isEmpty()) {
-                    log.info("  Skipping batch {} (no eligible nodes)", batchIndex + 1);
+            for (KnowledgeNode node : teachingNodes) {
+                if (!shouldDesignNode(node)) {
                     continue;
                 }
-                log.info("  Designing batch {} ({} nodes{})", batchIndex + 1, nodes.size(),
-                        parallelEnabled && nodes.size() > 1 ? ", parallel" : "");
-                designExecutionBatch(nodes);
+                log.info("  Designing scene {} of {}: {}",
+                        collectedScenes.size() + 1, expectedSceneCount, node.getStep());
+                designTeachingOrderNode(node);
             }
         } catch (CompletionException e) {
             Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
@@ -185,38 +179,17 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         return graph;
     }
 
-    private void designExecutionBatch(List<KnowledgeNode> nodes) {
-        List<NodeConversationContext.Message> batchConversationSnapshot = conversationContext.getMessages();
-        List<StoryboardObject> batchVisibleObjectSnapshot = snapshotVisibleObjectRegistry();
-        List<String> batchPaletteSnapshot = snapshotPalette();
-        List<CompletableFuture<SceneDesignResult>> tasks = new ArrayList<>();
-        for (KnowledgeNode node : nodes) {
-            tasks.add(designNodeAsync(
-                    node,
-                    batchConversationSnapshot,
-                    batchVisibleObjectSnapshot,
-                    batchPaletteSnapshot
-            ));
-        }
-        CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).join();
-
-        List<SceneDesignResult> results = new ArrayList<>();
-        for (CompletableFuture<SceneDesignResult> task : tasks) {
-            SceneDesignResult result = task.join();
-            if (result != null) {
-                results.add(result);
-            }
-        }
-        commitBatchResults(results, batchVisibleObjectSnapshot);
-    }
-
-    private CompletableFuture<SceneDesignResult> designNodeAsync(
-            KnowledgeNode node,
-            List<NodeConversationContext.Message> batchConversationSnapshot,
-            List<StoryboardObject> batchVisibleObjectSnapshot,
-            List<String> batchPaletteSnapshot) {
-        return designNodeWithRetry(node, batchConversationSnapshot,
-                batchVisibleObjectSnapshot, batchPaletteSnapshot, maxSceneRetries, maxSceneRetries, null);
+    private void designTeachingOrderNode(KnowledgeNode node) {
+        SceneDesignResult result = designNodeWithRetry(
+                node,
+                conversationContext.getMessages(),
+                snapshotVisibleObjectRegistry(),
+                snapshotPalette(),
+                maxSceneRetries,
+                maxSceneRetries,
+                null
+        ).join();
+        commitSceneResult(result);
     }
 
     private CompletableFuture<SceneDesignResult> designNodeWithRetry(
@@ -236,10 +209,11 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
             userPrompt.append("\n\n").append(enrichmentContext);
         }
 
-        // Object registry summary
-        String registrySummary = buildObjectRegistrySummary(visibleObjectSnapshot);
+        String globalRegistrySummary = buildGlobalObjectRegistrySummary();
+        String visibleRegistrySummary = buildVisibleObjectRegistrySummary(visibleObjectSnapshot);
         userPrompt.append("\n\nGlobal style guide:\n").append(globalStyleGuide);
-        userPrompt.append("\n\n").append(registrySummary);
+        userPrompt.append("\n\n").append(globalRegistrySummary);
+        userPrompt.append("\n\n").append(visibleRegistrySummary);
 
         String paletteContext = paletteSnapshot.isEmpty()
                 ? "No colors have been assigned yet."
@@ -270,7 +244,10 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                     );
                     if (designResult.scene != null) {
                         List<String> semanticIssues = StoryboardGeometricMarkerValidator.validateSceneDesign(
-                                designResult.scene, designResult.newObjects, visibleObjectSnapshot);
+                                designResult.scene,
+                                designResult.newObjects,
+                                visibleObjectSnapshot,
+                                snapshotObjectRegistry());
                         if (!semanticIssues.isEmpty()) {
                             if (retriesLeft > 0) {
                                 log.warn("  Scene design for '{}' failed geometric marker validation, retrying ({} left): {}",
@@ -429,45 +406,62 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                 sanitizeLoosePlacementFieldsInPlace(entry.getValue()));
     }
 
-    private void commitBatchResults(List<SceneDesignResult> results, List<StoryboardObject> batchVisibleObjectSnapshot) {
-        for (SceneDesignResult result : results) {
-            if (result != null && !result.newObjects.isEmpty()) {
-                objectRegistry.addAll(result.newObjects);
-            }
+    private void commitSceneResult(SceneDesignResult result) {
+        if (result == null) {
+            return;
         }
+
+        List<StoryboardObject> visibleObjectSnapshot = snapshotVisibleObjectRegistry();
+        addNewObjectsToRegistry(result.newObjects);
 
         Map<String, StoryboardObject> registryDefinitions = snapshotObjectRegistryById();
-        Map<String, StoryboardObject> mergedBatchVisibleState = new LinkedHashMap<>();
-
-        for (SceneDesignResult result : results) {
-            if (result == null) {
-                continue;
-            }
-            if (result.scene != null) {
-                stripCoordinateDerivedPlacements(
-                        result.scene,
-                        result.newObjects,
-                        registryDefinitions,
-                        batchVisibleObjectSnapshot);
-                collectedScenes.add(result.scene);
-                Map<String, StoryboardObject> sceneVisibleState = computeSceneVisibleState(
-                        result.scene,
-                        batchVisibleObjectSnapshot,
-                        registryDefinitions);
-                mergedBatchVisibleState.keySet().removeAll(exitingObjectIds(result.scene));
-                mergedBatchVisibleState.putAll(sceneVisibleState);
-            }
-            if (!result.paletteColors.isEmpty()) {
-                globalColorPalette.addAll(result.paletteColors);
-            }
-            if (result.scene != null && result.assistantTranscript != null && !result.assistantTranscript.isBlank()) {
-                conversationContext.appendTurn(result.userPrompt, result.assistantTranscript);
+        if (result.scene != null) {
+            stripCoordinateDerivedPlacements(
+                    result.scene,
+                    result.newObjects,
+                    registryDefinitions,
+                    visibleObjectSnapshot);
+            collectedScenes.add(result.scene);
+            Map<String, StoryboardObject> nextVisibleState = computeSceneVisibleState(
+                    result.scene,
+                    visibleObjectSnapshot,
+                    registryDefinitions);
+            synchronized (visibleObjectRegistry) {
+                visibleObjectRegistry.clear();
+                visibleObjectRegistry.putAll(nextVisibleState);
             }
         }
+        if (!result.paletteColors.isEmpty()) {
+            globalColorPalette.addAll(result.paletteColors);
+        }
+        if (result.scene != null && result.assistantTranscript != null && !result.assistantTranscript.isBlank()) {
+            conversationContext.appendTurn(result.userPrompt, result.assistantTranscript);
+        }
+    }
 
-        synchronized (visibleObjectRegistry) {
-            visibleObjectRegistry.clear();
-            visibleObjectRegistry.putAll(mergedBatchVisibleState);
+    private void addNewObjectsToRegistry(List<StoryboardObject> newObjects) {
+        if (newObjects == null || newObjects.isEmpty()) {
+            return;
+        }
+        synchronized (objectRegistry) {
+            Set<String> existingIds = new LinkedHashSet<>();
+            for (StoryboardObject object : objectRegistry) {
+                String id = objectId(object);
+                if (id != null) {
+                    existingIds.add(id);
+                }
+            }
+            for (StoryboardObject object : newObjects) {
+                String id = objectId(object);
+                if (id == null) {
+                    continue;
+                }
+                if (existingIds.add(id)) {
+                    objectRegistry.add(object);
+                } else {
+                    log.warn("  Ignoring duplicate new_objects registry definition for id='{}'; reuse it via entering_objects instead", id);
+                }
+            }
         }
     }
 
@@ -538,7 +532,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
     private Map<String, StoryboardObject> computeSceneVisibleState(StoryboardScene scene,
                                                                   List<StoryboardObject> baseVisibleSnapshot,
                                                                   Map<String, StoryboardObject> registryDefinitions) {
-        Map<String, StoryboardObject> nextVisibleState = new LinkedHashMap<>();
+        Map<String, StoryboardObject> nextVisibleState = mapObjectsById(baseVisibleSnapshot);
         Map<String, StoryboardObject> baseVisibleById = mapObjectsById(baseVisibleSnapshot);
         mergeSceneObjects(nextVisibleState, scene.getPersistentObjects(), baseVisibleById, registryDefinitions);
         mergeSceneObjects(nextVisibleState, scene.getEnteringObjects(), baseVisibleById, registryDefinitions);
@@ -583,20 +577,6 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         }
     }
 
-    private List<String> exitingObjectIds(StoryboardScene scene) {
-        List<String> ids = new ArrayList<>();
-        if (scene == null || scene.getExitingObjects() == null) {
-            return ids;
-        }
-        for (StoryboardObject object : scene.getExitingObjects()) {
-            String id = objectId(object);
-            if (id != null) {
-                ids.add(id);
-            }
-        }
-        return ids;
-    }
-
     private void applyVisiblePatch(StoryboardObject target, StoryboardObject patch) {
         if (target == null || patch == null) {
             return;
@@ -628,8 +608,16 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
     }
 
     private Map<String, StoryboardObject> snapshotObjectRegistryById() {
+        return mapObjectsById(snapshotObjectRegistry());
+    }
+
+    private List<StoryboardObject> snapshotObjectRegistry() {
         synchronized (objectRegistry) {
-            return mapObjectsById(objectRegistry);
+            List<StoryboardObject> snapshot = new ArrayList<>();
+            for (StoryboardObject object : objectRegistry) {
+                snapshot.add(StoryboardPatchResolver.copyObject(object));
+            }
+            return snapshot;
         }
     }
 
@@ -735,29 +723,57 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         return sb.toString().trim();
     }
 
-    private String buildObjectRegistrySummary(List<StoryboardObject> snapshot) {
+    private String buildGlobalObjectRegistrySummary() {
+        List<StoryboardObject> snapshot;
+        synchronized (objectRegistry) {
+            snapshot = new ArrayList<>(objectRegistry);
+        }
         if (snapshot.isEmpty()) {
-            return "Currently visible object registry: empty (no objects are currently visible).";
+            return "Global object registry: empty. Since no object has been defined yet, every visible object introduced in this first scene needs a `new_objects` definition.";
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("Currently visible object registry (").append(snapshot.size()).append(" objects):\n");
+        sb.append("Global object registry — all ids already defined in earlier scenes, including objects that may no longer be visible (")
+                .append(snapshot.size()).append(" objects):\n");
         for (StoryboardObject obj : snapshot) {
-            sb.append("- id=").append(obj.getId())
-                    .append(", kind=").append(obj.getKind())
-                    .append(", content=").append(obj.getContent() == null ? "" : obj.getContent());
-            if (obj.getConstraints() != null && !obj.getConstraints().isEmpty()) {
-                sb.append(", constraints=").append(JsonUtils.toJson(obj.getConstraints()));
-            }
+            appendRegistryObjectDefinitionSummary(sb, obj);
+        }
+        sb.append("Do not repeat these ids in `new_objects`. If one of these objects re-enters the scene, reference its existing id in `entering_objects` with any needed placement/style patch.");
+        return sb.toString();
+    }
+
+    private String buildVisibleObjectRegistrySummary(List<StoryboardObject> snapshot) {
+        if (snapshot.isEmpty()) {
+            return "Currently visible object registry: empty (no objects are currently visible). Previously defined global objects may still re-enter via `entering_objects`, but they must not be repeated in `new_objects`.";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("Currently visible object registry — objects visible immediately before this scene, with current visual state (")
+                .append(snapshot.size()).append(" objects):\n");
+        for (StoryboardObject obj : snapshot) {
+            appendRegistryObjectDefinitionSummary(sb, obj);
+            int insertAt = sb.length() - 1;
+            StringBuilder visualState = new StringBuilder();
             if (obj.getPlacement() != null && obj.getPlacement().hasData()) {
-                sb.append(", placement=").append(formatPlacementSummary(obj.getPlacement()));
+                visualState.append(", placement=").append(formatPlacementSummary(obj.getPlacement()));
             }
             if (obj.getStyle() != null && obj.getStyle().hasData()) {
-                sb.append(", style=").append(formatStyleSummary(obj.getStyle()));
+                visualState.append(", style=").append(formatStyleSummary(obj.getStyle()));
             }
-            sb.append("\n");
+            if (visualState.length() > 0) {
+                sb.insert(insertAt, visualState);
+            }
         }
-        sb.append("Refer to these currently visible ids in persistent_objects and exiting_objects; use entering_objects for new or re-entering visible objects.");
+        sb.append("Refer to these currently visible ids in `persistent_objects` and `exiting_objects`; use `entering_objects` for new or re-entering visible objects.");
         return sb.toString();
+    }
+
+    private void appendRegistryObjectDefinitionSummary(StringBuilder sb, StoryboardObject obj) {
+        sb.append("- id=").append(obj.getId())
+                .append(", kind=").append(obj.getKind())
+                .append(", content=").append(obj.getContent() == null ? "" : obj.getContent());
+        if (obj.getConstraints() != null && !obj.getConstraints().isEmpty()) {
+            sb.append(", constraints=").append(JsonUtils.toJson(obj.getConstraints()));
+        }
+        sb.append("\n");
     }
 
     private static String formatPlacementSummary(Narrative.StoryboardPlacement placement) {

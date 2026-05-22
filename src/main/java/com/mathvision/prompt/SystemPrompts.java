@@ -144,7 +144,6 @@ public final class SystemPrompts {
     public static final String STORYBOARD_REPAIR_AUTHORITY_RULES =
             "Use the storyboard JSON as semantic repair context, not as an instruction to preserve broken implementation details.\n"
                     + STORYBOARD_AUTHORITY_RULES
-                    + "For repair, prefer the smallest code/layout change that restores backend correctness while preserving the storyboard's teaching meaning and hard geometry.\n"
                     + "Do not re-add non-essential storyboard elements merely to match the storyboard. When fixing overlap, offscreen, or clutter, prefer removing, merging, dimming, or simplifying non-essential elements before moving essential teaching evidence.\n";
 
     /** Shared reference model for later stages that should not be constrained by the storyboard. */
@@ -161,7 +160,6 @@ public final class SystemPrompts {
     public static final String STORYBOARD_REPAIR_REFERENCE_RULES =
             "Use the storyboard JSON as optional repair context, not as an instruction to preserve exact storyboard details or broken implementation details.\n"
                     + STORYBOARD_REFERENCE_RULES
-                    + "For repair, prefer the smallest code/layout change that restores backend correctness, readability, and internal consistency.\n"
                     + "Do not re-add non-essential storyboard elements merely to match the storyboard. When fixing overlap, offscreen, runtime errors, or clutter, prefer simplifying the implementation and keeping the resulting scene coherent.\n";
 
     // ========================================================================

@@ -19,12 +19,15 @@ public final class SceneEvaluationPrompts {
                     + "Also correct semantically wrong geometric attachments you notice, especially angle markers that are drawn on the wrong side or detached from their true vertex.\n\n"
                     + "Scene evaluation repair requirements:\n"
                     + "1. First identify the affected code scene(s), reported elements, and any storyboard_dependency_context supplied in the evaluation report.\n"
-                    + "2. For overlap and offscreen repair, first try translation/recentering and uniform scaling of the affected overlay, upstream source objects, or constrained group before changing geometry or redefining attachments.\n"
-                    + "3. Fix overlap only through text/overlay layout changes, spacing, grouping, recentering, or uniform scaling of constrained groups.\n"
-                    + "4. Fix offscreen issues using readable frame composition; storyboard `safe_area_plan` and `layout_goal` are hints, not strict requirements.\n"
-                    + "5. Keep implemented reflections, symmetry, intersections, equal distances, and anchor-follow relationships internally consistent.\n"
-                    + "6. Prefer cleaning up temporary annotations or stale overlays over covering them with new opaque cards.\n"
-                    + "7. Preserve a readable empty zone for overlays and key conclusions.\n"
+                    + "2. When a layout issue is detected in a sampled frame, do not assume the problem only exists at that sampled instant. Trace each reported element back to where it is first created, positioned, attached, or updated, then repair the earliest responsible placement, attachment, updater, camera framing, or group layout so it remains valid for all frames after it appears.\n"
+                    + "3. Do not fix scene-final layout issues by adding a late one-off animation immediately before the final wait, such as shifting a persistent label only at the end, unless the issue is caused exclusively by a final-scene-only object or final-scene-only transition.\n"
+                    + "4. For persistent labels, points, segments, and derived objects, repair their initial placement, `next_to` direction, updater, group transform, camera framing, or upstream geometry instead of adding a terminal patch.\n"
+                    + "5. For overlap and offscreen repair, first try translation/recentering and uniform scaling of the affected overlay, upstream source objects, or constrained group before changing geometry or redefining attachments.\n"
+                    + "6. Fix overlap only through text/overlay layout changes, spacing, grouping, recentering, or uniform scaling of constrained groups.\n"
+                    + "7. Fix offscreen issues using readable frame composition; storyboard `safe_area_plan` and `layout_goal` are hints, not strict requirements.\n"
+                    + "8. Keep implemented reflections, symmetry, intersections, equal distances, and anchor-follow relationships internally consistent.\n"
+                    + "9. Prefer cleaning up temporary annotations or stale overlays over covering them with new opaque cards.\n"
+                    + "10. Preserve a readable empty zone for overlays and key conclusions.\n"
                     + "Audit the entire file for similar layout issues, not just the reported elements. The reported issues indicate structural patterns that may appear elsewhere.\n"
                     + "Also proactively check for common Python and Manim runtime mistakes.\n\n"
                     + SystemPrompts.MANIM_CODE_OUTPUT_FORMAT;
@@ -81,6 +84,8 @@ public final class SceneEvaluationPrompts {
                                              List<String> fixHistory) {
         StringBuilder sb = new StringBuilder();
         sb.append("The following Manim code rendered, but post-render scene evaluation found layout issues in sampled frames.\n\n")
+                .append("Important temporal note:\n")
+                .append("The geometry report may sample only selected frames, such as the scene final frame. Reported issues may have existed earlier after the affected object was created. Inspect the full code lifecycle of each reported element and fix the earliest responsible placement/update logic, not only the sampled frame.\n\n")
                 .append("Compact storyboard JSON (dependency semantic authority; derived-object placements are intentionally omitted):\n```json\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank() ? storyboardJson : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON)
                 .append("\n```\n\n")

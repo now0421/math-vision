@@ -261,6 +261,8 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
 
         // 1. Build base registry map (shared across skeleton + all scenes)
         Map<String, StoryboardObject> enrichedRegistry = buildBaseEnrichedRegistry(storyboard);
+        Map<String, StoryboardObject> createdRuntimeObjects = new LinkedHashMap<>();
+        Map<String, StoryboardObject> visibleRuntimeObjects = new LinkedHashMap<>();
         String skeletonPrompt = isGeoGebra
                 ? CodeGenerationPrompts.geoGebraSkeletonUserPrompt(storyboardJson, sceneNames)
                 : CodeGenerationPrompts.manimSkeletonUserPrompt(storyboardJson, sceneNames);
@@ -290,9 +292,15 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             // Constraint summary: explicit per-object and scene-level hard invariants
             String constraintSummaryBlock = enrichedRegistry != null
                     ? toConstraintBlock(buildSceneConstraintSummary(scene, enrichedRegistry)) : "";
+            String sceneRegistryBlock = enrichedRegistry != null
+                    ? toConstraintBlock(buildSceneRegistryJsonBlock(scene, enrichedRegistry)) : "";
+            String runtimeStateBlock = toConstraintBlock(buildRuntimeObjectStateBlock(
+                    visibleRuntimeObjects, createdRuntimeObjects, scene, enrichedRegistry, isGeoGebra));
             String scenePrompt = (isGeoGebra
                     ? CodeGenerationPrompts.geoGebraSceneCodeUserPrompt(sceneJson, sceneName, i, scenes.size())
                     : CodeGenerationPrompts.manimSceneCodeUserPrompt(sceneJson, sceneName, i, scenes.size()))
+                    + sceneRegistryBlock
+                    + runtimeStateBlock
                     + constraintSummaryBlock;
             AiRequestUtils.ExtractedTextResult sceneResult = AiRequestUtils.requestExtractedTextResultAsync(
                     aiClient, log, sceneName, conversationContext,
@@ -303,6 +311,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             ).join();
 
             // Apply this scene's patches after code generation (for next scene's context)
+            updateRuntimeObjectState(createdRuntimeObjects, visibleRuntimeObjects, scene, enrichedRegistry);
             if (enrichedRegistry != null) {
                 applyScenePatches(enrichedRegistry, scene);
             }
@@ -540,6 +549,212 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
 
     private static String toConstraintBlock(String constraintSummary) {
         return constraintSummary.isBlank() ? "" : "\n\n" + constraintSummary;
+    }
+
+    /**
+     * Builds the runtime lifecycle context that is not visible from a single
+     * scene JSON: which storyboard ids already have backend objects, and which
+     * of those objects are currently on screen before this scene begins.
+     */
+    static String buildRuntimeObjectStateBlock(Map<String, StoryboardObject> visibleRuntimeObjects,
+                                               Map<String, StoryboardObject> createdRuntimeObjects,
+                                               StoryboardScene scene,
+                                               Map<String, StoryboardObject> enrichedRegistry,
+                                               boolean isGeoGebra) {
+        String handleName = isGeoGebra ? "the existing GeoGebra object name" : "self.objects[\"id\"]";
+        StringBuilder sb = new StringBuilder();
+        sb.append("Runtime object state before this scene (authoritative for object reuse):\n");
+        appendRuntimeObjectList(sb, "currently_visible", visibleRuntimeObjects);
+
+        Map<String, StoryboardObject> invisibleCreated = new LinkedHashMap<>();
+        if (createdRuntimeObjects != null) {
+            for (Map.Entry<String, StoryboardObject> entry : createdRuntimeObjects.entrySet()) {
+                if (entry.getKey() != null
+                        && (visibleRuntimeObjects == null || !visibleRuntimeObjects.containsKey(entry.getKey()))) {
+                    invisibleCreated.put(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+        appendRuntimeObjectList(sb, "already_created_but_currently_invisible", invisibleCreated);
+
+        sb.append("Reuse rule: every id in `currently_visible` or `already_created_but_currently_invisible` ")
+                .append("has already been created. Reuse ")
+                .append(handleName)
+                .append(" for those ids; do not construct a replacement object with the same storyboard id.\n");
+        if (!isGeoGebra) {
+            sb.append("Exit rule: when an existing object exits, remove it from the scene visually but keep its ")
+                    .append("`self.objects[id]` reference so a later scene can re-add or transform the same mobject.\n");
+        }
+        appendSceneLifecycleGuidance(sb, scene, visibleRuntimeObjects, createdRuntimeObjects, enrichedRegistry);
+        return sb.toString().trim();
+    }
+
+    private static void appendRuntimeObjectList(StringBuilder sb,
+                                                String label,
+                                                Map<String, StoryboardObject> objects) {
+        sb.append(label).append(":\n");
+        if (objects == null || objects.isEmpty()) {
+            sb.append("- none\n");
+            return;
+        }
+        for (StoryboardObject obj : objects.values()) {
+            appendRuntimeObjectSummary(sb, obj);
+        }
+    }
+
+    private static void appendRuntimeObjectSummary(StringBuilder sb, StoryboardObject obj) {
+        if (obj == null) {
+            return;
+        }
+        sb.append("- id=").append(obj.getId())
+                .append(", kind=").append(obj.getKind())
+                .append(", content=").append(truncate(obj.getContent(), 80));
+        if (obj.getPlacement() != null && obj.getPlacement().hasData()) {
+            sb.append(", placement=").append(formatPlacementSummary(obj.getPlacement()));
+        }
+        if (obj.getStyle() != null && obj.getStyle().hasData()) {
+            sb.append(", style=").append(formatStyleSummary(obj.getStyle()));
+        }
+        if (obj.getConstraints() != null && !obj.getConstraints().isEmpty()) {
+            sb.append(", constraints=").append(truncate(JsonUtils.toJson(obj.getConstraints()), 500));
+        }
+        sb.append("\n");
+    }
+
+    private static void appendSceneLifecycleGuidance(StringBuilder sb,
+                                                     StoryboardScene scene,
+                                                     Map<String, StoryboardObject> visibleRuntimeObjects,
+                                                     Map<String, StoryboardObject> createdRuntimeObjects,
+                                                     Map<String, StoryboardObject> enrichedRegistry) {
+        if (scene == null) {
+            return;
+        }
+        sb.append("Scene lifecycle guidance:\n");
+        appendLifecyclePatchGuidance(sb, "persistent_objects", scene.getPersistentObjects(),
+                visibleRuntimeObjects, createdRuntimeObjects, enrichedRegistry);
+        appendLifecyclePatchGuidance(sb, "entering_objects", scene.getEnteringObjects(),
+                visibleRuntimeObjects, createdRuntimeObjects, enrichedRegistry);
+        appendLifecyclePatchGuidance(sb, "exiting_objects", scene.getExitingObjects(),
+                visibleRuntimeObjects, createdRuntimeObjects, enrichedRegistry);
+    }
+
+    private static void appendLifecyclePatchGuidance(StringBuilder sb,
+                                                     String fieldName,
+                                                     List<StoryboardObject> patches,
+                                                     Map<String, StoryboardObject> visibleRuntimeObjects,
+                                                     Map<String, StoryboardObject> createdRuntimeObjects,
+                                                     Map<String, StoryboardObject> enrichedRegistry) {
+        if (patches == null || patches.isEmpty()) {
+            sb.append("- ").append(fieldName).append(": none\n");
+            return;
+        }
+        List<String> parts = new ArrayList<>();
+        for (StoryboardObject patch : patches) {
+            String id = StoryboardPatchResolver.objectId(patch);
+            if (id == null) {
+                continue;
+            }
+            boolean currentlyVisible = visibleRuntimeObjects != null && visibleRuntimeObjects.containsKey(id);
+            boolean alreadyCreated = currentlyVisible
+                    || (createdRuntimeObjects != null && createdRuntimeObjects.containsKey(id));
+            boolean knownInRegistry = enrichedRegistry != null && enrichedRegistry.containsKey(id);
+            String status;
+            if (currentlyVisible) {
+                status = "reuse visible object";
+            } else if (alreadyCreated) {
+                status = "re-add existing invisible object";
+            } else if (knownInRegistry) {
+                status = "first-time creation from storyboard id";
+            } else {
+                status = "unknown id; preserve storyboard id if possible";
+            }
+            parts.add(id + " (" + status + ")");
+        }
+        if (parts.isEmpty()) {
+            sb.append("- ").append(fieldName).append(": none\n");
+        } else {
+            sb.append("- ").append(fieldName).append(": ")
+                    .append(String.join(", ", parts)).append("\n");
+        }
+    }
+
+    private static void updateRuntimeObjectState(Map<String, StoryboardObject> createdRuntimeObjects,
+                                                 Map<String, StoryboardObject> visibleRuntimeObjects,
+                                                 StoryboardScene scene,
+                                                 Map<String, StoryboardObject> enrichedRegistry) {
+        if (scene == null) {
+            return;
+        }
+        mergeRuntimeObjects(createdRuntimeObjects, visibleRuntimeObjects,
+                scene.getPersistentObjects(), enrichedRegistry, true);
+        mergeRuntimeObjects(createdRuntimeObjects, visibleRuntimeObjects,
+                scene.getEnteringObjects(), enrichedRegistry, true);
+        mergeRuntimeObjects(createdRuntimeObjects, visibleRuntimeObjects,
+                scene.getExitingObjects(), enrichedRegistry, false);
+        removeRuntimeVisibleObjects(visibleRuntimeObjects, scene.getExitingObjects());
+    }
+
+    private static void mergeRuntimeObjects(Map<String, StoryboardObject> createdRuntimeObjects,
+                                            Map<String, StoryboardObject> visibleRuntimeObjects,
+                                            List<StoryboardObject> patches,
+                                            Map<String, StoryboardObject> enrichedRegistry,
+                                            boolean visibleAfterScene) {
+        if (patches == null || createdRuntimeObjects == null || visibleRuntimeObjects == null) {
+            return;
+        }
+        for (StoryboardObject patch : patches) {
+            String id = StoryboardPatchResolver.objectId(patch);
+            if (id == null) {
+                continue;
+            }
+            StoryboardObject merged = StoryboardPatchResolver.copyObject(visibleRuntimeObjects.get(id));
+            if (merged == null) {
+                merged = StoryboardPatchResolver.copyObject(createdRuntimeObjects.get(id));
+            }
+            if (merged == null && enrichedRegistry != null) {
+                merged = StoryboardPatchResolver.copyObject(enrichedRegistry.get(id));
+            }
+            if (merged == null) {
+                merged = new StoryboardObject();
+                merged.setId(id);
+            }
+            applyRuntimePatch(merged, patch);
+            createdRuntimeObjects.put(id, StoryboardPatchResolver.copyObject(merged));
+            if (visibleAfterScene) {
+                visibleRuntimeObjects.put(id, StoryboardPatchResolver.copyObject(merged));
+            }
+        }
+    }
+
+    private static void removeRuntimeVisibleObjects(Map<String, StoryboardObject> visibleRuntimeObjects,
+                                                    List<StoryboardObject> exitingObjects) {
+        if (visibleRuntimeObjects == null || exitingObjects == null) {
+            return;
+        }
+        for (StoryboardObject exitingObject : exitingObjects) {
+            String id = StoryboardPatchResolver.objectId(exitingObject);
+            if (id != null) {
+                visibleRuntimeObjects.remove(id);
+            }
+        }
+    }
+
+    private static void applyRuntimePatch(StoryboardObject target, StoryboardObject patch) {
+        if (target == null || patch == null) {
+            return;
+        }
+        String id = StoryboardPatchResolver.objectId(patch);
+        if (id != null) {
+            target.setId(id);
+        }
+        if (patch.getPlacement() != null && patch.getPlacement().hasData()) {
+            StoryboardObject patchCopy = StoryboardPatchResolver.copyObject(patch);
+            target.setPlacement(patchCopy != null ? patchCopy.getPlacement() : patch.getPlacement());
+        }
+        if (patch.getStyle() != null && patch.getStyle().hasData()) {
+            StoryboardObject patchCopy = StoryboardPatchResolver.copyObject(patch);
+            target.setStyle(patchCopy != null ? patchCopy.getStyle() : patch.getStyle());
+        }
     }
 
     /**

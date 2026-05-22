@@ -209,6 +209,33 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
+    void validatesCurrentSceneBeforeApplyingCurrentExitsToVisibleState() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardScene scene1 = baseScene("scene_1");
+        StoryboardObject eqCollapse = scenePatch("eqCollapse", valuePlacement("world", 0.0, 3.5));
+        eqCollapse.setStyle(fontStyle(30.0));
+        scene1.setEnteringObjects(List.of(eqCollapse));
+
+        StoryboardScene scene2 = baseScene("scene_2");
+        StoryboardObject finalIneq = scenePatch("finalIneq", valuePlacement("world", 0.0, 3.5));
+        finalIneq.setStyle(fontStyle(32.0));
+        scene2.setEnteringObjects(List.of(finalIneq));
+        scene2.setExitingObjects(List.of(idOnlyPatch("eqCollapse")));
+
+        Storyboard storyboard = storyboardWithScenes(
+                List.of(
+                        registryObject("eqCollapse", "equation", "AP + PB = AP + PB' = AB'", null),
+                        registryObject("finalIneq", "equation", "AP + PB >= AB' = AP* + PB*", null)),
+                List.of(scene1, scene2));
+
+        List<String> issues = node.validate(storyboard);
+        String joinedIssues = String.join("\n", issues);
+
+        assertTrue(joinedIssues.contains("scene 2 (scene_2): text objects 'eqCollapse' and 'finalIneq' overlap"),
+                () -> joinedIssues);
+    }
+
+    @Test
     void reportsNonTextOverlapWhenBoundsCollide() {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(

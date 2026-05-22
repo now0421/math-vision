@@ -26,21 +26,31 @@ public final class StoryboardGeometricMarkerValidator {
             return issues;
         }
         Map<String, StoryboardObject> registry = registryById(storyboard.getObjectRegistry());
-        validateMarkerDefinitions("object_registry", storyboard.getObjectRegistry(), registry, issues);
-        validateAngularBoundaryVertexConsistency("object_registry", storyboard.getObjectRegistry(), registry, issues);
+        validateMarkerDefinitions("object_registry", storyboard.getObjectRegistry(), registry, registry.keySet(), issues);
+        validateAngularBoundaryVertexConsistency("object_registry", storyboard.getObjectRegistry(), registry, registry.keySet(), issues);
         return issues;
     }
 
     public static List<String> validateSceneDesign(StoryboardScene scene,
                                                    List<StoryboardObject> newObjects,
-                                                   List<StoryboardObject> visibleObjects) {
+                                                   List<StoryboardObject> visibleObjects,
+                                                   List<StoryboardObject> globalObjects) {
         List<String> issues = new ArrayList<>();
         Map<String, StoryboardObject> registry = new LinkedHashMap<>();
+        putObjects(registry, globalObjects);
         putObjects(registry, visibleObjects);
         putObjects(registry, newObjects);
         if (scene != null) {
             mergeScenePatches(registry, scene.getEnteringObjects());
             mergeScenePatches(registry, scene.getPersistentObjects());
+        }
+
+        Set<String> knownIds = new LinkedHashSet<>();
+        addObjectIds(knownIds, visibleObjects);
+        addObjectIds(knownIds, newObjects);
+        if (scene != null) {
+            addObjectIds(knownIds, scene.getEnteringObjects());
+            addObjectIds(knownIds, scene.getPersistentObjects());
         }
 
         List<StoryboardObject> relevantObjects = new ArrayList<>();
@@ -50,14 +60,15 @@ public final class StoryboardGeometricMarkerValidator {
         addSceneObjects(relevantObjects, scene != null ? scene.getEnteringObjects() : null, registry);
         addSceneObjects(relevantObjects, scene != null ? scene.getPersistentObjects() : null, registry);
 
-        validateMarkerDefinitions("scene design", relevantObjects, registry, issues);
-        validateAngularBoundaryVertexConsistency("scene design", relevantObjects, registry, issues);
+        validateMarkerDefinitions("scene design", relevantObjects, registry, knownIds, issues);
+        validateAngularBoundaryVertexConsistency("scene design", relevantObjects, registry, knownIds, issues);
         return issues;
     }
 
     private static void validateMarkerDefinitions(String scope,
                                                   List<StoryboardObject> objects,
                                                   Map<String, StoryboardObject> registry,
+                                                  Set<String> knownIds,
                                                   List<String> issues) {
         if (objects == null) {
             return;
@@ -94,7 +105,7 @@ public final class StoryboardGeometricMarkerValidator {
                 issues.add(scope + ": angle/arc marker '" + objectId
                         + "' must define the intended displayed sector with a structured measurement constraint");
             }
-            validateObjectConstraints(scope + " object '" + objectId + "'", definition, registry.keySet(), issues);
+            validateObjectConstraints(scope + " object '" + objectId + "'", definition, knownIds, issues);
         }
     }
 
@@ -167,6 +178,7 @@ public final class StoryboardGeometricMarkerValidator {
     private static void validateAngularBoundaryVertexConsistency(String scope,
                                                                  List<StoryboardObject> objects,
                                                                  Map<String, StoryboardObject> registry,
+                                                                 Set<String> knownIds,
                                                                  List<String> issues) {
         if (objects == null) {
             return;
@@ -196,7 +208,7 @@ public final class StoryboardGeometricMarkerValidator {
                     if (boundaryId == null) {
                         continue;
                     }
-                    StoryboardObject boundaryObject = registry.get(boundaryId);
+                    StoryboardObject boundaryObject = knownIds.contains(boundaryId) ? registry.get(boundaryId) : null;
                     if (boundaryObject == null || constraintReferences(boundaryObject, vertexId)) {
                         continue;
                     }
@@ -269,6 +281,18 @@ public final class StoryboardGeometricMarkerValidator {
             String id = StoryboardPatchResolver.objectId(patch);
             if (id != null && !registry.containsKey(id)) {
                 registry.put(id, patch);
+            }
+        }
+    }
+
+    private static void addObjectIds(Set<String> target, List<StoryboardObject> objects) {
+        if (target == null || objects == null) {
+            return;
+        }
+        for (StoryboardObject object : objects) {
+            String id = StoryboardPatchResolver.objectId(object);
+            if (id != null) {
+                target.add(id);
             }
         }
     }

@@ -144,6 +144,22 @@ class PromptModulesTest {
     }
 
     @Test
+    void manimCodegenPromptsRequireStableStoryboardObjectStore() {
+        String codegenPrompt = codeGenerationSystemPrompt("Shortest path", "Demo", "manim");
+        String skeletonPrompt = CodeGenerationPrompts.manimSkeletonUserPrompt(
+                "{\"scenes\":[]}", java.util.List.of("scene_1"));
+        String scenePrompt = CodeGenerationPrompts.manimSceneCodeUserPrompt(
+                "{\"scene_id\":\"scene_2\"}", "scene_2", 1, 2);
+
+        assertTrue(codegenPrompt.contains("self.objects[\"id\"] = mobject"));
+        assertTrue(codegenPrompt.contains("never infer semantic identity from `self.mobjects[index]`"));
+        assertTrue(codegenPrompt.contains("`self.mobjects` may be used only for non-semantic whole-scene operations"));
+        assertTrue(skeletonPrompt.contains("initializes `self.objects = {}`"));
+        assertTrue(scenePrompt.contains("self.objects[\"id\"]"));
+        assertTrue(scenePrompt.contains("Never retrieve semantic objects with `self.mobjects[index]`"));
+    }
+
+    @Test
     void visualAndNarrativePromptsPreserveMotionFirstTeachingIntent() {
         String manimVisualPrompt = VisualDesignPrompts.buildFixedContextPrompt("Triangle", "Demo", "manim", null)
                 + VisualDesignPrompts.buildRulesPrompt("manim");
