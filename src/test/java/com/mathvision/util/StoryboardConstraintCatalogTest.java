@@ -66,6 +66,22 @@ class StoryboardConstraintCatalogTest {
         }
     }
 
+    @Test
+    void sideOfLineUsesDedicatedRelationInsteadOfLiesOnSideParameter() {
+        StoryboardConstraintCatalog.RelationSpec liesOn = StoryboardConstraintCatalog.relation("lies_on");
+        assertFalse(liesOn.allowedParameters().contains("side"));
+
+        StoryboardConstraintCatalog.RelationSpec onSideOf = StoryboardConstraintCatalog.relation("on_side_of");
+        assertEquals("constraint", onSideOf.domain());
+        assertTrue(onSideOf.requiredParameters().contains("side"));
+        assertTrue(onSideOf.allowedRefs().contains("object"));
+        assertTrue(onSideOf.allowedRefs().contains("reference"));
+        assertTrue(onSideOf.ownerRefRoles().contains("object"));
+        assertTrue(onSideOf.dependencyRefRoles().contains("reference"));
+        assertTrue(onSideOf.enumParameters().get("side").contains("above"));
+        assertTrue(onSideOf.enumParameters().get("side").contains("below"));
+    }
+
     private static void assertNotCoordinateDerived(String relation) {
         assertFalse(StoryboardConstraintCatalog.isCoordinateDerivedRelation(relation));
     }

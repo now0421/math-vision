@@ -140,7 +140,16 @@ public final class StoryboardConstraintCatalog {
                 .dependencyRefs("support")
                 .requireRef("point")
                 .requireRef("support")
-                .optionalParams("side", "range", "tolerance"));
+                .optionalParams("range", "tolerance"));
+        add(relations, spec("constraint", "on_side_of")
+                .scopes(Scope.OBJECT, Scope.SCENE)
+                .ownerRefs("object", "point", "objects")
+                .dependencyRefs("reference", "line", "boundary")
+                .requireAnyRef("object", "point", "objects")
+                .requireAnyRef("reference", "line", "boundary")
+                .requireParam("side")
+                .optionalParams("coordinate_space", "tolerance")
+                .enumParam("side", "above", "below", "left", "right", "positive", "negative"));
         add(relations, spec("construction", "connects_points")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()

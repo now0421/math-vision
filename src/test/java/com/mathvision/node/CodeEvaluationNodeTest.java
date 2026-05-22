@@ -26,7 +26,6 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CodeEvaluationNodeTest {
@@ -128,7 +127,7 @@ class CodeEvaluationNodeTest {
     }
 
     @Test
-    void fallbackReviewFlagsUnfixedTextInMovingThreeDScene() {
+    void fallbackReviewAllowsMovingThreeDSceneWithoutOverlayFinding() {
         Map<String, Object> ctx = buildContext(
                 new FailingReviewAiClient(),
                 String.join("\n",
@@ -148,8 +147,10 @@ class CodeEvaluationNodeTest {
         CodeEvaluationNode.CodeEvaluationInput input = node.prep(ctx);
         CodeEvaluationResult result = node.exec(input);
 
-        assertTrue(result.getInitialStaticAnalysis().getFindings().stream()
+        assertFalse(result.getInitialStaticAnalysis().getFindings().stream()
                 .anyMatch(finding -> "three_d_overlay_fixed".equals(finding.getRuleId())));
+        assertFalse(result.getInitialStaticAnalysis().getFindings().stream()
+                .anyMatch(finding -> "three_d_camera_set".equals(finding.getRuleId())));
     }
 
     @Test
@@ -177,8 +178,12 @@ class CodeEvaluationNodeTest {
     }
 
     @Test
-    void staticConstraintComplianceBlocksDerivedObjectHardcodingBeforeReview() {
+    void llmReviewBlocksDerivedObjectHardcoding() {
         QueueAiClient aiClient = new QueueAiClient();
+        aiClient.toolResponses.add(reviewResponse(false, 5, 4, 5, 6, 6,
+                "Derived point ignores the storyboard intersection constraint.",
+                "Pmin is hardcoded instead of being justified as the intersection of ABprime and l.",
+                "Construct or justify Pmin from ABprime and l."));
 
         Map<String, Object> ctx = buildContext(aiClient, initialCode(), buildDerivedPointNarrative());
 
@@ -187,17 +192,18 @@ class CodeEvaluationNodeTest {
         CodeEvaluationResult result = node.exec(input);
         String action = node.post(ctx, input, result);
 
-        assertNull(aiClient.lastUserMessage);
+        assertNotNull(aiClient.lastUserMessage);
         assertFalse(result.isApprovedForRender());
         assertEquals(WorkflowActions.FIX_CODE, action);
-        assertTrue(result.getFinalStaticAnalysis().getFindings().stream()
-                .anyMatch(finding -> "constraint_compliance".equals(finding.getRuleId())
-                        && finding.getSummary().contains("intersection_of")));
+        assertFalse(result.getFinalStaticAnalysis().getFindings().stream()
+                .anyMatch(finding -> "constraint_compliance".equals(finding.getRuleId())));
+        assertTrue(result.getFinalReview().getBlockingIssues().stream()
+                .anyMatch(issue -> issue.contains("intersection of ABprime and l")));
         com.mathvision.model.CodeFixRequest request =
                 (com.mathvision.model.CodeFixRequest) ctx.get(WorkflowKeys.CODE_FIX_REQUEST);
         assertNotNull(request);
-        assertTrue(request.getStoryboardJson().contains("\"relation\" : \"intersection_of\""));
-        assertTrue(request.getErrorReason().contains("Constraint compliance failed"));
+        assertTrue(request.getStoryboardJson().contains("\"relation" + "\" : \"intersection_of\""));
+        assertTrue(request.getErrorReason().contains("intersection of ABprime and l"));
     }
 
     @Test
@@ -272,8 +278,8 @@ class CodeEvaluationNodeTest {
         assertTrue(reviewRules.contains("notes_for_codegen"));
         assertTrue(reviewRules.contains("layout_api_usage"));
         assertTrue(reviewRules.contains("three_d_scene_required"));
-        assertTrue(reviewRules.contains("three_d_camera_set"));
-        assertTrue(reviewRules.contains("three_d_overlay_fixed"));
+        assertFalse(reviewRules.contains("three_d_camera_set"));
+        assertFalse(reviewRules.contains("three_d_overlay_fixed"));
         assertFalse(reviewRules.contains("`three_d_readability`"));
 
         // Verify severity levels are present in the GeoGebra checklist

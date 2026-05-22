@@ -39,13 +39,6 @@ public final class GeoGebraCodeUtils {
     private static final Pattern SET_COORD_SYSTEM_CALL = Pattern.compile(
             "^SetCoordSystem\\s*\\(", Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern STYLE_COLOR_COMMAND = Pattern.compile(
-            "^Set(?:Background)?Color\\s*\\((.*)\\)\\s*$", Pattern.CASE_INSENSITIVE);
-
-    private static final Pattern QUOTED_STRING = Pattern.compile("\"([^\"]*)\"");
-
-    private static final Pattern SIX_DIGIT_HEX_COLOR = Pattern.compile("#[0-9A-Fa-f]{6}");
-
     public static final class SceneDirective {
         public String id;
         public String title;
@@ -155,11 +148,6 @@ public final class GeoGebraCodeUtils {
                     + " (" + evidence + ")");
         }
 
-        for (String evidence : findAllInvalidStyleColorEvidences(extractCommands(geoGebraCode))) {
-            violations.add("Static rule violation: GeoGebra style colors must use quoted 6-digit hex #RRGGBB"
-                    + " (" + evidence + ")");
-        }
-
         return violations;
     }
 
@@ -220,50 +208,6 @@ public final class GeoGebraCodeUtils {
             }
         }
         return evidences;
-    }
-
-    private static List<String> findAllInvalidStyleColorEvidences(List<String> commands) {
-        List<String> evidences = new ArrayList<>();
-        for (int i = 0; i < commands.size(); i++) {
-            String command = commands.get(i);
-            Matcher commandMatcher = STYLE_COLOR_COMMAND.matcher(command);
-            if (!commandMatcher.matches()) {
-                continue;
-            }
-            String args = commandMatcher.group(1);
-            Matcher quoted = QUOTED_STRING.matcher(args);
-            boolean sawQuotedColor = false;
-            while (quoted.find()) {
-                sawQuotedColor = true;
-                String color = quoted.group(1);
-                if (!SIX_DIGIT_HEX_COLOR.matcher(color).matches()) {
-                    evidences.add("line " + (i + 1) + ": " + abbreviate(command));
-                    break;
-                }
-            }
-            if (!sawQuotedColor && appearsToUseNumericColorChannels(args)) {
-                evidences.add("line " + (i + 1) + ": " + abbreviate(command));
-            }
-        }
-        return evidences;
-    }
-
-    private static boolean appearsToUseNumericColorChannels(String args) {
-        if (args == null || args.isBlank()) {
-            return false;
-        }
-        String[] parts = args.split(",");
-        if (parts.length < 3) {
-            return false;
-        }
-        int numericParts = 0;
-        for (String part : parts) {
-            String trimmed = part.trim();
-            if (trimmed.matches("-?\\d+(?:\\.\\d+)?")) {
-                numericParts++;
-            }
-        }
-        return numericParts >= 3;
     }
 
     static List<String> findAllUndocumentedGeoGebraCommandCalls(String geoGebraCode) {

@@ -90,7 +90,7 @@ public final class VisualDesignPrompts {
                     + "- Record non-obvious palette, transition, or layout decisions in `notes_for_codegen` only when downstream code generation must preserve them as hard constraints.\n"
                     + "- Plan per-scene variation: vary the dominant color, spatial layout, animation entry style, and visual density across scenes. Never use identical visual config for every scene.\n"
                     + "- Objects owned by coordinate-derived relations (e.g. intersections, midpoints, perpendicular feet, attached labels) must not carry scene `placement`; express their position through structured constraint refs and parameters instead.\n"
-                    + "- Objects owned only by non-coordinate-derived relations such as `point_at`, `lies_on`, `moves_on_object`, `fixed_overlay`, or `distance_between` may still carry `placement` when they need an initial, free, or screen-fixed position.\n"
+                    + "- Objects owned only by non-coordinate-derived relations such as `point_at`, `lies_on`, `on_side_of`, `moves_on_object`, `fixed_overlay`, or `distance_between` may still carry `placement` when they need an initial, free, or screen-fixed position.\n"
                     + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n";
 
     private static final String MANIM_SYSTEM =

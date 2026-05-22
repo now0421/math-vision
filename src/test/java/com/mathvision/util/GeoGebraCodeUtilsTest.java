@@ -92,24 +92,12 @@ class GeoGebraCodeUtilsTest {
     }
 
     @Test
-    void validateGeoGebraRules_allowsSixDigitHexStyleColors() {
-        List<String> violations = GeoGebraCodeUtils.validateGeoGebraRules(
-                "SetColor(L, \"#1D4ED8\")");
-        assertTrue(violations.isEmpty());
-    }
-
-    @Test
-    void validateGeoGebraRules_rejectsNamedStyleColors() {
-        List<String> violations = GeoGebraCodeUtils.validateGeoGebraRules(
-                "SetColor(L, \"gray\")");
-        assertTrue(violations.stream().anyMatch(v -> v.contains("#RRGGBB")));
-    }
-
-    @Test
-    void validateGeoGebraRules_rejectsNumericStyleColors() {
-        List<String> violations = GeoGebraCodeUtils.validateGeoGebraRules(
-                "SetColor(L, 255, 0, 0)");
-        assertTrue(violations.stream().anyMatch(v -> v.contains("#RRGGBB")));
+    void validateGeoGebraRules_doesNotValidateGeneratedCodeColors() {
+        List<String> violations = GeoGebraCodeUtils.validateGeoGebraRules(String.join("\n",
+                "SetColor(L, \"#1D4ED8\")",
+                "SetColor(M, \"gray\")",
+                "SetColor(N, 255, 0, 0)"));
+        assertTrue(violations.stream().noneMatch(v -> v.contains("#RRGGBB")));
     }
 
     @Test

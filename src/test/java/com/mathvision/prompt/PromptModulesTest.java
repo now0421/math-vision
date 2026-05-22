@@ -173,8 +173,8 @@ class PromptModulesTest {
         assertTrue(narrativePrompt.contains("scene_mode"));
         assertTrue(codegenPrompt.contains("ThreeDScene"));
         assertTrue(codegenPrompt.contains("fixed overlays readable in screen space"));
-        assertTrue(reviewPrompt.contains("3D scenes"));
-        assertTrue(reviewPrompt.contains("fixed-in-frame overlays"));
+        assertTrue(reviewPrompt.contains("three_d_scene_required"));
+        assertFalse(reviewPrompt.contains("fixed-in-frame overlays"));
     }
 
     @Test

@@ -185,6 +185,8 @@ public final class SystemPrompts {
                     + "- OBJECT-level constraints must include the owner object id in refs.\n"
                     + "- Parameters must contain only non-object values (strings, numbers, booleans); put object references in refs, NEVER in parameters.\n"
                     + "- Refs values: use a single string for one object id, or an array of strings for multiple ids (e.g. {\"members\": [\"segAB\", \"segCD\"]}).\n"
+                    + "- Use `lies_on` only when the point is exactly on the referenced support/path. Do NOT use it for above/below/left/right side placement.\n"
+                    + "- Use `on_side_of` for absolute side constraints such as a point above or below a line; use `same_side_of` or `opposite_side_of` only for relative side relationships between multiple objects.\n"
                     + "\n"
                     + StoryboardConstraintCatalog.detailedCatalogSummary()
                     + "\n"

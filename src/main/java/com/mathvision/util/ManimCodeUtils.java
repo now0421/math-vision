@@ -40,21 +40,6 @@ public final class ManimCodeUtils {
     private static final Pattern UNSAFE_SET_POINTS_CALL = Pattern.compile(
             "\\.set_points\\s*\\(");
 
-    private static final String MANIM_NAMED_COLOR_PATTERN =
-            "WHITE|BLACK|BLUE|GREEN|YELLOW|RED|PURPLE|PINK|ORANGE|TEAL|GOLD|LIGHT_PINK|"
-                    + "BLUE_[A-E]|GREEN_[A-E]|YELLOW_[A-E]|RED_[A-E]|PURPLE_[A-E]|TEAL_[A-E]|"
-                    + "GOLD_[A-E]|MAROON_[A-E]|GRAY|GREY|DARK_GRAY|DARK_GREY|LIGHT_GRAY|LIGHT_GREY|"
-                    + "PURE_RED|PURE_GREEN|PURE_BLUE|PURE_YELLOW|PURE_CYAN|PURE_MAGENTA|LOGO_BLACK";
-
-    private static final Pattern NAMED_COLOR_VALUE = Pattern.compile(
-            "\\b(?:" + MANIM_NAMED_COLOR_PATTERN + ")\\b");
-
-    private static final Pattern COLOR_CONTEXT_PATTERN = Pattern.compile(
-            "(?i)(color|fill|stroke|background|palette|gradient|\\bBG\\b|\\bFG\\b|\\bPRIMARY\\b|\\bSECONDARY\\b|\\bACCENT\\b)");
-
-    private static final Pattern NON_SIX_DIGIT_HEX_COLOR = Pattern.compile(
-            "#(?![0-9A-Fa-f]{6}(?![0-9A-Fa-f]))[0-9A-Fa-f]{3,8}\\b");
-
     private static final Pattern TEXT_CONSTRUCTOR_PATTERN = Pattern.compile(
             "\\b(Text|Tex|MathTex)\\s*\\(\\s*(?:r|rf|fr)?([\"'])(.*?)\\2",
             Pattern.DOTALL
@@ -328,16 +313,6 @@ public final class ManimCodeUtils {
                     + " (" + evidence + ")");
         }
 
-        for (String evidence : findAllNamedColorUsages(manimCode)) {
-            violations.add("Static rule violation: Manim color must use 6-digit hex #RRGGBB, not named color constants"
-                    + " (" + evidence + ")");
-        }
-
-        for (String evidence : findAllNonSixDigitHexColorUsages(manimCode)) {
-            violations.add("Static rule violation: color hex values must use exactly 6 digits #RRGGBB"
-                    + " (" + evidence + ")");
-        }
-
         return violations;
     }
 
@@ -435,64 +410,6 @@ public final class ManimCodeUtils {
             }
         }
         return evidences;
-    }
-
-    private static List<String> findAllNamedColorUsages(String manimCode) {
-        List<String> evidences = new ArrayList<>();
-        if (manimCode == null || manimCode.isBlank()) {
-            return evidences;
-        }
-        String[] lines = manimCode.split("\\R");
-        for (int i = 0; i < lines.length; i++) {
-            String line = stripInlineComment(lines[i]);
-            if (line.isBlank() || !COLOR_CONTEXT_PATTERN.matcher(line).find()) {
-                continue;
-            }
-            Matcher matcher = NAMED_COLOR_VALUE.matcher(line);
-            if (matcher.find()) {
-                String fragment = line.trim().length() > 100 ? line.trim().substring(0, 100) + "..." : line.trim();
-                evidences.add("line " + (i + 1) + ": " + fragment);
-            }
-        }
-        return evidences;
-    }
-
-    private static List<String> findAllNonSixDigitHexColorUsages(String manimCode) {
-        List<String> evidences = new ArrayList<>();
-        if (manimCode == null || manimCode.isBlank()) {
-            return evidences;
-        }
-        String[] lines = manimCode.split("\\R");
-        for (int i = 0; i < lines.length; i++) {
-            String line = stripInlineComment(lines[i]);
-            if (line.isBlank() || !COLOR_CONTEXT_PATTERN.matcher(line).find()) {
-                continue;
-            }
-            Matcher matcher = NON_SIX_DIGIT_HEX_COLOR.matcher(line);
-            if (matcher.find()) {
-                String fragment = line.trim().length() > 100 ? line.trim().substring(0, 100) + "..." : line.trim();
-                evidences.add("line " + (i + 1) + ": " + fragment);
-            }
-        }
-        return evidences;
-    }
-
-    private static String stripInlineComment(String line) {
-        if (line == null) {
-            return "";
-        }
-        int commentIndex = line.indexOf('#');
-        if (commentIndex < 0) {
-            return line;
-        }
-        int quoteCount = 0;
-        for (int i = 0; i < commentIndex; i++) {
-            char ch = line.charAt(i);
-            if (ch == '"' || ch == '\'') {
-                quoteCount++;
-            }
-        }
-        return quoteCount % 2 == 0 ? line.substring(0, commentIndex) : line;
     }
 
     private static Set<String> extractImportedReceivers(String manimCode) {

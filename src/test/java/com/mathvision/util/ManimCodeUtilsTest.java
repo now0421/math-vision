@@ -182,28 +182,14 @@ class ManimCodeUtilsTest {
     }
 
     @Test
-    void validateManimRules_rejectsNamedColorConstants() {
-        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
-                + "        dot = Dot(color=YELLOW)\n"
-                + "        dot.set_color(RED)";
-        List<String> violations = ManimCodeUtils.validateManimRules(code);
-        assertTrue(violations.stream().anyMatch(v -> v.contains("named color constants")));
-    }
-
-    @Test
-    void validateManimRules_rejectsNamedSharedColorConstants() {
+    void validateManimRules_doesNotValidateGeneratedCodeColors() {
         String code = "from manim import *\n\nBG = BLACK\nPRIMARY = BLUE\n\nclass MainScene(Scene):\n    def construct(self):\n"
-                + "        self.camera.background_color = BG";
+                + "        self.camera.background_color = BG\n"
+                + "        dot = Dot(color=YELLOW)\n"
+                + "        dot.set_color(RED)\n"
+                + "        other = Dot(color=\"#AAFFCCDD\")";
         List<String> violations = ManimCodeUtils.validateManimRules(code);
-        assertTrue(violations.stream().anyMatch(v -> v.contains("named color constants")));
-    }
-
-    @Test
-    void validateManimRules_rejectsNonSixDigitHexColors() {
-        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
-                + "        dot = Dot(color=\"#AAFFCCDD\")";
-        List<String> violations = ManimCodeUtils.validateManimRules(code);
-        assertTrue(violations.stream().anyMatch(v -> v.contains("exactly 6 digits")));
+        assertTrue(violations.stream().noneMatch(v -> v.contains("color")));
     }
 
     @Test

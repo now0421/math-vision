@@ -183,6 +183,27 @@ class CodeGenerationConstraintSummaryTest {
         assertTrue(summary.contains("M(point): construction/midpoint_of [coordinate-derived] [motion-sensitive]"), summary);
     }
 
+    @Test
+    void summarizesAbsoluteSideConstraintsWithoutIncidenceSemantics() {
+        StoryboardScene scene = new StoryboardScene();
+        scene.setPersistentObjects(List.of(stubObject("A", "point"), stubObject("l", "line")));
+
+        Map<String, StoryboardObject> registry = new LinkedHashMap<>();
+        registry.put("A", objectWithConstraints("A", "point",
+                storyboardConstraint("constraint", "on_side_of",
+                        Map.of("object", "A", "reference", "l"),
+                        Map.of("side", "above"),
+                        "A stays above l")));
+        registry.put("l", stubStoryboardObject("l", "line"));
+
+        String summary = CodeGenerationNode.buildSceneConstraintSummary(scene, registry);
+
+        assertTrue(summary.contains("A(point): constraint/on_side_of"), summary);
+        assertTrue(summary.contains("owners=[A]"), summary);
+        assertTrue(summary.contains("dependencies=[l]"), summary);
+        assertTrue(summary.contains("side=above"), summary);
+    }
+
     // --- helpers ---
 
     private static StoryboardObject stubObject(String id, String kind) {
