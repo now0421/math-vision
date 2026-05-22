@@ -318,7 +318,7 @@ public final class SystemPrompts {
             "Keep important content within x[-6.5,6.5] and y[-3.5,3.5] whenever possible.\n"
                     + "Reserve a readable top title band and a bottom note band instead of packing the whole frame.\n"
                     + "Keep simultaneously active foreground elements around 6 to 8; brief bursts up to about 10 are acceptable when staging and hierarchy stay clear.\n"
-                    + "If a scene would have more than 8 simultaneously visible foreground elements, dim context objects (opacity 0.3-0.4) before introducing new ones rather than showing everything at full strength.\n"
+                    + "If a scene would have more than 12 simultaneously visible foreground elements, dim context objects (opacity 0.3-0.4) before introducing new ones rather than showing everything at full strength.\n"
                     + "Prefer staggered reveals: create groups of 3-4 objects, then dim before creating the next group.\n"
                     + "Leave a meaningful empty zone for overlays, captions, or upcoming reveals.\n";
 
