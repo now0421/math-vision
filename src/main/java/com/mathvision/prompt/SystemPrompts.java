@@ -132,7 +132,7 @@ public final class SystemPrompts {
                     + "- Treat `object_registry` as the canonical authority for object identity, kind, content, style, and hard geometric meaning.\n"
                     + "- Treat scene `entering_objects`, `persistent_objects`, and `exiting_objects` as per-scene state patches: their `placement`, `style`, and visibility describe the momentary visual state for that scene, not the object's full semantic definition.\n"
                     + "- Treat structured `constraints` and `notes_for_codegen` as hard semantic requirements. Constraints are the only source for geometry, dependency, attachment, motion, measurement, lifecycle, and construction semantics.\n"
-                    + "- Do not treat scene-level `placement.x/y/z.value`, `min`, or `max` as a hard geometric constraint unless structured `constraints` or `notes_for_codegen` explicitly says the coordinate itself is fixed.\n"
+                    + "- Use scene-level `placement.x/y/z.value`, `min`, and `max` as preferred visual-state coordinates for non-derived objects. If they cause offscreen, overlap, poor readability, or conflict with rendered evidence, adjust them minimally or move/scale the whole constrained group while preserving structured constraints.\n"
                     + "- For dependency-driven objects, compute or attach them from their source objects according to structured `constraints` refs and catalog relation semantics.\n"
                     + "- Treat scene order, action order, narration, layout_goal, safe_area_plan, screen_overlay_plan, and camera_plan as planning guidance for presentation, continuity, and readability; adapt them when runtime correctness or a clearer implementation requires it. Do not adapt away explicit `notes_for_codegen` constraints unless they are unsupported or contradictory.\n"
                     + STORYBOARD_ELEMENT_SELECTION_RULES
@@ -150,8 +150,8 @@ public final class SystemPrompts {
     public static final String STORYBOARD_REFERENCE_RULES =
             "Storyboard reference rules:\n"
                     + "- Treat storyboard JSON as helpful reference context for the intended topic, prior scene plan, object names, and possible teaching ideas, not as a strict semantic authority.\n"
-                    + "- When you use storyboard semantics, prefer object_registry constraints over scene patch placement/style details. Scene patches are momentary visual states, not canonical object definitions.\n"
-                    + "- Do not treat scene-level `placement.x/y/z.value`, `min`, or `max` as hard constraints unless structured `constraints` or `notes_for_codegen` explicitly says the coordinate itself is fixed.\n"
+                    + "- When you use storyboard semantics, consider object_registry constraints together with scene patch placement/style details; scene patches are useful visual-state guidance for the current scene.\n"
+                    + "- Use scene-level `placement.x/y/z.value`, `min`, and `max` as preferred layout coordinates for non-derived objects, but adjust them when needed for safe-area, readability, rendered evidence, or internal geometric consistency.\n"
                     + "- Do not block, rewrite, or over-constrain code solely because it omits, merges, renames, simplifies, or reorders storyboard details when the result is runnable, clear, and aligned with the overall user request.\n"
                     + "- Use storyboard geometry, constraints, and placements as hints. Preserve them when they are already implemented consistently or when doing so is low-risk, but runtime correctness, visual clarity, and internally consistent code take precedence.\n"
                     + "- If storyboard details conflict with safer code, rendered evidence, backend limitations, or a clearer implementation, choose a coherent implementation and keep object names, coordinates, dependencies, and layout internally consistent.\n";

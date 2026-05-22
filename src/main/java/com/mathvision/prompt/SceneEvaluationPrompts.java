@@ -86,7 +86,7 @@ public final class SceneEvaluationPrompts {
         sb.append("The following Manim code rendered, but post-render scene evaluation found layout issues in sampled frames.\n\n")
                 .append("Important temporal note:\n")
                 .append("The geometry report may sample only selected frames, such as the scene final frame. Reported issues may have existed earlier after the affected object was created. Inspect the full code lifecycle of each reported element and fix the earliest responsible placement/update logic, not only the sampled frame.\n\n")
-                .append("Compact storyboard JSON (dependency semantic authority; derived-object placements are intentionally omitted):\n```json\n")
+                .append("Compact storyboard JSON (dependency semantics plus preferred scene placement for non-derived objects):\n```json\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank() ? storyboardJson : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON)
                 .append("\n```\n\n")
                 .append("```python\n").append(generatedCode).append("\n```\n\n")
@@ -104,7 +104,7 @@ public final class SceneEvaluationPrompts {
                                                      List<String> fixHistory) {
         StringBuilder sb = new StringBuilder();
         sb.append("The following GeoGebra command script executed, but post-render scene evaluation found layout issues.\n\n")
-                .append("Compact storyboard JSON (dependency semantic authority; derived-object placements are intentionally omitted):\n```json\n")
+                .append("Compact storyboard JSON (dependency semantics plus preferred scene placement for non-derived objects):\n```json\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank() ? storyboardJson : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON)
                 .append("\n```\n\n")
                 .append("```geogebra\n").append(generatedCode).append("\n```\n\n")

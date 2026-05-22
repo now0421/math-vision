@@ -95,7 +95,7 @@ class PromptModulesTest {
     }
 
     @Test
-    void storyboardRulesPreferObjectRegistryOverScenePatchCoordinates() {
+    void storyboardRulesPreserveValidatedScenePlacement() {
         String authorityRules = SystemPrompts.STORYBOARD_AUTHORITY_RULES;
         String referenceRules = SystemPrompts.STORYBOARD_REFERENCE_RULES;
         String manimCodegenPrompt = codeGenerationSystemPrompt("Shortest path", "Demo", "manim");
@@ -106,17 +106,20 @@ class PromptModulesTest {
         assertTrue(authorityRules.contains("scene `entering_objects`, `persistent_objects`, and `exiting_objects` as per-scene state patches"));
         assertTrue(authorityRules.contains("`notes_for_codegen`"));
         assertTrue(authorityRules.contains("hard semantic requirements"));
-        assertTrue(authorityRules.contains("Do not treat scene-level `placement.x/y/z.value`, `min`, or `max` as a hard geometric constraint"));
-        assertTrue(referenceRules.contains("prefer object_registry constraints over scene patch placement/style details"));
-        assertTrue(manimCodegenPrompt.contains("never hardcode a coordinate copied from placement"));
+        assertTrue(authorityRules.contains("Use scene-level `placement.x/y/z.value`, `min`, and `max` as preferred visual-state coordinates"));
+        assertTrue(authorityRules.contains("adjust them minimally or move/scale the whole constrained group"));
+        assertFalse(authorityRules.contains("Do not treat scene-level `placement.x/y/z.value`, `min`, or `max` as a hard geometric constraint"));
+        assertTrue(referenceRules.contains("consider object_registry constraints together with scene patch placement/style details"));
+        assertTrue(manimCodegenPrompt.contains("Use scene placement as the preferred initial visual state"));
         assertTrue(manimCodegenPrompt.contains("scene `notes_for_codegen`"));
         assertTrue(manimCodegenPrompt.contains("mandatory scene-level implementation constraint"));
-        assertTrue(manimScenePrompt.contains("Do not instantiate it from hardcoded placement coordinates"));
+        assertTrue(manimScenePrompt.contains("use scene placement as the preferred initial visual state"));
+        assertTrue(manimScenePrompt.contains("adjust it if needed for safe layout"));
         assertTrue(manimScenePrompt.contains("Treat `notes_for_codegen` as mandatory"));
     }
 
     @Test
-    void codeEvaluationPromptsForbidTreatingScenePlacementAsHardConstraint() {
+    void codeEvaluationPromptsUseValidatedScenePlacement() {
         String manimReviewPrompt = CodeEvaluationPrompts.reviewUserPrompt(
                 "DemoScene",
                 "{\"scenes\":[]}",
@@ -129,14 +132,18 @@ class PromptModulesTest {
                 "A=(0,0)",
                 "geogebra");
 
-        assertTrue(manimReviewPrompt.contains("use object_registry constraints as the semantic authority"));
-        assertTrue(manimReviewPrompt.contains("Never call a scene placement coordinate such as `x.value` or `y.value` a storyboard hard constraint"));
+        assertTrue(manimReviewPrompt.contains("use object_registry constraints, scene placement/style, and notes_for_codegen together"));
+        assertTrue(manimReviewPrompt.contains("scene placement/style is preferred visual-state input"));
+        assertTrue(manimReviewPrompt.contains("may be adjusted to fix offscreen, overlap, readability"));
+        assertFalse(manimReviewPrompt.contains("Never call a scene placement coordinate such as `x.value` or `y.value` a storyboard hard constraint"));
         assertTrue(manimReviewPrompt.contains("verify the implementation by calculating the derived coordinates from constraint refs"));
         assertTrue(manimReviewPrompt.contains("recognizing a native dependency-based construction"));
         assertTrue(manimReviewPrompt.contains("direct numeric coordinates are acceptable only when they match fixed source geometry"));
         assertTrue(manimReviewPrompt.contains("notes_for_codegen"));
-        assertTrue(geogebraReviewPrompt.contains("use object_registry constraints as the semantic authority"));
-        assertTrue(geogebraReviewPrompt.contains("Never call a scene placement coordinate such as `x.value` or `y.value` a storyboard hard constraint"));
+        assertTrue(geogebraReviewPrompt.contains("use object_registry constraints, scene placement/style, and notes_for_codegen together"));
+        assertTrue(geogebraReviewPrompt.contains("scene placement/style is preferred visual-state input"));
+        assertTrue(geogebraReviewPrompt.contains("may be adjusted to fix offscreen, overlap, readability"));
+        assertFalse(geogebraReviewPrompt.contains("Never call a scene placement coordinate such as `x.value` or `y.value` a storyboard hard constraint"));
         assertTrue(geogebraReviewPrompt.contains("verify the implementation by calculating the derived coordinates from constraint refs"));
         assertTrue(geogebraReviewPrompt.contains("recognizing a native dependency-based construction"));
         assertTrue(geogebraReviewPrompt.contains("direct numeric coordinates are acceptable only when they match fixed source geometry"));
@@ -378,6 +385,33 @@ class PromptModulesTest {
         assertTrue(prompt.indexOf("Error type: TYPE_VALUE") < prompt.indexOf("```python"));
         assertTrue(prompt.indexOf("Error summary:") < prompt.indexOf("```python"));
         assertTrue(prompt.contains("Treat the error summary as a routing hint"));
+    }
+
+    @Test
+    void renderAndSceneFixPromptsUseFlexibleScenePlacement() {
+        String manimRenderRules = RenderFixPrompts.buildRulesPrompt("manim");
+        String geogebraRenderRules = RenderFixPrompts.buildRulesPrompt("geogebra");
+        String manimRenderUserPrompt = RenderFixPrompts.manimUserPrompt(
+                "from manim import *",
+                "ValueError: demo",
+                "{\"scenes\":[]}",
+                java.util.List.of(),
+                null,
+                null);
+        String manimLayoutUserPrompt = SceneEvaluationPrompts.manimLayoutFixUserPrompt(
+                "{\"scenes\":[]}",
+                "from manim import *",
+                "offscreen",
+                "{}",
+                java.util.List.of());
+
+        assertTrue(manimRenderRules.contains("Treat storyboard scene placement as preferred layout input"));
+        assertTrue(manimRenderRules.contains("adjust it when needed to fix runtime failures"));
+        assertTrue(geogebraRenderRules.contains("Treat storyboard scene placement as preferred layout input"));
+        assertTrue(manimRenderUserPrompt.contains("preferred scene placement for non-derived objects"));
+        assertTrue(manimRenderUserPrompt.contains("preferred scene placement"));
+        assertTrue(manimLayoutUserPrompt.contains("dependency semantics plus preferred scene placement"));
+        assertFalse(manimLayoutUserPrompt.contains("derived-object placements are intentionally omitted"));
     }
 
     @Test

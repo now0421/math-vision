@@ -167,8 +167,7 @@ public final class CodeEvaluationPrompts {
                             + "Static visual analysis:\n```json\n%s\n```\n\n"
                             + "GeoGebra command script to review:\n```geogebra\n%s\n```\n\n"
                             + "Check every rule before render; only MANDATORY-severity failures block render.\n"
-                            + "When checking storyboard alignment, use object_registry constraints as the semantic authority; treat scene placement/style as momentary visual state only.\n"
-                            + "Never call a scene placement coordinate such as `x.value` or `y.value` a storyboard hard constraint unless structured constraints or notes_for_codegen explicitly says that coordinate is fixed.\n"
+                            + "When checking storyboard alignment, use object_registry constraints, scene placement/style, and notes_for_codegen together; scene placement/style is preferred visual-state input, but it may be adjusted to fix offscreen, overlap, readability, rendered evidence, or consistency issues while preserving constraints.\n"
                             + "If an object's coordinates depend on other objects, verify the implementation by calculating the derived coordinates from constraint refs or by recognizing a native dependency-based construction; direct numeric coordinates are acceptable only when they match fixed source geometry and do not break dependency semantics.\n"
                             + "Focus on whether the actual construction, scene visibility progression, and teaching evidence are coherent, render-ready, and aligned with storyboard hard geometry, notes_for_codegen, constraint semantics, continuity, and teaching semantics.\n"
                             + "Return only the structured rule-compliance output.",
@@ -180,8 +179,7 @@ public final class CodeEvaluationPrompts {
                         + "Static visual analysis:\n```json\n%s\n```\n\n"
                         + "Manim code to review:\n```python\n%s\n```\n\n"
                     + "Check every rule before render; only MANDATORY-severity failures block render.\n"
-                            + "When checking storyboard alignment, use object_registry constraints as the semantic authority; treat scene placement/style as momentary visual state only.\n"
-                            + "Never call a scene placement coordinate such as `x.value` or `y.value` a storyboard hard constraint unless structured constraints or notes_for_codegen explicitly says that coordinate is fixed.\n"
+                            + "When checking storyboard alignment, use object_registry constraints, scene placement/style, and notes_for_codegen together; scene placement/style is preferred visual-state input, but it may be adjusted to fix offscreen, overlap, readability, rendered evidence, or consistency issues while preserving constraints.\n"
                             + "If an object's coordinates depend on other objects, verify the implementation by calculating the derived coordinates from constraint refs or by recognizing a native dependency-based construction; direct numeric coordinates are acceptable only when they match fixed source geometry and do not break dependency semantics.\n"
                             + "Focus on internally consistent geometry, continuity, pacing versus narration, correct spatial relationships, text readability, code-evident clutter, and alignment with storyboard hard geometry, notes_for_codegen, constraint semantics, and continuity.\n"
                         + "Return only the structured rule-compliance output.",
@@ -238,7 +236,7 @@ public final class CodeEvaluationPrompts {
                             + "Structured code review:\n```json\n%s\n```\n\n"
                             + "Current GeoGebra command script:\n```geogebra\n%s\n```\n\n"
                             + "Rewrite the FULL command script to be valid, coherent, readable, and aligned with the storyboard's teaching goal, key object identity, scene order, continuity, geometry meaning, and structured constraint relationships.\n"
-                            + "Use object_registry constraints and scene notes_for_codegen as semantic authority; treat scene placement/style as momentary visual state only, and never force a derived object to a placement coordinate when structured constraints or notes_for_codegen define a different construction.\n"
+                            + "Use object_registry constraints, scene placement/style, and scene notes_for_codegen as semantic guidance; treat placement as preferred layout input that may be adjusted for safety/readability, and never force a derived object to a placement coordinate when structured constraints or notes_for_codegen define a different construction.\n"
                             + "Keep implemented geometric relationships internally consistent; preserve storyboard hard geometry, notes_for_codegen, and constraint semantics, and use documented equivalent constructions when exact details are unsafe or unsupported.\n"
                             + "Preserve the initial viewport contract with `SetCoordSystem(-7, 7, -4, 4)`, and fix layout by scaling/spreading/recentering the construction rather than relying on user zoom.\n"
                             + "Use only command names and syntax forms documented in the attached GeoGebra syntax manual. Replace any undocumented command or guessed syntax with a documented equivalent.\n"
@@ -252,7 +250,7 @@ public final class CodeEvaluationPrompts {
                         + "Structured code review:\n```json\n%s\n```\n\n"
                         + "Current Manim code:\n```python\n%s\n```\n\n"
                         + "Rewrite the FULL code to reduce clutter, preserve continuity, correct semantically wrong placements such as angle arcs or labels attached to the wrong geometry, better match pacing to narration, and keep 3D overlays readable.\n"
-                        + "Use object_registry constraints and scene notes_for_codegen as semantic authority; treat scene placement/style as momentary visual state only, and never force a derived object to a placement coordinate when structured constraints or notes_for_codegen define a different construction.\n"
+                        + "Use object_registry constraints, scene placement/style, and scene notes_for_codegen as semantic guidance; treat placement as preferred layout input that may be adjusted for safety/readability, and never force a derived object to a placement coordinate when structured constraints or notes_for_codegen define a different construction.\n"
                         + "Keep implemented geometric relationships internally consistent while making layout safer; preserve storyboard hard geometry, notes_for_codegen, constraint semantics, key object identity, scene order, continuity, and teaching intent. Use equivalent documented Manim constructions when exact storyboard details are unsafe or unsupported.\n"
                         + "Also fix nearby Python/Manim runtime mistakes. Preserve the scene class name and teaching goal.\n"
                         + "Return ONLY the full Python code block.",

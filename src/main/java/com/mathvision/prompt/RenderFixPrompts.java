@@ -16,6 +16,7 @@ public final class RenderFixPrompts {
                     + "Preserve the original scene class name and intended animation meaning.\n\n"
                     + SystemPrompts.STORYBOARD_REPAIR_REFERENCE_RULES
                     + "Keep implemented mathematical constructions internally consistent while fixing render issues.\n"
+                    + "Treat storyboard scene placement as preferred layout input for non-derived objects, but adjust it when needed to fix runtime failures, offscreen/overlap risk, readability, or internal consistency while preserving structured constraints.\n"
                     + "Mandatory rules:\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
@@ -32,6 +33,7 @@ public final class RenderFixPrompts {
                     + "Preserve the intended construction meaning and object dependency chain where they are useful and valid.\n"
                     + SystemPrompts.STORYBOARD_REPAIR_REFERENCE_RULES
                     + "Keep implemented geometric relationships internally consistent while fixing command failures.\n"
+                    + "Treat storyboard scene placement as preferred layout input for non-derived objects, but adjust it when needed to fix runtime failures, viewport safety, readability, or internal consistency while preserving structured constraints.\n"
                     + "Use English GeoGebra command names.\n"
                     + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
                     + "If you must rename an identifier or introduce a new one, update the commented `SCENE_BUTTONS` script consistently so it still references the final object names.\n"
@@ -89,7 +91,7 @@ public final class RenderFixPrompts {
         }
         sb.append("\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank()
-                        ? "Compact storyboard JSON (reference context, not strict authority):\n```json\n"
+                        ? "Compact storyboard JSON (reference context with preferred scene placement for non-derived objects):\n```json\n"
                         + storyboardJson + "\n```\n\n"
                         : "")
                 .append(staticAuditSummary != null && !staticAuditSummary.isBlank()
@@ -102,7 +104,7 @@ public final class RenderFixPrompts {
                 .append("Treat the error summary as a routing hint, not as a single-line patch target.\n")
                 .append("Sweep all `Text(...)`, `Tex(...)`, and `MathTex(...)` calls whenever the error category suggests text-constructor or LaTeX misuse.\n")
                 .append("Prioritize the earliest root-cause category instead of patching downstream symptoms.\n")
-                .append("Use storyboard structured constraints, geometric summaries, or derived constructions as reference context only; keep the final code internally consistent while fixing the render failure.\n")
+                .append("Use storyboard structured constraints, preferred scene placement, geometric summaries, or derived constructions as repair context; keep the final code internally consistent while fixing the render failure.\n")
                 .append("Also proactively check for common Python and Manim runtime mistakes.\n")
                 .append("Remember: Return ONLY the single Python code block containing the full file. No explanation.\n");
 
@@ -124,7 +126,7 @@ public final class RenderFixPrompts {
         }
         sb.append("\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank()
-                        ? "Compact storyboard JSON (reference context, not strict authority):\n```json\n"
+                        ? "Compact storyboard JSON (reference context with preferred scene placement for non-derived objects):\n```json\n"
                         + storyboardJson + "\n```\n\n"
                         : "")
                 .append("Validation failure details collected from that full pass:\n```\n").append(error).append("\n```\n\n")
@@ -134,7 +136,7 @@ public final class RenderFixPrompts {
                 .append("Prioritize the earliest root cause instead of patching downstream false-return symptoms.\n")
                 .append("Sweep dependent commands, renamed identifiers, and the commented `SCENE_BUTTONS` block after every fix so the full script remains consistent in one replay pass.\n")
                 .append("Please rewrite the FULL command script so all reported failures become valid in one pass and downstream dependent commands remain correct.\n")
-                .append("Use English GeoGebra command names and keep implemented geometric dependencies internally consistent; use storyboard details as reference context only.\n")
+                .append("Use English GeoGebra command names and keep implemented geometric dependencies internally consistent; use storyboard details, including preferred scene placement for non-derived objects, as repair context.\n")
                 .append("If you rename an identifier or add a new one, also update the commented `SCENE_BUTTONS` script so it stays consistent with the final command script.\n")
                 .append("Remember: Return ONLY the single fenced `geogebra` code block. No explanation.\n");
 
