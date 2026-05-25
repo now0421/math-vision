@@ -74,6 +74,39 @@ class ErrorSummarizerTest {
     }
 
     @Test
+    void buildRenderFixSummary_keepsCompactUserFrameForManimRichTraceback() {
+        String traceback = String.join("\n",
+                "Animation 16: Create(Line):  93%|#########3| 14/15 [00:01<00:00, 12.89it/s]",
+                "INFO     Animation 16 : Partial movie file written in 'partial_movie_files/MainScene/uncached_00016.mp4'",
+                "+--------------------- Traceback (most recent call last) ---------------------+",
+                "| D:\\code-tools\\manim\\Lib\\site-packages\\manim\\cli\\render\\commands.py:125 in render |",
+                "| > 125                     scene.render()                                    |",
+                "| d:\\project\\math-vision\\output\\manim\\case\\scene_render.py:23 in construct |",
+                "|    20         # Run the five storyboard scenes in order                     |",
+                "| >  23         self.scene_3_reflect_a_across_river()                         |",
+                "|    24         self.scene_4_straight_line_shortcut()                         |",
+                "| d:\\project\\math-vision\\output\\manim\\case\\scene_render.py:153 in scene_3_reflect_a_across_river |",
+                "|   151                 # Fade and dash the old AP segment                    |",
+                "|   152                 self.objects[\"segAP\"].set_stroke(opacity=0.25)        |",
+                "| > 153                 self.objects[\"segAP\"].set_line_style(dash_length=0.1, |",
+                "|   154                 self.play(self.objects[\"segAP\"].animate, subcaption=\" |",
+                "TypeError: Mobject.__getattr__.<locals>.setter() got an unexpected keyword",
+                "argument 'dash_length'");
+
+        String summary = ErrorSummarizer.buildRenderFixSummary(traceback);
+
+        assertTrue(summary.contains("TYPE_VALUE: TypeError"));
+        assertTrue(summary.contains("Relevant traceback:"));
+        assertTrue(summary.contains("output/manim/case/scene_render.py:23 in construct"));
+        assertTrue(summary.contains("output/manim/case/scene_render.py:153 in scene_3_reflect_a_across_river"));
+        assertTrue(summary.contains("set_line_style(dash_length=0.1"));
+        assertTrue(summary.contains("argument 'dash_length'"));
+        assertFalse(summary.contains("Partial movie file written"));
+        assertFalse(summary.contains("Animation 16"));
+        assertFalse(summary.contains("site-packages"));
+    }
+
+    @Test
     void classifyError_identifiesSyntaxError() {
         assertEquals(ErrorSummarizer.ErrorCategory.SYNTAX,
                 ErrorSummarizer.classifyError("SyntaxError: invalid syntax"));

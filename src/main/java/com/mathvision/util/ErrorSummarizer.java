@@ -23,6 +23,9 @@ public final class ErrorSummarizer {
     private static final int LATEX_LOG_CONTEXT_RADIUS = 3;
     private static final String TRACEBACK_MARKER = "Traceback (most recent call last)";
 
+    private static final int RICH_SOURCE_CONTEXT_RADIUS = 2;
+    private static final int MAX_RENDER_FIX_TRACEBACK_LINES = 80;
+
     /** Patterns for detecting user-code frames in Manim Rich tracebacks. */
     private static final List<Pattern> USER_CODE_FRAME_PATTERNS = List.of(
             Pattern.compile("scene_render\\.py", Pattern.CASE_INSENSITIVE),
@@ -32,6 +35,10 @@ public final class ErrorSummarizer {
 
     private static final Pattern ERROR_SIGNATURE_PATTERN = Pattern.compile(
             "\\b(?:[A-Za-z_][A-Za-z0-9_]*Error|[A-Za-z_][A-Za-z0-9_]*Exception)\\s*:\\s*.+");
+    private static final Pattern RICH_FRAME_HEADER_PATTERN = Pattern.compile(
+            "(?i)([^\\s|]+\\.py):([0-9]+)\\s+in\\s*([A-Za-z_][A-Za-z0-9_]*)?");
+    private static final Pattern SIMPLE_FRAME_HEADER_PATTERN = Pattern.compile(
+            "File \\\"([^\\\"]+\\.py)\\\", line ([0-9]+), in ([A-Za-z_][A-Za-z0-9_]*)");
     private static final Pattern WINDOWS_LOG_PATH_PATTERN = Pattern.compile(
             "([A-Za-z]:\\\\(?:[^\\\\\\s]+\\\\)*[^\\\\\\s]+\\.log)",
             Pattern.CASE_INSENSITIVE);
@@ -368,6 +375,10 @@ public final class ErrorSummarizer {
             Matcher matcher = ERROR_SIGNATURE_PATTERN.matcher(line);
             if (matcher.find()) {
                 String signature = matcher.group().trim();
+                String continuation = collectExceptionContinuation(lines, i + 1);
+                if (!continuation.isBlank()) {
+                    signature = signature + " " + continuation;
+                }
                 return signature.length() > 200 ? signature.substring(0, 200) : signature;
             }
         }
@@ -376,22 +387,264 @@ public final class ErrorSummarizer {
         return normalized.length() > 200 ? normalized.substring(0, 200) : normalized;
     }
 
+    private static String collectExceptionContinuation(String[] lines, int start) {
+        if (lines == null) {
+            return "";
+        }
+        List<String> parts = new ArrayList<>();
+        for (int i = start; i < lines.length && parts.size() < 2; i++) {
+            String line = stripRichBorder(lines[i]).trim();
+            if (line.isBlank()) {
+                continue;
+            }
+            if (isNoiseLine(line) || isSectionHeader(line)) {
+                continue;
+            }
+            if (ERROR_SIGNATURE_PATTERN.matcher(line).find()
+                    || isFrameBoundary(line)
+                    || line.startsWith(">")
+                    || line.matches("^[0-9]+\\s+.*")) {
+                break;
+            }
+            parts.add(line);
+        }
+        return String.join(" ", parts).trim();
+    }
+
     public static String buildRenderFixSummary(String focusedError) {
         ErrorCategory category = classifyError(focusedError);
         String signature = summarizeSignature(focusedError);
-        if (category == ErrorCategory.FALLBACK) {
-            // For unknown/unclassified errors, pass through the full focusedError
-            // (already condensed by summarizeTraceback) so the LLM can see user-code
-            // frames, not just library frames near the bottom of the stack.
-            if (focusedError != null && !focusedError.isBlank()) {
-                return ErrorCategory.FALLBACK.name() + ":\n" + focusedError.trim();
-            }
-            return ErrorCategory.FALLBACK.name();
+        String compactContext = compactRenderFixContext(focusedError, signature);
+        boolean contextAddsInformation = addsInformationBeyondSignature(compactContext, signature);
+
+        List<String> sections = new ArrayList<>();
+        if (signature == null || signature.isBlank()) {
+            sections.add(category.name());
+        } else {
+            sections.add(category.name() + ": " + signature);
+        }
+        if (contextAddsInformation) {
+            String label = hasTracebackContext(focusedError) ? "Relevant traceback" : "Relevant error context";
+            sections.add(label + ":\n" + compactContext);
+        }
+        return String.join("\n\n", sections);
+    }
+
+    private static boolean addsInformationBeyondSignature(String compactContext, String signature) {
+        if (compactContext == null || compactContext.isBlank()) {
+            return false;
         }
         if (signature == null || signature.isBlank()) {
-            return category.name();
+            return true;
         }
-        return category.name() + ": " + signature;
+        String normalizedContext = compactContext.replaceAll("\\s+", " ").trim();
+        String normalizedSignature = signature.replaceAll("\\s+", " ").trim();
+        return !normalizedContext.equals(normalizedSignature);
+    }
+
+    private static boolean hasTracebackContext(String focusedError) {
+        if (focusedError == null || focusedError.isBlank()) {
+            return false;
+        }
+        String lower = focusedError.toLowerCase();
+        return lower.contains("traceback") || lower.contains(".py:") || lower.contains("file \\\"");
+    }
+
+    private static String compactRenderFixContext(String focusedError, String signature) {
+        if (focusedError == null || focusedError.isBlank()) {
+            return "";
+        }
+
+        String[] lines = focusedError.split("\\R");
+        List<String> compact = new ArrayList<>();
+        for (int i = 0; i < lines.length; i++) {
+            String line = stripRichBorder(lines[i]).stripTrailing();
+            if (line.isBlank() || isNoiseLine(line) || isSectionHeader(line)) {
+                continue;
+            }
+
+            boolean userFrame = isUserCodeFrameLine(line);
+            if (userFrame) {
+                addUserFrame(compact, line);
+                i = addSourceContext(lines, i + 1, compact);
+                continue;
+            }
+
+            if (ERROR_SIGNATURE_PATTERN.matcher(line).find()) {
+                addUnique(compact, line.trim());
+            }
+        }
+
+        if (compact.isEmpty()) {
+            String fallback = tailLines(focusedError, MAX_TRACEBACK_LINES);
+            return compactNonTracebackError(fallback, signature);
+        }
+
+        if (signature != null && !signature.isBlank()) {
+            addUnique(compact, signature);
+        }
+        return limitLines(compact, MAX_RENDER_FIX_TRACEBACK_LINES);
+    }
+
+    private static String compactNonTracebackError(String text, String signature) {
+        if (text == null || text.isBlank()) {
+            return signature != null ? signature : "";
+        }
+        List<String> compact = new ArrayList<>();
+        for (String raw : text.split("\\R")) {
+            String line = stripRichBorder(raw).trim();
+            if (!line.isBlank() && !isNoiseLine(line) && !isSectionHeader(line)) {
+                addUnique(compact, line);
+            }
+        }
+        if (signature != null && !signature.isBlank()) {
+            addUnique(compact, signature);
+        }
+        return limitLines(compact, MAX_RENDER_FIX_TRACEBACK_LINES);
+    }
+
+    private static void addUserFrame(List<String> compact, String frameLine) {
+        Matcher richMatcher = RICH_FRAME_HEADER_PATTERN.matcher(frameLine);
+        if (richMatcher.find()) {
+            String path = simplifyPath(richMatcher.group(1));
+            String lineNumber = richMatcher.group(2);
+            String function = richMatcher.group(3);
+            String suffix = function != null && !function.isBlank() ? " in " + function : "";
+            addUnique(compact, path + ":" + lineNumber + suffix);
+            return;
+        }
+
+        Matcher simpleMatcher = SIMPLE_FRAME_HEADER_PATTERN.matcher(frameLine);
+        if (simpleMatcher.find()) {
+            addUnique(compact, simplifyPath(simpleMatcher.group(1))
+                    + ":" + simpleMatcher.group(2)
+                    + " in " + simpleMatcher.group(3));
+            return;
+        }
+
+        addUnique(compact, frameLine.trim());
+    }
+
+    private static int addSourceContext(String[] lines, int start, List<String> compact) {
+        List<String> sourceLines = new ArrayList<>();
+        int end = start;
+        int arrowIndex = -1;
+        for (; end < lines.length; end++) {
+            String cleaned = stripRichBorder(lines[end]).stripTrailing();
+            String trimmed = cleaned.trim();
+            if (trimmed.isBlank()) {
+                if (!sourceLines.isEmpty()) {
+                    break;
+                }
+                continue;
+            }
+            if (isFrameBoundary(trimmed) || ERROR_SIGNATURE_PATTERN.matcher(trimmed).find()) {
+                break;
+            }
+            if (isNoiseLine(trimmed) || isSectionHeader(trimmed)) {
+                continue;
+            }
+            sourceLines.add(cleaned);
+            if (trimmed.startsWith(">")) {
+                arrowIndex = sourceLines.size() - 1;
+            }
+        }
+
+        if (!sourceLines.isEmpty()) {
+            int first = arrowIndex >= 0 ? Math.max(0, arrowIndex - RICH_SOURCE_CONTEXT_RADIUS) : 0;
+            int last = arrowIndex >= 0
+                    ? Math.min(sourceLines.size() - 1, arrowIndex + RICH_SOURCE_CONTEXT_RADIUS)
+                    : Math.min(sourceLines.size() - 1, RICH_SOURCE_CONTEXT_RADIUS);
+            for (int i = first; i <= last; i++) {
+                addUnique(compact, normalizeSourceLine(sourceLines.get(i)));
+            }
+        }
+        return Math.max(start, end - 1);
+    }
+
+    private static boolean isFrameBoundary(String line) {
+        return line.contains(".py:") && line.matches(".*(?i)\\b in\\b.*");
+    }
+
+    private static String normalizeSourceLine(String line) {
+        String normalized = line.strip();
+        normalized = normalized.replaceAll("^([0-9]+\\s*)?([>|])\\s*", "> ");
+        normalized = normalized.replaceAll("^[0-9]+\\s+", "  ");
+        return normalized;
+    }
+
+    private static String stripRichBorder(String line) {
+        if (line == null) {
+            return "";
+        }
+        String stripped = line.replace('│', '|');
+        stripped = stripped.replaceAll("^\\s*\\|\\s?", "");
+        stripped = stripped.replaceAll("\\s?\\|\\s*$", "");
+        return stripped;
+    }
+
+    private static String simplifyPath(String path) {
+        if (path == null || path.isBlank()) {
+            return "";
+        }
+        String normalized = path.replace('\\', '/');
+        int outputIndex = normalized.toLowerCase().lastIndexOf("/output/");
+        if (outputIndex >= 0) {
+            return normalized.substring(outputIndex + 1);
+        }
+        int slash = normalized.lastIndexOf('/');
+        return slash >= 0 ? normalized.substring(slash + 1) : normalized;
+    }
+
+    private static boolean isNoiseLine(String line) {
+        String trimmed = line.trim();
+        if (trimmed.isBlank()) {
+            return true;
+        }
+        String lower = trimmed.toLowerCase();
+        return trimmed.contains("%|")
+                || trimmed.startsWith("Animation ")
+                || lower.contains("partial movie file written")
+                || lower.contains("movie file written")
+                || lower.contains("caching disabled")
+                || lower.contains("manim community")
+                || lower.contains("sox could not be found")
+                || lower.contains("pkg_resources is deprecated")
+                || lower.contains("warning  sox")
+                || trimmed.startsWith("+-")
+                || trimmed.matches("[-+|\\s]+")
+                || trimmed.matches("\\[[0-9]{2}/[0-9]{2}/[0-9]{2}.*");
+    }
+
+    private static boolean isSectionHeader(String line) {
+        String trimmed = line.trim();
+        return trimmed.equals("=== stdout highlights ===")
+                || trimmed.equals("=== stderr traceback ===")
+                || trimmed.equals("=== latex log context ===")
+                || trimmed.equals(TRACEBACK_MARKER)
+                || trimmed.startsWith("[stdout]")
+                || trimmed.startsWith("[stderr]");
+    }
+
+    private static void addUnique(List<String> lines, String line) {
+        if (line == null) {
+            return;
+        }
+        String cleaned = line.stripTrailing();
+        if (cleaned.isBlank()) {
+            return;
+        }
+        if (lines.isEmpty() || !lines.get(lines.size() - 1).equals(cleaned)) {
+            lines.add(cleaned);
+        }
+    }
+
+    private static String limitLines(List<String> lines, int maxLines) {
+        if (lines == null || lines.isEmpty()) {
+            return "";
+        }
+        int limit = Math.min(lines.size(), maxLines);
+        return String.join("\n", lines.subList(0, limit));
     }
 
     /**

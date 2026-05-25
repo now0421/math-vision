@@ -8,7 +8,7 @@ import java.util.List;
 public final class SceneEvaluationPrompts {
 
     private static final String MANIM_SYSTEM =
-            "You are fixing Manim code that rendered but has layout issues detected by geometry analysis.\n"
+            "You are fixing Manim code in the shared Code Fix stage. Do not assume every Code Fix request already rendered successfully; use the current request's supplied evidence as the repair authority.\n"
                     + "Preserve the teaching goal, visual intent, scene class name, and continuity.\n"
                     + SystemPrompts.STORYBOARD_REPAIR_AUTHORITY_RULES
                     + "Use the rendered geometry report as authority for observed layout problems, and use storyboard object_registry dependency facts as semantic authority for how affected geometry must be constructed.\n"
@@ -24,7 +24,7 @@ public final class SceneEvaluationPrompts {
                     + "4. For persistent labels, points, segments, and derived objects, repair their initial placement, `next_to` direction, updater, group transform, camera framing, or upstream geometry instead of adding a terminal patch.\n"
                     + "5. For overlap and offscreen repair, first try translation/recentering and uniform scaling of the affected overlay, upstream source objects, or constrained group before changing geometry or redefining attachments.\n"
                     + "6. Fix overlap only through text/overlay layout changes, spacing, grouping, recentering, or uniform scaling of constrained groups.\n"
-                    + "7. Fix offscreen issues using readable frame composition; storyboard `safe_area_plan` and `layout_goal` are hints, not strict requirements.\n"
+                    + "7. Fix offscreen issues using readable frame composition; storyboard `safe_area_plan` and `layout_goal` are useful hints.\n"
                     + "8. Keep implemented reflections, symmetry, intersections, equal distances, and anchor-follow relationships internally consistent.\n"
                     + "9. Prefer cleaning up temporary annotations or stale overlays over covering them with new opaque cards.\n"
                     + "10. Preserve a readable empty zone for overlays and key conclusions.\n"
@@ -33,7 +33,7 @@ public final class SceneEvaluationPrompts {
                     + SystemPrompts.MANIM_CODE_OUTPUT_FORMAT;
 
     private static final String GEOGEBRA_SYSTEM =
-            "You are fixing a GeoGebra command script that executed but has layout issues detected by geometry analysis.\n"
+            "You are fixing a GeoGebra command script in the shared Code Fix stage. Do not assume every Code Fix request already executed successfully; use the current request's supplied evidence as the repair authority.\n"
                     + "Preserve the teaching goal, visual intent, and construction meaning.\n"
                     + SystemPrompts.STORYBOARD_REPAIR_AUTHORITY_RULES
                     + "Use the rendered geometry report as authority for observed layout problems, and use storyboard object_registry dependency facts as semantic authority for how affected geometry must be constructed.\n"
@@ -57,36 +57,37 @@ public final class SceneEvaluationPrompts {
 
     public static String buildLayoutFixRulesPrompt(String outputTarget) {
         if ("geogebra".equalsIgnoreCase(outputTarget)) {
-            return SystemPrompts.buildRulesSection(
-                    SystemPrompts.ensureGeoGebraSyntaxManual(GEOGEBRA_SYSTEM));
+            return SystemPrompts.buildRulesSection(GEOGEBRA_SYSTEM);
         }
-        return SystemPrompts.buildRulesSection(
-                SystemPrompts.ensureManimSyntaxManual(MANIM_SYSTEM));
+        return SystemPrompts.buildRulesSection(MANIM_SYSTEM);
     }
 
     public static String buildLayoutFixFixedContextPrompt(String targetConcept,
                                                           String targetDescription,
                                                           String outputTarget) {
-        return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
+        String fixedContext = SystemPrompts.buildWorkflowPrefix(
                 "Stage 5 / Scene Evaluation Fix",
                 "Revise " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra commands" : "Manim code")
                         + " after geometry-based scene evaluation",
                 targetConcept,
                 targetDescription,
-                outputTarget
-        ));
+                outputTarget);
+        fixedContext = "geogebra".equalsIgnoreCase(outputTarget)
+                ? SystemPrompts.ensureGeoGebraSyntaxManual(fixedContext)
+                : SystemPrompts.ensureManimSyntaxManual(fixedContext);
+        return SystemPrompts.buildFixedContextSection(fixedContext);
     }
 
     public static String manimLayoutFixUserPrompt(String storyboardJson,
-                                             String generatedCode,
-                                             String issueSummary,
-                                             String sceneEvaluationJson,
-                                             List<String> fixHistory) {
+                                                  String generatedCode,
+                                                  String issueSummary,
+                                                  String sceneEvaluationJson,
+                                                  List<String> fixHistory) {
         StringBuilder sb = new StringBuilder();
-        sb.append("The following Manim code rendered, but post-render scene evaluation found layout issues in sampled frames.\n\n")
+        sb.append("The following Manim code is being repaired from a post-render scene evaluation layout report for sampled frames.\n\n")
                 .append("Important temporal note:\n")
                 .append("The geometry report may sample only selected frames, such as the scene final frame. Reported issues may have existed earlier after the affected object was created. Inspect the full code lifecycle of each reported element and fix the earliest responsible placement/update logic, not only the sampled frame.\n\n")
-                .append("Compact storyboard JSON (dependency semantics plus preferred scene placement for non-derived objects):\n```json\n")
+                .append("Compact storyboard JSON (dependency semantics and scene intent; placement omitted to avoid biasing layout repair):\n```json\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank() ? storyboardJson : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON)
                 .append("\n```\n\n")
                 .append("```python\n").append(generatedCode).append("\n```\n\n")
@@ -103,8 +104,8 @@ public final class SceneEvaluationPrompts {
                                                      String sceneEvaluationJson,
                                                      List<String> fixHistory) {
         StringBuilder sb = new StringBuilder();
-        sb.append("The following GeoGebra command script executed, but post-render scene evaluation found layout issues.\n\n")
-                .append("Compact storyboard JSON (dependency semantics plus preferred scene placement for non-derived objects):\n```json\n")
+        sb.append("The following GeoGebra command script is being repaired from a post-render scene evaluation layout report.\n\n")
+                .append("Compact storyboard JSON (dependency semantics and scene intent; placement omitted to avoid biasing layout repair):\n```json\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank() ? storyboardJson : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON)
                 .append("\n```\n\n")
                 .append("```geogebra\n").append(generatedCode).append("\n```\n\n")

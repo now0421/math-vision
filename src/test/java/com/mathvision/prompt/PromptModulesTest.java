@@ -312,6 +312,20 @@ class PromptModulesTest {
     }
 
     @Test
+    void placementEnrichmentPromptsRequireScenePatchPlacements() {
+        String systemPrompt = NarrativePrompts.PLACEMENT_ENRICHMENT_SYSTEM_PROMPT;
+        String userPrompt = NarrativePrompts.buildPlacementEnrichmentUserPrompt(
+                "{\"object_registry\":[{\"id\":\"Bprime\"}],\"scenes\":[{\"entering_objects\":[{\"id\":\"Bprime\"}]}]}");
+
+        assertTrue(systemPrompt.contains("visible scene object patch"));
+        assertTrue(systemPrompt.contains("entering_objects or persistent_objects"));
+        assertTrue(systemPrompt.contains("do not rely on object_registry-only placements"));
+        assertTrue(userPrompt.contains("scene-level patch"));
+        assertTrue(userPrompt.contains("not only to `object_registry`"));
+        assertTrue(userPrompt.contains("layout validation consumes visible scene patches"));
+    }
+
+    @Test
     void geogebraCodegenPromptsAvoidManimInstructionsAndAsciiConflict() {
         String storyboardPrompt = NarrativePrompts.storyboardCodegenPrompt(
                 "{\"scenes\":[{\"entering_objects\":[{\"id\":\"B'\",\"kind\":\"point\",\"content\":\"reflected point\"}]}]}",
@@ -352,6 +366,28 @@ class PromptModulesTest {
     }
 
     @Test
+    void sceneEvaluationPromptsPutSyntaxManualInFixedContext() {
+        String manimFixedContext = SceneEvaluationPrompts.buildLayoutFixFixedContextPrompt(
+                "Demo concept",
+                "Demo description",
+                "manim");
+        String geogebraFixedContext = SceneEvaluationPrompts.buildLayoutFixFixedContextPrompt(
+                "Demo concept",
+                "Demo description",
+                "geogebra");
+        String manimRules = SceneEvaluationPrompts.buildLayoutFixRulesPrompt("manim");
+        String geogebraRules = SceneEvaluationPrompts.buildLayoutFixRulesPrompt("geogebra");
+
+        assertTrue(manimFixedContext.contains("Manim syntax reference manual:"));
+        assertTrue(geogebraFixedContext.contains("GeoGebra syntax reference manual:"));
+        assertTrue(manimFixedContext.contains("Current workflow stage: Stage 5 / Scene Evaluation Fix"));
+        assertTrue(geogebraFixedContext.contains("Current workflow stage: Stage 5 / Scene Evaluation Fix"));
+        assertFalse(manimRules.contains("Manim syntax reference manual:"));
+        assertFalse(geogebraRules.contains("GeoGebra syntax reference manual:"));
+        assertTrue(manimRules.contains("storyboard `safe_area_plan` and `layout_goal` are useful hints"));
+    }
+
+    @Test
     void geogebraPromptsUseGeogebraRepairAndViewportRules() {
         String geogebraNarrative = narrativeSystemPrompt("Triangle", "Demo", "geogebra");
         String manimNarrative = narrativeSystemPrompt("Triangle", "Demo", "manim");
@@ -382,9 +418,11 @@ class PromptModulesTest {
 
         assertTrue(prompt.startsWith("[CURRENT_REQUEST]\nManim render failure detected.\nError type: TYPE_VALUE"));
         assertTrue(prompt.contains("Primary error signature: ValueError: invalid point data"));
-        assertTrue(prompt.indexOf("Error type: TYPE_VALUE") < prompt.indexOf("```python"));
-        assertTrue(prompt.indexOf("Error summary:") < prompt.indexOf("```python"));
-        assertTrue(prompt.contains("Treat the error summary as a routing hint"));
+        assertTrue(prompt.indexOf("Error type: TYPE_VALUE") < prompt.indexOf("Detailed render error context:"));
+        assertTrue(prompt.indexOf("Detailed render error context:") < prompt.indexOf("```python"));
+        assertTrue(prompt.indexOf("```python") < prompt.indexOf("Compact storyboard JSON"));
+        assertTrue(prompt.contains("The detailed render error context is the primary repair evidence"));
+        assertFalse(prompt.contains("Treat the error summary as a routing hint"));
     }
 
     @Test
@@ -410,7 +448,8 @@ class PromptModulesTest {
         assertTrue(geogebraRenderRules.contains("Treat storyboard scene placement as preferred layout input"));
         assertTrue(manimRenderUserPrompt.contains("preferred scene placement for non-derived objects"));
         assertTrue(manimRenderUserPrompt.contains("preferred scene placement"));
-        assertTrue(manimLayoutUserPrompt.contains("dependency semantics plus preferred scene placement"));
+        assertTrue(manimLayoutUserPrompt.contains("dependency semantics and scene intent"));
+        assertTrue(manimLayoutUserPrompt.contains("placement omitted to avoid biasing layout repair"));
         assertFalse(manimLayoutUserPrompt.contains("derived-object placements are intentionally omitted"));
     }
 

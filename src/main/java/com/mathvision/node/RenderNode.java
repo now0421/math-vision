@@ -250,6 +250,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
                 if (!ErrorSummarizer.isEnvironmentError(focusedError)) {
                     String signature = ErrorSummarizer.summarizeSignature(focusedError);
                     log.warn("  Render timed out but stderr contains a fixable error: {}", signature);
+                    retryState.previousErrorSignature = signature;
                     retryState.setRequestFix(true);
                     retryState.pendingFocusedError = ErrorSummarizer.buildRenderFixSummary(focusedError);
                     retryState.pendingStaticAuditIssues = new ArrayList<>(ManimCodeUtils.validateFull(currentCode));
@@ -312,10 +313,10 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         }
 
         String focusedError = ErrorSummarizer.extractFocusedError(renderAttempt.stdout(), renderAttempt.stderr());
-        String errorSignature = ErrorSummarizer.buildRenderFixSummary(focusedError);
+        String errorSignature = ErrorSummarizer.summarizeSignature(focusedError);
         retryState.previousErrorSignature = errorSignature;
         retryState.setRequestFix(true);
-        retryState.pendingFocusedError = errorSignature;
+        retryState.pendingFocusedError = ErrorSummarizer.buildRenderFixSummary(focusedError);
         retryState.pendingStaticAuditIssues = new ArrayList<>(ManimCodeUtils.validateFull(currentCode));
         return failureResult(
                 currentCode,
@@ -589,7 +590,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         if (fixOutcome != null) {
             switch (fixOutcome) {
                 case FIXED:
-                    outcome = "fixed cleanly";
+                    outcome = "code changed and passed static audit; render not yet confirmed";
                     break;
                 case APPLIED_WITH_ISSUES:
                     outcome = "applied but " + result.getPostFixStaticAuditIssueCount()

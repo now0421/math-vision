@@ -138,6 +138,8 @@ public final class NarrativePrompts {
                     + "- For objects without placement, compute a reasonable world-space coordinate "
                     + "based on their structured constraints, kind, content, and any available source placements.\n"
                     + "- Use coordinate_space = \"world\" for all computed placements.\n"
+                    + "- Write computed placements on the visible scene object patch in entering_objects or persistent_objects where the object appears; do not rely on object_registry-only placements for computed coordinates.\n"
+                    + "- If the same object appears in multiple scenes without placement, add the computed placement to each visible scene patch that needs layout validation.\n"
                     + "- Return the complete storyboard JSON with placements added for objects that lacked them. "
                     + "Every other field must remain identical to the input.\n"
                     + "- Frame bounds: x in [-7.11, 7.11], y in [-4, 4]. Keep objects within these bounds.";
@@ -149,11 +151,13 @@ public final class NarrativePrompts {
      * @return user prompt string
      */
     public static String buildPlacementEnrichmentUserPrompt(String storyboardJson) {
-        return "Compute placement coordinates for all storyboard objects that lack a `placement` field.\n"
+        return "Compute placement coordinates for all visible storyboard objects that lack a `placement` field.\n"
                 + "Preserve every existing placement exactly as-is; only add new placements where none exists.\n"
+                + "Add each computed placement to the object's scene-level patch in `entering_objects` or `persistent_objects`, not only to `object_registry`, because layout validation consumes visible scene patches.\n"
+                + "If an object is visible in multiple scenes without placement, add the placement to every such scene patch.\n"
                 + "Use the object's structured constraints, kind, content, and any available source placements to infer its position.\n\n"
                 + "Storyboard:\n```json\n" + storyboardJson + "\n```\n\n"
-                + "Return the full storyboard JSON with the missing placements filled in.";
+                + "Return the full storyboard JSON with the missing visible scene patch placements filled in.";
     }
 
     // ========================================================================

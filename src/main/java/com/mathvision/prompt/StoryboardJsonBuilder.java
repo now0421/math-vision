@@ -48,7 +48,7 @@ public final class StoryboardJsonBuilder {
      * so the fixer can recover layout without breaking geometric constraints.
      */
     public static String buildForSceneEvaluationFix(Storyboard storyboard) {
-        return build(storyboard, new BuildOptions(true, true));
+        return build(storyboard, new BuildOptions(true, false));
     }
 
     private static String build(Storyboard storyboard, BuildOptions options) {

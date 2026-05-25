@@ -7,8 +7,6 @@ import com.mathvision.model.CodeResult;
 import com.mathvision.model.Narrative;
 import com.mathvision.model.Narrative.Storyboard;
 import com.mathvision.model.Narrative.StoryboardObject;
-import com.mathvision.model.Narrative.StoryboardPlacement;
-import com.mathvision.model.Narrative.StoryboardPlacementAxis;
 import com.mathvision.model.RenderResult;
 import com.mathvision.model.SceneEvaluationResult;
 import com.mathvision.model.SceneEvaluationResult.Bounds;
@@ -1610,10 +1608,6 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         if (object.getConstraints() != null && !object.getConstraints().isEmpty()) {
             map.put("constraints", object.getConstraints());
         }
-        String placementSummary = formatPlacementSummary(object);
-        if (!placementSummary.isBlank()) {
-            map.put("placement", placementSummary);
-        }
         return map;
     }
 
@@ -1692,51 +1686,6 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             normalized = normalized.substring(5);
         }
         return normalized.replaceAll("[^a-z0-9]", "");
-    }
-
-    private String formatPlacementSummary(StoryboardObject object) {
-        if (object == null || object.getPlacement() == null || !object.getPlacement().hasData()) {
-            return "";
-        }
-        StoryboardPlacement placement = object.getPlacement();
-        List<String> parts = new ArrayList<>();
-        if (placement.getCoordinateSpace() != null && !placement.getCoordinateSpace().isBlank()) {
-            parts.add("coordinate_space=" + placement.getCoordinateSpace().trim());
-        }
-        String xSummary = formatAxisSummary("x", placement.getX());
-        String ySummary = formatAxisSummary("y", placement.getY());
-        String zSummary = formatAxisSummary("z", placement.getZ());
-        if (!xSummary.isBlank()) {
-            parts.add(xSummary);
-        }
-        if (!ySummary.isBlank()) {
-            parts.add(ySummary);
-        }
-        if (!zSummary.isBlank()) {
-            parts.add(zSummary);
-        }
-        return String.join(", ", parts);
-    }
-
-    private String formatAxisSummary(String axisName, StoryboardPlacementAxis axis) {
-        if (axis == null || !axis.hasData()) {
-            return "";
-        }
-        if (axis.getValue() != null) {
-            return axisName + "=" + round(axis.getValue());
-        }
-        Double min = axis.getMin();
-        Double max = axis.getMax();
-        if (min != null && max != null) {
-            return axisName + "=" + round(min) + ".." + round(max);
-        }
-        if (min != null) {
-            return axisName + ">=" + round(min);
-        }
-        if (max != null) {
-            return axisName + "<=" + round(max);
-        }
-        return "";
     }
 
     private void putNonBlank(Map<String, Object> map, String key, String value) {

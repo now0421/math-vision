@@ -4,6 +4,8 @@ import com.mathvision.config.WorkflowConfig;
 import com.mathvision.model.CodeResult;
 import com.mathvision.model.RenderResult;
 import com.mathvision.model.CodeEvaluationResult;
+import com.mathvision.model.CodeFixRequest;
+import com.mathvision.model.CodeFixResult;
 import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.service.AiClient;
@@ -420,6 +422,55 @@ class RenderNodeCodeGateTest {
             report.commands.add(entry);
         }
         return report;
+    }
+
+    @Test
+    void renderFixHistoryDoesNotClaimStaticFixWasRenderedSuccessfully() {
+        WorkflowConfig config = new WorkflowConfig();
+        config.setRenderEnabled(true);
+        config.setRenderMaxRetries(1);
+
+        String code = String.join("\n",
+                "from manim import *",
+                "",
+                "class MainScene(Scene):",
+                "    def construct(self):",
+                "        self.wait(1)");
+        CodeResult codeResult = new CodeResult(
+                code,
+                "MainScene",
+                "demo",
+                "Demo concept",
+                "Demo description");
+
+        CodeFixResult previousFix = new CodeFixResult();
+        previousFix.setSource(com.mathvision.model.CodeFixSource.CODE_RENDER);
+        previousFix.setReturnAction(WorkflowActions.RETRY_RENDER);
+        previousFix.setApplied(true);
+        previousFix.setOutcome(CodeFixResult.FixOutcome.FIXED);
+        previousFix.setErrorReason("TypeError: demo failure");
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.CONFIG, config);
+        ctx.put(WorkflowKeys.CODE_RESULT, codeResult);
+        ctx.put(WorkflowKeys.OUTPUT_DIR, tempDir);
+        ctx.put(WorkflowKeys.CODE_FIX_RESULT, previousFix);
+
+        ManimRendererService renderer = new ManimRendererService() {
+            @Override
+            public RenderAttemptResult render(String code, String sceneName, String quality, java.nio.file.Path outputDir) {
+                return new RenderAttemptResult(false, "", "TypeError: second failure", null, null);
+            }
+        };
+
+        new RenderNode(renderer).run(ctx);
+
+        CodeFixRequest request = (CodeFixRequest) ctx.get(WorkflowKeys.CODE_FIX_REQUEST);
+        assertNotNull(request);
+        assertTrue(request.getFixHistory().stream()
+                .anyMatch(entry -> entry.contains("render not yet confirmed")));
+        assertFalse(request.getFixHistory().stream()
+                .anyMatch(entry -> entry.contains("fixed cleanly")));
     }
 
     private static final class GeoGebraFixAiClient implements AiClient {

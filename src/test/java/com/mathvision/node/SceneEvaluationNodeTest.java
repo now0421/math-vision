@@ -152,8 +152,9 @@ class SceneEvaluationNodeTest {
         JsonNode registryBprime = findObject(storyboardJson.get("object_registry"), "point_Bprime");
         JsonNode sceneBprime = findObject(storyboardJson.get("scenes").get(0).get("entering_objects"), "point_Bprime");
         assertFalse(registryBprime.has("placement"));
-        assertTrue(sceneBprime.has("placement"));
+        assertFalse(sceneBprime.has("placement"));
         assertFalse(sceneBprime.has("constraints"));
+        assertFalse(request.getStoryboardJson().contains("\"placement\""));
     }
 
     @Test

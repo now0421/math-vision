@@ -90,20 +90,19 @@ public final class RenderFixPrompts {
             sb.append("Error context mode: ").append(errorContextMode).append("\n");
         }
         sb.append("\n")
+                .append("Detailed render error context:\n```text\n").append(error).append("\n```\n\n")
+                .append(staticAuditSummary != null && !staticAuditSummary.isBlank()
+                        ? "Static preflight findings:\n```text\n" + staticAuditSummary + "\n```\n\n"
+                        : "")
+                .append("The following Manim code failed to render:\n\n")
+                .append("```python\n").append(generatedCode).append("\n```\n\n")
                 .append(storyboardJson != null && !storyboardJson.isBlank()
                         ? "Compact storyboard JSON (reference context with preferred scene placement for non-derived objects):\n```json\n"
                         + storyboardJson + "\n```\n\n"
                         : "")
-                .append(staticAuditSummary != null && !staticAuditSummary.isBlank()
-                        ? "Static preflight findings:\n```\n" + staticAuditSummary + "\n```\n\n"
-                        : "")
-                .append("Error summary:\n```\n").append(error).append("\n```\n\n")
-                .append("The following Manim code failed to render:\n\n")
-                .append("```python\n").append(generatedCode).append("\n```\n\n")
-                .append("You MUST audit the ENTIRE file. The error type and signature below are routing hints only - the actual bugs may be anywhere with the same structural pattern. Do NOT limit your fix to the line mentioned in the traceback.\n")
-                .append("Treat the error summary as a routing hint, not as a single-line patch target.\n")
+                .append("You MUST audit the ENTIRE file. The detailed render error context is the primary repair evidence, and the actual bugs may be anywhere with the same structural pattern. Do NOT limit your fix to only one line if related code paths share the same issue.\n")
+                .append("Prioritize the earliest root cause instead of patching downstream symptoms.\n")
                 .append("Sweep all `Text(...)`, `Tex(...)`, and `MathTex(...)` calls whenever the error category suggests text-constructor or LaTeX misuse.\n")
-                .append("Prioritize the earliest root-cause category instead of patching downstream symptoms.\n")
                 .append("Use storyboard structured constraints, preferred scene placement, geometric summaries, or derived constructions as repair context; keep the final code internally consistent while fixing the render failure.\n")
                 .append("Also proactively check for common Python and Manim runtime mistakes.\n")
                 .append("Remember: Return ONLY the single Python code block containing the full file. No explanation.\n");
