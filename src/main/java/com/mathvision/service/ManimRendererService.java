@@ -98,6 +98,7 @@ public class ManimRendererService {
                 sanitizedCode = manimCode;
             }
 
+            boolean voiceoverCode = containsVoiceoverCode(sanitizedCode);
             String renderCode = sanitizedCode;
             try {
                 geometryHelperFile = normalizedOutputDir.resolve(GEOMETRY_EXPORT_HELPER_FILE);
@@ -112,7 +113,7 @@ public class ManimRendererService {
             codeFile = normalizedOutputDir.resolve(GENERATED_SCENE_FILE);
             Files.writeString(codeFile, renderCode, StandardCharsets.UTF_8);
 
-            List<String> cmd = buildManimCommand(codeFile, sceneName, quality, normalizedOutputDir);
+            List<String> cmd = buildManimCommand(codeFile, sceneName, quality, normalizedOutputDir, voiceoverCode);
             log.info("Rendering: manim {} (quality={})", sceneName, quality);
             log.debug("Render command: {}", String.join(" ", cmd));
 
@@ -209,7 +210,8 @@ public class ManimRendererService {
         return pb.start();
     }
 
-    private List<String> buildManimCommand(Path codeFile, String sceneName, String quality, Path outputDir) {
+    protected List<String> buildManimCommand(Path codeFile, String sceneName, String quality, Path outputDir,
+                                             boolean disableCaching) {
         List<String> cmd = new ArrayList<>(resolveManimLauncherPrefix());
         cmd.add("render");
 
@@ -225,12 +227,23 @@ public class ManimRendererService {
                 break;
         }
 
+        if (disableCaching) {
+            cmd.add("--disable_caching");
+        }
+
         cmd.add("--media_dir");
         cmd.add(outputDir.resolve("media").toAbsolutePath().normalize().toString());
         cmd.add(codeFile.getFileName().toString());
         cmd.add(sceneName);
 
         return cmd;
+    }
+
+    private boolean containsVoiceoverCode(String manimCode) {
+        return manimCode != null
+                && (manimCode.contains("manim_voiceover")
+                || manimCode.contains("VoiceoverScene")
+                || manimCode.contains("self.voiceover("));
     }
 
     protected List<String> resolveManimLauncherPrefix() {

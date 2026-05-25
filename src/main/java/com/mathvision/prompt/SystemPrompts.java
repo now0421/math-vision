@@ -181,6 +181,7 @@ public final class SystemPrompts {
                     + "- CRITICAL: Each constraint MUST use the exact domain, relation name, ref roles, and parameter names from the catalog below. Do NOT invent your own role names (no seg1/seg2, line1/line2, ray/support, markers, phase, etc.).\n"
                     + "- For ref groups with alternatives shown as 'one of a/b/c', always use the FIRST listed name (the canonical form).\n"
                     + "- OBJECT-level constraints must include the owner object id in refs.\n"
+                    + "- Place each OBJECT-level constraint under the object named by its catalog owner ref role. For example, `point_at` refs {\"point\":\"lLeft\"} belongs under object `lLeft`, not under a parent line object `l`; `label_for` refs {\"label\":\"labelA\",\"anchor\":\"A\"} belongs under object `labelA`, not under point `A`.\n"
                     + "- Parameters must contain only non-object values (strings, numbers, booleans); put object references in refs, NEVER in parameters.\n"
                     + "- Refs values: use a single string for one object id, or an array of strings for multiple ids (e.g. {\"members\": [\"segAB\", \"segCD\"]}).\n"
                     + "- Use `lies_on` only when the point is exactly on the referenced support/path. Do NOT use it for above/below/left/right side placement.\n"
@@ -281,16 +282,40 @@ public final class SystemPrompts {
     public static final String MANIM_COLOR_RULES_BULLETS =
             "- " + MANIM_COLOR_RULES.replace("\n", "\n- ").trim() + "\n";
 
-    /** ASCII-only text rules for generated workflow artifacts. */
+    /** ASCII-only rules for backend identifiers, not learner-facing prose. */
     public static final String ASCII_TEXT_RULES =
-            "ASCII text rules:\n"
-                    + "- Use ASCII characters only in generated JSON text fields, math symbols, labels, ids, equations, notes, and narration.\n"
-                    + "- Do not use Chinese punctuation, curly quotes, em dashes, en dashes, arrows, prime/star glyphs, checkmarks, circled numbers, full-width spaces, or Unicode math operators.\n"
-                    + "- Replace Unicode symbols with ASCII equivalents: use `A->P->B` instead of Unicode arrow glyphs; use `B'` instead of a Unicode prime glyph; use `Pstar` or `P_star` instead of a Unicode star glyph; use `>=` or `\\geq` instead of a Unicode greater-than-or-equal glyph; use `<=` or `\\leq` instead of a Unicode less-than-or-equal glyph; use `\"` or `'` instead of curly quotes; use `-` instead of em dashes or en dashes; use `1.` instead of circled-number glyphs; use `done` instead of checkmark glyphs.\n"
-                    + "- Normalize common non-ASCII punctuation by code point before returning JSON: U+2018 and U+2019 -> `'`; U+201C and U+201D -> `\"`; U+2013 and U+2014 -> `-`; U+2212 -> `-`; U+00D7 -> `x`; U+2260 -> `!=`; U+2264 -> `<=`; U+2265 -> `>=`.\n"
-                    + "- Example ASCII rewrites: `hiker` + U+2019 + `s` -> `hiker's`; `PB'` + U+2014 + `a` -> `PB' - a`; `right` + U+2014 + `the` -> `right - the`; `P_test ` + U+2260 + ` P_min` -> `P_test != P_min`.\n"
-                    + "- Before final output, scan every string value character by character; if any character code is greater than 0x7F, rewrite that string until it is ASCII-only.\n"
-                    + "- If the user input contains non-ASCII symbols, normalize them to ASCII before placing them in workflow outputs.\n";
+            "Identifier ASCII rules:\n"
+                    + "- Keep backend identifiers ASCII-only: scene_id, object id, constraint id, action target id, generated method names, Python variable names, and GeoGebra object names.\n"
+                    + "- Do not apply ASCII-only cleanup to learner-facing text such as titles, goals, narration, captions, subtitles, explanatory notes, or object content shown on screen.\n"
+                    + "- Normalize Unicode punctuation only inside backend identifiers: U+2018 and U+2019 -> `'`; U+201C and U+201D -> `\"`; U+2013 and U+2014 -> `-`; U+2212 -> `-`; U+00D7 -> `x`; U+2260 -> `!=`; U+2264 -> `<=`; U+2265 -> `>=`.\n"
+                    + "- For identifiers, replace Unicode arrows, prime/star glyphs, checkmarks, circled numbers, full-width spaces, and Unicode math operators with ASCII-safe names or symbols.\n"
+                    + "- Before returning JSON, scan identifier fields only; if an identifier contains a character code greater than 0x7F, rewrite that identifier while preserving references to it.\n";
+
+    /** Backend-neutral learner-facing Chinese text rules. */
+    public static final String VISIBLE_CHINESE_TEXT_RULES =
+            "Learner-facing visible text rules:\n"
+                    + "- Any natural-language text that appears on screen in `object_registry[].content` must be written in Chinese.\n"
+                    + "- This applies to text, text_card, captions, callouts, labels that contain prose, titles shown as objects, and explanatory object content.\n"
+                    + "- Short symbolic mathematical labels such as `A`, `B`, `B′`, `AB`, `l`, `P_1`, `\\angle APB`, and formula/equation content should stay symbolic instead of being expanded into Chinese prose.\n"
+                    + "- For `kind=text` objects that label mathematical elements, `content` is the exact on-screen label and must be as concise as the mathematical name: use `B′`, not `反射点B′`; use `l`, not `直线l`; use `AB`, not `线段AB`. Put explanatory wording in narration, action descriptions, or goals instead.\n"
+                    + "- Preserve Chinese learner-facing text during cleanup, code generation, review, and repair; do not translate it to English or pinyin.\n";
+
+    /** Manim-only action narration and voiceover planning rules. */
+    public static final String MANIM_VOICEOVER_RULES =
+            "Manim voiceover rules:\n"
+                    + "- Use Chinese `voiceover_text` only for key teaching beats: a major setup, conceptual turn, non-obvious construction, important reveal, comparison, or conclusion.\n"
+                    + "- Most routine actions should omit `voiceover_text`, including simple object entry/exit, obvious movement, incremental styling, label appearance, and visual changes that the screen already explains clearly.\n"
+                    + "- Prefer 0-2 narrated actions per scene; use more only when a long scene has multiple genuinely independent key ideas.\n"
+                    + "- Use `expected_seconds` as the intended audio/animation duration only for narrated key actions where timing matters.\n"
+                    + "- Generated Manim code may use `VoiceoverScene`, `GTTSService(lang=\"zh-CN\")`, and `with self.voiceover(text=...) as tracker:` to synchronize selected audio and animation.\n"
+                    + "- Keep `voiceover_text` concise, natural Chinese; do not write English narration, pinyin, or backend implementation notes in it.\n";
+
+    /** Manim-only Chinese text rendering rules. */
+    public static final String MANIM_CHINESE_TEXT_RENDERING_RULES =
+            "Manim Chinese text rendering rules:\n"
+                    + "- Render Chinese prose with `Text(...)` using a Chinese-capable font such as `Microsoft YaHei`.\n"
+                    + "- Keep formulas in `MathTex(...)`; do not force formula strings into Chinese prose.\n"
+                    + "- Preserve Chinese strings exactly unless a repair must shorten wording for readability.\n";
 
     /** Opacity hierarchy for visual layering, applicable to all output targets. */
     public static final String OPACITY_LEVELS =

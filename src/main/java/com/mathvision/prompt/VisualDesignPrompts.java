@@ -12,21 +12,22 @@ package com.mathvision.prompt;
  */
 public final class VisualDesignPrompts {
 
-    private static final String SCENE_OUTPUT_FORMAT =
-            "Output format:\n"
-                    + StoryboardSchemaPrompts.JSON_SYNTAX_REQUIREMENTS
-                    + "Return a JSON object with two top-level keys: `scene` and `new_objects`.\n"
-                    + "`scene.entering_objects` and `scene.persistent_objects` are scene-level patches: each entry carries only `id` plus optional `placement` and `style`. Do NOT include kind, content, or constraints here - those belong in `new_objects`.\n"
-                    + "`new_objects` entries represent the canonical registry definition of each object introduced in this scene. They carry identity, content, style, and structured constraints but not scene-specific placement.\n"
-                    + "Only add `new_objects` that are teaching-essential, clarify the current beat, or carry distinct geometry/constraint semantics. Required Manim labels or callouts with their own attachment constraint are not duplicates. Reuse existing registry ids instead of creating repeated formulas, redundant highlights, or decorative helper objects.\n"
-                    + "{\n"
-                    + "  \"scene\": {\n"
-                    + StoryboardSchemaPrompts.SCENE_FIELDS_SCHEMA
-                    + "\n  },\n"
-                    + "  \"new_objects\": [\n"
-                    + StoryboardSchemaPrompts.OBJECT_DEFINITION_SCHEMA
-                    + "\n  ]\n"
-                    + "}\n\n";
+    private static String sceneOutputFormat(String outputTarget) {
+        return "Output format:\n"
+                + StoryboardSchemaPrompts.JSON_SYNTAX_REQUIREMENTS
+                + "Return a JSON object with two top-level keys: `scene` and `new_objects`.\n"
+                + "`scene.entering_objects` and `scene.persistent_objects` are scene-level patches: each entry carries only `id` plus optional `placement` and `style`. Do NOT include kind, content, or constraints here - those belong in `new_objects`.\n"
+                + "`new_objects` entries represent the canonical registry definition of each object introduced in this scene. They carry identity, content, style, and structured constraints but not scene-specific placement.\n"
+                + "Only add `new_objects` that are teaching-essential, clarify the current beat, or carry distinct geometry/constraint semantics. Required Manim labels or callouts with their own attachment constraint are not duplicates. Reuse existing registry ids instead of creating repeated formulas, redundant highlights, or decorative helper objects.\n"
+                + "{\n"
+                + "  \"scene\": {\n"
+                + StoryboardSchemaPrompts.sceneFieldsSchema(outputTarget)
+                + "\n  },\n"
+                + "  \"new_objects\": [\n"
+                + StoryboardSchemaPrompts.OBJECT_DEFINITION_SCHEMA
+                + "\n  ]\n"
+                + "}\n\n";
+    }
 
     private static final String SCENE_EXAMPLE_OUTPUT =
             "Example output:\n"
@@ -68,7 +69,10 @@ public final class VisualDesignPrompts {
 
     private static final String SCENE_TEACHING_RULES =
             "Scene teaching rules:\n"
-                    + "- Write narration as learner-facing beats: each sentence should correspond to something visible, moved, manipulated, highlighted, transformed, or deliberately held on screen.\n"
+                    + "- Write action descriptions as learner-facing visual beats: each action should correspond to something visible, moved, manipulated, highlighted, transformed, or deliberately held on screen.\n"
+                    + "- Add `voiceover_text` sparingly, only to key actions that carry the main teaching point, a non-obvious construction, a major reveal, a comparison, or a conclusion.\n"
+                    + "- Do not add `voiceover_text` merely because an action is visible; routine entries, exits, waits, simple moves, style changes, and obvious label/formula appearances should usually stay silent.\n"
+                    + "- A typical scene should contain 0-2 narrated actions, not narration on every action.\n"
                     + "- Leave breathing room after key reveals; do not imply nonstop motion with no time to read.\n"
                     + "- Plan scene transitions intentionally: choose clean break (fade all, pause), carry-forward (keep one anchor, fade rest), or transform bridge for each scene boundary. Record the chosen style in `notes_for_codegen` only when downstream code generation must preserve it as a hard constraint.\n"
                     + "- When the current step merges multiple prerequisite branches, treat the scene as a convergence beat: inherit existing object names, color meanings, and continuity anchors instead of restarting the story.\n"
@@ -80,6 +84,8 @@ public final class VisualDesignPrompts {
                     + "- Duration estimation reference: title card 3-5s, concept introduction 10-20s, equation reveal 15-25s, algorithm step 5-10s, aha-moment beat 15-30s, conclusion 5-10s. Use these ranges when setting `duration_seconds`.\n"
                     + "- Keep object ids concise and non-redundant since `kind` already carries the type. Good ids: `AB`, `P`, `l`; bad ids: `segmentAB`, `LineAB`, `PointP`. Follow only the naming rules for the active backend.\n"
                     + "- Reuse the exact same concise ids consistently in `persistent_objects`, `exiting_objects`, and `actions.targets`; express geometry/attachment relationships through structured `constraints`.\n"
+                    + "- When `new_objects[].content` is visible on screen, keep it terse and mathematically named. For `kind=text` labels attached to geometry, write only the label itself (e.g. `B′`, `l`, `AB`, `P_min`), not a descriptive phrase such as `反射点B′`, `直线l`, or `线段AB`.\n"
+                    + "- Put explanatory prose in `goal`, `narration`, action `description`, or selected `voiceover_text`, not in object label content.\n"
                     + "- When `new_objects[].content` or constraint refs mention another object, refer to that object by id only. Do not restate its kind there.\n"
                     + "- For example, write registry content as `angle between AP and l at P`, not `angle between segment AP and line l at point P`.\n";
 
@@ -125,8 +131,11 @@ public final class VisualDesignPrompts {
                     + SCENE_TEACHING_RULES
                     + SystemPrompts.MANIM_NAMING_RULES + "\n"
                     + SystemPrompts.ASCII_TEXT_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
+                    + SystemPrompts.MANIM_VOICEOVER_RULES
+                    + SystemPrompts.MANIM_CHINESE_TEXT_RENDERING_RULES
                     + StoryboardSchemaPrompts.JSON_LEXICAL_CONTRACT
-                    + SCENE_OUTPUT_FORMAT
+                    + sceneOutputFormat("manim")
                     + "\n"
                     + SCENE_EXAMPLE_OUTPUT;
 
@@ -165,8 +174,9 @@ public final class VisualDesignPrompts {
                     + SCENE_TEACHING_RULES
                     + SystemPrompts.GEOGEBRA_NAMING_RULES + "\n"
                     + SystemPrompts.ASCII_TEXT_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
                     + StoryboardSchemaPrompts.JSON_LEXICAL_CONTRACT
-                    + SCENE_OUTPUT_FORMAT
+                    + sceneOutputFormat("geogebra")
                     + "\n"
                     + SCENE_EXAMPLE_OUTPUT;
 

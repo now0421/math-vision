@@ -83,15 +83,28 @@ public final class ToolSchemas {
                     + "}";
 
     public static String storyboard(String outputTarget) {
-        return isManim(outputTarget) ? withoutLabelVisible(STORYBOARD) : STORYBOARD;
+        String schema = isManim(outputTarget) ? withVoiceoverActionFields(STORYBOARD) : STORYBOARD;
+        return isManim(outputTarget) ? withoutLabelVisible(schema) : schema;
     }
 
     public static String sceneDesign(String outputTarget) {
-        return isManim(outputTarget) ? withoutLabelVisible(SCENE_DESIGN) : SCENE_DESIGN;
+        String schema = isManim(outputTarget) ? withVoiceoverActionFields(SCENE_DESIGN) : SCENE_DESIGN;
+        return isManim(outputTarget) ? withoutLabelVisible(schema) : schema;
     }
 
     private static boolean isManim(String outputTarget) {
         return outputTarget == null || "manim".equalsIgnoreCase(outputTarget);
+    }
+
+    private static String withVoiceoverActionFields(String schema) {
+        if (schema == null || schema.isBlank() || schema.contains("\"voiceover_text\"")) {
+            return schema;
+        }
+        return schema.replace(
+                "\"description\": { \"type\": \"string\" }",
+                "\"description\": { \"type\": \"string\" },"
+                        + "                    \"voiceover_text\": { \"type\": \"string\" },"
+                        + "                    \"expected_seconds\": { \"type\": \"number\" }");
     }
 
     private static String withoutLabelVisible(String schema) {

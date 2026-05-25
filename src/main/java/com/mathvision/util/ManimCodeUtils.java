@@ -17,13 +17,13 @@ public final class ManimCodeUtils {
     public static final String EXPECTED_SCENE_NAME = "MainScene";
 
     private static final Pattern MAIN_SCENE_CLASS = Pattern.compile(
-            "class\\s+MainScene\\s*\\(.*?Scene.*?\\)");
+            "class\\s+MainScene\\s*\\([^)]*\\b(?:[A-Za-z_][A-Za-z0-9_]*)?Scene\\b[^)]*\\)");
 
     private static final Pattern ANY_SCENE_CLASS = Pattern.compile(
-            "class\\s+[^\\s(]+\\s*\\((.*?Scene.*?)\\)");
+            "class\\s+[^\\s(]+\\s*\\(([^)]*\\b(?:[A-Za-z_][A-Za-z0-9_]*)?Scene\\b[^)]*)\\)");
 
     private static final Pattern SCENE_CLASS = Pattern.compile(
-            "class\\s+(\\w+)\\s*\\(.*?Scene.*?\\)");
+            "class\\s+(\\w+)\\s*\\([^)]*\\b(?:[A-Za-z_][A-Za-z0-9_]*)?Scene\\b[^)]*\\)");
 
     private static final Pattern SCENE_METHOD_DEF = Pattern.compile(
             "^(\\s*)def\\s+(scene_[A-Za-z0-9_]*)\\s*\\(\\s*self\\s*\\)\\s*:");

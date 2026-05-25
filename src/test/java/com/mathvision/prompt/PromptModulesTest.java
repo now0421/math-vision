@@ -64,11 +64,12 @@ class PromptModulesTest {
         String problemPrompt = ExplorationPrompts.buildProblemGraphRulesPrompt();
 
         assertTrue(isAscii(SystemPrompts.ASCII_TEXT_RULES));
-        assertTrue(SystemPrompts.ASCII_TEXT_RULES.contains("U+2019 -> `'`"));
-        assertTrue(SystemPrompts.ASCII_TEXT_RULES.contains("U+2014 -> `-`"));
-        assertTrue(SystemPrompts.ASCII_TEXT_RULES.contains("U+2260 -> `!=`"));
-        assertTrue(SystemPrompts.ASCII_TEXT_RULES.contains("`PB' - a`"));
-        assertTrue(SystemPrompts.ASCII_TEXT_RULES.contains("`P_test != P_min`"));
+        assertTrue(SystemPrompts.ASCII_TEXT_RULES.contains("Identifier ASCII rules"));
+        assertTrue(SystemPrompts.ASCII_TEXT_RULES.contains("backend identifiers ASCII-only"));
+        assertTrue(SystemPrompts.ASCII_TEXT_RULES.contains("scene_id"));
+        assertTrue(SystemPrompts.ASCII_TEXT_RULES.contains("object id"));
+        assertTrue(SystemPrompts.ASCII_TEXT_RULES.contains("Do not apply ASCII-only cleanup to learner-facing text"));
+        assertTrue(SystemPrompts.ASCII_TEXT_RULES.contains("object content shown on screen"));
         assertTrue(isAscii(conceptPrompt));
         assertTrue(isAscii(problemPrompt));
         assertFalse(TextHealthDiagnostics.inspect(conceptPrompt).suspicious());
@@ -198,6 +199,33 @@ class PromptModulesTest {
         assertTrue(codegenPrompt.contains("fixed overlays readable in screen space"));
         assertTrue(reviewPrompt.contains("three_d_scene_required"));
         assertFalse(reviewPrompt.contains("fixed-in-frame overlays"));
+    }
+
+    @Test
+    void chineseVisibleTextAndVoiceoverRulesAreBackendIsolated() {
+        String manimVisual = VisualDesignPrompts.buildFixedContextPrompt("Triangle", "Demo", "manim", null)
+                + VisualDesignPrompts.buildRulesPrompt("manim");
+        String geogebraVisual = VisualDesignPrompts.buildFixedContextPrompt("Triangle", "Demo", "geogebra", null)
+                + VisualDesignPrompts.buildRulesPrompt("geogebra");
+        String manimCodegen = codeGenerationSystemPrompt("Triangle", "Demo", "manim");
+        String geogebraCodegen = codeGenerationSystemPrompt("Triangle", "Demo", "geogebra");
+        String geogebraReview = codeEvaluationSystemPrompt("Triangle", "Demo", "geogebra");
+        String geogebraRenderFix = RenderFixPrompts.buildRulesPrompt("geogebra");
+        String geogebraSceneFix = SceneEvaluationPrompts.buildLayoutFixRulesPrompt("geogebra");
+
+        assertTrue(manimVisual.contains("Manim voiceover rules"));
+        assertTrue(manimVisual.contains("voiceover_text"));
+        assertTrue(manimCodegen.contains("VoiceoverScene"));
+        assertTrue(manimCodegen.contains("GTTSService"));
+        assertTrue(manimCodegen.contains("Microsoft YaHei"));
+        assertTrue(geogebraVisual.contains("Learner-facing visible text rules"));
+        assertTrue(geogebraCodegen.contains("Learner-facing visible text rules"));
+        assertFalse(geogebraVisual.contains("voiceover_text"));
+        assertFalse(geogebraCodegen.contains("voiceover_text"));
+        assertFalse(geogebraReview.contains("VoiceoverScene"));
+        assertFalse(geogebraRenderFix.contains("GTTSService"));
+        assertFalse(geogebraSceneFix.contains("self.voiceover"));
+        assertFalse(geogebraSceneFix.contains("manim_voiceover"));
     }
 
     @Test

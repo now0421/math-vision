@@ -23,9 +23,22 @@
       "api_key_env": "ALIYUN_API_KEY",
       "base_url_env": "ALIYUN_BASE_URL",
       "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    },
+    "anthropic": {
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "base_url_env": "ANTHROPIC_BASE_URL",
+      "base_url": "https://api.xomodel.com/v1"
     }
   },
   "models": {
+    "claude-opus-4-7": {
+      "model": "claude-opus-4-7",
+      "provider": "anthropic",
+      "reasoning_content_fallback": false,
+      "temperature": 0.6,
+      "max_output_tokens": 64000,
+      "max_input_tokens": 1000000
+    },
     "kimi-k2-turbo-preview": {
       "model": "kimi-k2-turbo-preview",
       "provider": "moonshot",

@@ -52,6 +52,22 @@ class ManimCodeUtilsTest {
     }
 
     @Test
+    void enforceMainSceneName_preservesVoiceoverSceneBase() {
+        String code = "class VoiceScene(VoiceoverScene):\n    def construct(self):\n        pass";
+        String enforced = ManimCodeUtils.enforceMainSceneName(code);
+        assertTrue(enforced.contains("class MainScene(VoiceoverScene)"));
+        assertFalse(enforced.contains("VoiceScene"));
+    }
+
+    @Test
+    void enforceMainSceneName_preservesOtherSceneBaseClasses() {
+        String code = "class FocusScene(MovingCameraScene):\n    def construct(self):\n        pass";
+        String enforced = ManimCodeUtils.enforceMainSceneName(code);
+        assertTrue(enforced.contains("class MainScene(MovingCameraScene)"));
+        assertFalse(enforced.contains("FocusScene"));
+    }
+
+    @Test
     void validateStructure_detectsEmptyCode() {
         List<String> violations = ManimCodeUtils.validateStructure("");
         assertTrue(violations.contains("Code is empty"));
@@ -83,6 +99,19 @@ class ManimCodeUtilsTest {
         String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n        self.wait(1)";
         List<String> violations = ManimCodeUtils.validateStructure(code);
         assertTrue(violations.isEmpty());
+    }
+
+    @Test
+    void validateStructure_passesVoiceoverSceneCode() {
+        String code = String.join("\n",
+                "from manim import *",
+                "from manim_voiceover import VoiceoverScene",
+                "",
+                "class MainScene(VoiceoverScene):",
+                "    def construct(self):",
+                "        self.wait(1)");
+        List<String> violations = ManimCodeUtils.validateStructure(code);
+        assertTrue(violations.isEmpty(), () -> String.join("\n", violations));
     }
 
     @Test
@@ -145,6 +174,9 @@ class ManimCodeUtilsTest {
     void hasMainSceneClass_detectsPresence() {
         assertTrue(ManimCodeUtils.hasMainSceneClass("class MainScene(Scene):"));
         assertTrue(ManimCodeUtils.hasMainSceneClass("class MainScene(ThreeDScene):"));
+        assertTrue(ManimCodeUtils.hasMainSceneClass("class MainScene(VoiceoverScene):"));
+        assertTrue(ManimCodeUtils.hasMainSceneClass("class MainScene(MovingCameraScene):"));
+        assertTrue(ManimCodeUtils.hasMainSceneClass("class MainScene(ZoomedScene):"));
         assertFalse(ManimCodeUtils.hasMainSceneClass("class OtherScene(Scene):"));
         assertFalse(ManimCodeUtils.hasMainSceneClass(null));
     }

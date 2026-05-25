@@ -242,7 +242,8 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         List<StoryboardScene> scenes = mergedStoryboard != null && mergedStoryboard.getScenes() != null
                 ? mergedStoryboard.getScenes()
                 : storyboard.getScenes();
-        String storyboardJson = StoryboardJsonBuilder.buildForCodegen(storyboard);
+        String storyboardJson = StoryboardJsonBuilder.buildForCodegen(storyboard,
+                isGeoGebra ? WorkflowConfig.OUTPUT_TARGET_GEOGEBRA : WorkflowConfig.OUTPUT_TARGET_MANIM);
 
         // Build scene identifiers
         List<String> sceneNames = new ArrayList<>();
@@ -284,7 +285,9 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             String sceneName = sceneNames.get(i);
             String sceneJson;
             try {
-                sceneJson = JsonUtils.mapper().writeValueAsString(scene);
+                sceneJson = isGeoGebra
+                        ? StoryboardJsonBuilder.buildSceneForCodegen(scene, WorkflowConfig.OUTPUT_TARGET_GEOGEBRA)
+                        : JsonUtils.mapper().writeValueAsString(scene);
             } catch (Exception e) {
                 sceneJson = "{}";
             }

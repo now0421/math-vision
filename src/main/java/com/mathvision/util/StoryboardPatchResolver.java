@@ -228,6 +228,8 @@ public final class StoryboardPatchResolver {
             copy.setType(action.getType());
             copy.setTargets(copyStringList(action.getTargets()));
             copy.setDescription(action.getDescription());
+            copy.setVoiceoverText(action.getVoiceoverText());
+            copy.setExpectedSeconds(action.getExpectedSeconds());
             copies.add(copy);
         }
         return copies;

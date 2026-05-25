@@ -11,12 +11,16 @@ public final class SceneEvaluationPrompts {
             "You are fixing Manim code in the shared Code Fix stage. Do not assume every Code Fix request already rendered successfully; use the current request's supplied evidence as the repair authority.\n"
                     + "Preserve the teaching goal, visual intent, scene class name, and continuity.\n"
                     + SystemPrompts.STORYBOARD_REPAIR_AUTHORITY_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
+                    + SystemPrompts.MANIM_VOICEOVER_RULES
+                    + SystemPrompts.MANIM_CHINESE_TEXT_RENDERING_RULES
                     + "Use the rendered geometry report as authority for observed layout problems, and use storyboard object_registry dependency facts as semantic authority for how affected geometry must be constructed.\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + "Prefer adjusting positioning, scaling, grouping, and spacing over deleting explanatory content.\n"
                     + "For frame repair, use translation/recentering and uniform scaling of independent overlays, source objects, or whole constrained groups as the default first-choice strategy before changing geometric constructions or attachment logic.\n"
                     + "If a reported element is dependency-driven or derived, do not fix it by assigning direct coordinates copied from rendered bounds or storyboard placement; adjust upstream dependency objects, the whole constrained group, camera/layout, or the attachment expression so the dependency remains true.\n"
-                    + "Also correct semantically wrong geometric attachments you notice, especially angle markers that are drawn on the wrong side or detached from their true vertex.\n\n"
+                    + "Also correct semantically wrong geometric attachments you notice, especially angle markers that are drawn on the wrong side or detached from their true vertex.\n"
+                    + "Preserve valid voiceover structure and Chinese learner-facing strings while fixing layout issues.\n\n"
                     + "Scene evaluation repair requirements:\n"
                     + "1. First identify the affected code scene(s), reported elements, and any storyboard_dependency_context supplied in the evaluation report.\n"
                     + "2. When a layout issue is detected in a sampled frame, do not assume the problem only exists at that sampled instant. Trace each reported element back to where it is first created, positioned, attached, or updated, then repair the earliest responsible placement, attachment, updater, camera framing, or group layout so it remains valid for all frames after it appears.\n"
@@ -36,12 +40,14 @@ public final class SceneEvaluationPrompts {
             "You are fixing a GeoGebra command script in the shared Code Fix stage. Do not assume every Code Fix request already executed successfully; use the current request's supplied evidence as the repair authority.\n"
                     + "Preserve the teaching goal, visual intent, and construction meaning.\n"
                     + SystemPrompts.STORYBOARD_REPAIR_AUTHORITY_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
                     + "Use the rendered geometry report as authority for observed layout problems, and use storyboard object_registry dependency facts as semantic authority for how affected geometry must be constructed.\n"
                     + "Prefer adjusting label placement, text positioning, coordinate spacing, and whole-construction scale over removing explanatory content.\n"
                     + "Initial-view readability is mandatory; fix offscreen, underfilled, clustered, text-on-text, and text-on-geometry issues without relying on user zooming.\n"
                     + "If a reported element is dependency-driven or derived, do not fix it by assigning direct coordinates copied from rendered bounds or storyboard placement; adjust upstream dependency objects, the whole constrained construction, viewport, or native construction command so the dependency remains true.\n"
                     + "Also correct semantically wrong geometric attachments you notice, especially angle markers that sweep the wrong sector.\n"
                     + "Use English GeoGebra command names.\n"
+                    + "Preserve Chinese learner-facing visible text from storyboard object content while fixing layout issues.\n"
                     + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
                     + "Do not output Python, JavaScript, or explanations.\n\n"
                     + "Scene evaluation repair requirements:\n"
@@ -92,7 +98,8 @@ public final class SceneEvaluationPrompts {
                 .append("\n```\n\n")
                 .append("```python\n").append(generatedCode).append("\n```\n\n")
                 .append("Issue summary:\n```\n").append(issueSummary).append("\n```\n\n")
-                .append("Scene evaluation report excerpt:\n```json\n").append(sceneEvaluationJson).append("\n```\n");
+                .append("Scene evaluation report excerpt:\n```json\n").append(sceneEvaluationJson).append("\n```\n")
+                .append("Preserve valid voiceover structure and Chinese learner-facing strings while applying the layout repair.\n");
 
         PromptUtils.appendFixHistory(sb, fixHistory);
         return SystemPrompts.buildCurrentRequestSection(sb.toString());
@@ -110,7 +117,8 @@ public final class SceneEvaluationPrompts {
                 .append("\n```\n\n")
                 .append("```geogebra\n").append(generatedCode).append("\n```\n\n")
                 .append("Issue summary:\n```\n").append(issueSummary).append("\n```\n\n")
-                .append("Scene evaluation report excerpt:\n```json\n").append(sceneEvaluationJson).append("\n```\n");
+                .append("Scene evaluation report excerpt:\n```json\n").append(sceneEvaluationJson).append("\n```\n")
+                .append("Preserve Chinese learner-facing visible text from storyboard object content while applying the layout repair.\n");
 
         PromptUtils.appendFixHistory(sb, fixHistory);
         return SystemPrompts.buildCurrentRequestSection(sb.toString());

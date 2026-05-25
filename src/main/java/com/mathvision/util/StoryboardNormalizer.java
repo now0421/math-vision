@@ -2,6 +2,7 @@ package com.mathvision.util;
 
 import com.mathvision.model.Narrative.Storyboard;
 import com.mathvision.model.Narrative.StoryboardAction;
+import com.mathvision.model.Narrative.StoryboardConstraint;
 import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.Narrative.StoryboardPlacement;
 import com.mathvision.model.Narrative.StoryboardPlacementAxis;
@@ -9,7 +10,11 @@ import com.mathvision.model.Narrative.StoryboardScene;
 import com.mathvision.model.Narrative.StoryboardStyle;
 
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Normalizes a {@link Storyboard} by ensuring all fields have safe defaults.
@@ -46,6 +51,7 @@ public final class StoryboardNormalizer {
             storyboard.setObjectRegistry(new ArrayList<>());
         } else {
             storyboard.setObjectRegistry(normalizeRegistryObjects(storyboard.getObjectRegistry()));
+            relocateMisownedObjectConstraints(storyboard.getObjectRegistry());
         }
 
         List<StoryboardScene> normalizedScenes = new ArrayList<>();
@@ -141,6 +147,77 @@ public final class StoryboardNormalizer {
         return normalizedObjects;
     }
 
+    private static void relocateMisownedObjectConstraints(List<StoryboardObject> objects) {
+        Map<String, StoryboardObject> registryById = registryById(objects);
+        if (registryById.isEmpty()) {
+            return;
+        }
+        List<ConstraintMove> moves = new ArrayList<>();
+        for (StoryboardObject object : objects) {
+            String ownerId = objectId(object);
+            if (ownerId == null || object.getConstraints() == null || object.getConstraints().isEmpty()) {
+                continue;
+            }
+            Iterator<StoryboardConstraint> iterator = object.getConstraints().iterator();
+            while (iterator.hasNext()) {
+                StoryboardConstraint constraint = iterator.next();
+                String targetOwnerId = singleKnownConstraintOwnerId(constraint, registryById.keySet());
+                if (targetOwnerId == null || targetOwnerId.equals(ownerId)) {
+                    continue;
+                }
+                iterator.remove();
+                moves.add(new ConstraintMove(targetOwnerId, constraint));
+            }
+        }
+        for (ConstraintMove move : moves) {
+            StoryboardObject target = registryById.get(move.targetOwnerId);
+            if (target == null) {
+                continue;
+            }
+            if (target.getConstraints() == null) {
+                target.setConstraints(new ArrayList<>());
+            }
+            target.getConstraints().add(move.constraint);
+        }
+    }
+
+    private static String singleKnownConstraintOwnerId(StoryboardConstraint constraint, Set<String> knownIds) {
+        Set<String> ownerIds = StoryboardConstraintUtils.ownerIds(constraint);
+        if (ownerIds.size() != 1) {
+            return null;
+        }
+        String ownerId = ownerIds.iterator().next();
+        return knownIds.contains(ownerId) ? ownerId : null;
+    }
+
+    private static Map<String, StoryboardObject> registryById(List<StoryboardObject> objects) {
+        Map<String, StoryboardObject> registryById = new LinkedHashMap<>();
+        for (StoryboardObject object : objects) {
+            String id = objectId(object);
+            if (id != null) {
+                registryById.put(id, object);
+            }
+        }
+        return registryById;
+    }
+
+    private static String objectId(StoryboardObject object) {
+        if (object == null || object.getId() == null || object.getId().isBlank()) {
+            return null;
+        }
+        return object.getId().trim();
+    }
+
+    private static final class ConstraintMove {
+        private final String targetOwnerId;
+        private final StoryboardConstraint constraint;
+
+        private ConstraintMove(String targetOwnerId, StoryboardConstraint constraint) {
+            this.targetOwnerId = targetOwnerId;
+            this.constraint = constraint;
+        }
+    }
+
     private static List<StoryboardObject> normalizeScenePatchObjects(List<StoryboardObject> objects,
                                                                      String sceneId,
                                                                      PatchMode mode) {
@@ -190,6 +267,14 @@ public final class StoryboardNormalizer {
             }
             if (action.getDescription() == null || action.getDescription().isBlank()) {
                 action.setDescription("Advance the explanation with a precise visual update.");
+            }
+            if (action.getVoiceoverText() == null || action.getVoiceoverText().isBlank()) {
+                action.setVoiceoverText(null);
+            } else {
+                action.setVoiceoverText(action.getVoiceoverText().trim());
+            }
+            if (action.getExpectedSeconds() != null && action.getExpectedSeconds() <= 0) {
+                action.setExpectedSeconds(null);
             }
             normalizedActions.add(action);
         }

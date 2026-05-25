@@ -1,6 +1,7 @@
 package com.mathvision.prompt;
 
 import com.mathvision.model.Narrative.Storyboard;
+import com.mathvision.model.Narrative.StoryboardAction;
 import com.mathvision.model.Narrative.StoryboardConstraint;
 import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.Narrative.StoryboardPlacement;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -112,6 +114,66 @@ class StoryboardJsonBuilderTest {
         assertFalse(codegenJson.contains("\"constraints\" : [ ]"));
         assertFalse(codegenJson.contains("\"geometry_constraints\" : [ ]"));
         assertFalse(codegenJson.contains("\"step_refs\" : [ ]"));
+    }
+
+    @Test
+    void codegenJsonIncludesVoiceoverFieldsAndChineseContent() throws Exception {
+        Storyboard storyboard = new Storyboard();
+        StoryboardObject title = objectWithPlacement("title", "text", 0.0, 2.5);
+        title.setContent("中文标题");
+        storyboard.setObjectRegistry(List.of(title));
+
+        StoryboardAction action = new StoryboardAction();
+        action.setOrder(1);
+        action.setType("write");
+        action.setTargets(List.of("title"));
+        action.setDescription("Write the title.");
+        action.setVoiceoverText("现在写出中文标题。");
+        action.setExpectedSeconds(2.5);
+
+        StoryboardScene scene = new StoryboardScene();
+        scene.setSceneId("scene_1");
+        scene.setTitle("中文标题场景");
+        scene.setEnteringObjects(List.of(scenePatch("title", 0.0, 2.5)));
+        scene.setActions(List.of(action));
+        storyboard.setScenes(List.of(scene));
+
+        JsonNode codegen = JsonUtils.mapper().readTree(StoryboardJsonBuilder.buildForCodegen(storyboard));
+        JsonNode actionNode = codegen.get("scenes").get(0).get("actions").get(0);
+
+        assertTrue(codegen.toString().contains("中文标题"));
+        assertTrue(actionNode.path("voiceover_text").asText().contains("中文标题"));
+        assertEquals(2.5, actionNode.path("expected_seconds").asDouble());
+    }
+
+    @Test
+    void geogebraCodegenJsonExcludesVoiceoverFields() throws Exception {
+        Storyboard storyboard = new Storyboard();
+
+        StoryboardAction action = new StoryboardAction();
+        action.setOrder(1);
+        action.setType("write");
+        action.setTargets(List.of("title"));
+        action.setDescription("Write the title.");
+        action.setVoiceoverText("现在写出中文标题。");
+        action.setExpectedSeconds(2.5);
+
+        StoryboardScene scene = new StoryboardScene();
+        scene.setSceneId("scene_1");
+        scene.setTitle("中文标题场景");
+        scene.setActions(List.of(action));
+        storyboard.setScenes(List.of(scene));
+
+        String codegenJson = StoryboardJsonBuilder.buildForCodegen(storyboard, "geogebra");
+        String sceneJson = StoryboardJsonBuilder.buildSceneForCodegen(scene, "geogebra");
+        String layoutFixJson = StoryboardJsonBuilder.buildForSceneEvaluationFix(storyboard, "geogebra");
+
+        assertFalse(codegenJson.contains("voiceover_text"));
+        assertFalse(codegenJson.contains("expected_seconds"));
+        assertFalse(sceneJson.contains("voiceover_text"));
+        assertFalse(sceneJson.contains("expected_seconds"));
+        assertFalse(layoutFixJson.contains("voiceover_text"));
+        assertFalse(layoutFixJson.contains("expected_seconds"));
     }
 
     private static StoryboardObject objectWithPlacement(String id,

@@ -15,12 +15,16 @@ public final class RenderFixPrompts {
                     + "Fix the code so it renders successfully.\n"
                     + "Preserve the original scene class name and intended animation meaning.\n\n"
                     + SystemPrompts.STORYBOARD_REPAIR_REFERENCE_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
+                    + SystemPrompts.MANIM_VOICEOVER_RULES
+                    + SystemPrompts.MANIM_CHINESE_TEXT_RENDERING_RULES
                     + "Keep implemented mathematical constructions internally consistent while fixing render issues.\n"
                     + "Treat storyboard scene placement as preferred layout input for non-derived objects, but adjust it when needed to fix runtime failures, offscreen/overlap risk, readability, or internal consistency while preserving structured constraints.\n"
                     + "Mandatory rules:\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
-                    + "Do not store mobjects across scene methods via `self`, do not hardcode MathTex numeric indexing.\n\n"
+                    + "Do not store mobjects across scene methods via `self`, do not hardcode MathTex numeric indexing.\n"
+                    + "Preserve valid `manim_voiceover` imports, `VoiceoverScene`, `GTTSService`, `set_speech_service`, `with self.voiceover(...)`, Chinese `voiceover_text`, and Chinese visible strings while fixing render failures.\n\n"
                     + "Fix strategy:\n"
                     + "Use root-cause-first repair: identify the first causal traceback error, fix it, then sweep structurally similar code paths in the same file.\n"
                     + "Fix the reported root cause systematically, and also correct nearby Python/Manim runtime mistakes.\n"
@@ -32,9 +36,11 @@ public final class RenderFixPrompts {
                     + "Fix the GeoGebra command script so every reported failure is resolved when the full script is replayed in order via `evalCommand(...)`.\n"
                     + "Preserve the intended construction meaning and object dependency chain where they are useful and valid.\n"
                     + SystemPrompts.STORYBOARD_REPAIR_REFERENCE_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
                     + "Keep implemented geometric relationships internally consistent while fixing command failures.\n"
                     + "Treat storyboard scene placement as preferred layout input for non-derived objects, but adjust it when needed to fix runtime failures, viewport safety, readability, or internal consistency while preserving structured constraints.\n"
                     + "Use English GeoGebra command names.\n"
+                    + "Preserve Chinese learner-facing visible text from storyboard object content; do not translate it to English or pinyin.\n"
                     + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
                     + "If you must rename an identifier or introduce a new one, update the commented `SCENE_BUTTONS` script consistently so it still references the final object names.\n"
                     + "Do not output Python, JavaScript, or explanations.\n"
@@ -104,6 +110,7 @@ public final class RenderFixPrompts {
                 .append("Prioritize the earliest root cause instead of patching downstream symptoms.\n")
                 .append("Sweep all `Text(...)`, `Tex(...)`, and `MathTex(...)` calls whenever the error category suggests text-constructor or LaTeX misuse.\n")
                 .append("Use storyboard structured constraints, preferred scene placement, geometric summaries, or derived constructions as repair context; keep the final code internally consistent while fixing the render failure.\n")
+                .append("Preserve valid voiceover structure and Chinese learner-facing strings while repairing Manim runtime errors.\n")
                 .append("Also proactively check for common Python and Manim runtime mistakes.\n")
                 .append("Remember: Return ONLY the single Python code block containing the full file. No explanation.\n");
 
@@ -136,6 +143,7 @@ public final class RenderFixPrompts {
                 .append("Sweep dependent commands, renamed identifiers, and the commented `SCENE_BUTTONS` block after every fix so the full script remains consistent in one replay pass.\n")
                 .append("Please rewrite the FULL command script so all reported failures become valid in one pass and downstream dependent commands remain correct.\n")
                 .append("Use English GeoGebra command names and keep implemented geometric dependencies internally consistent; use storyboard details, including preferred scene placement for non-derived objects, as repair context.\n")
+                .append("Preserve Chinese learner-facing visible text from storyboard object content.\n")
                 .append("If you rename an identifier or add a new one, also update the commented `SCENE_BUTTONS` script so it stays consistent with the final command script.\n")
                 .append("Remember: Return ONLY the single fenced `geogebra` code block. No explanation.\n");
 

@@ -130,6 +130,46 @@ class Intro(Scene):
         self.wait(0.5)
 ```
 
+### Voiceover Scenes
+
+Use `manim-voiceover` when the generated video needs synchronized narration.
+
+Syntax:
+
+```python
+from manim import *
+from manim_voiceover import VoiceoverScene
+from manim_voiceover.services.gtts import GTTSService
+
+VOICEOVER_SPEED = 1.35
+
+class MainScene(VoiceoverScene):
+    def construct(self):
+        self.set_speech_service(GTTSService(lang="zh-CN", global_speed=VOICEOVER_SPEED))
+
+        title = Text("勾股定理", font="Microsoft YaHei", font_size=48).to_edge(UP)
+        formula = MathTex(r"a^2 + b^2 = c^2")
+
+        with self.voiceover(text="今天我们用动画来理解勾股定理。") as tracker:
+            self.play(Write(title), run_time=tracker.duration)
+
+        with self.voiceover(text="直角三角形中，两条直角边的平方和，等于斜边的平方。") as tracker:
+            self.play(Write(formula), run_time=tracker.duration)
+
+        self.wait(0.5)
+```
+
+Usage notes:
+
+- Use `class MainScene(VoiceoverScene):` instead of `Scene` when any action has narration.
+- Call `self.set_speech_service(...)` once near the start of `construct()` before the first `self.voiceover(...)` block.
+- For Chinese narration, use `GTTSService(lang="zh-CN", global_speed=VOICEOVER_SPEED)` and keep narration text natural Chinese.
+- Wrap each learner-visible narrated beat with `with self.voiceover(text="...") as tracker:`.
+- If the beat has animation, set `run_time=tracker.duration` or otherwise align the animation duration with the narration.
+- If the beat has narration but no animation, use `self.wait(tracker.duration)` inside the voiceover block.
+- Render voiceover scenes with `--disable_caching`, for example `manim -pql file.py MainScene --disable_caching`.
+- Do not use `VoiceoverScene`, `GTTSService`, or `self.voiceover(...)` for non-narrated Manim scenes.
+
 ### Multiple Scenes in One File
 
 Syntax:

@@ -42,6 +42,9 @@ public final class CodeEvaluationPrompts {
                     + "Your primary job is rule-compliance inspection before render.\n"
                     + "Do not assign numeric quality scores. Instead, check each rule below as pass, warn, fail, or not_applicable using concrete code evidence and storyboard semantic context when useful.\n\n"
                     + SystemPrompts.STORYBOARD_AUTHORITY_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
+                    + SystemPrompts.MANIM_VOICEOVER_RULES
+                    + SystemPrompts.MANIM_CHINESE_TEXT_RENDERING_RULES
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_MANIM + "\n"
                     + "Rule severity levels determine gate impact:\n"
                     + "- MANDATORY: a fail status blocks render. These rules guard runtime correctness and semantic integrity.\n"
@@ -55,8 +58,8 @@ public final class CodeEvaluationPrompts {
                     + "- For `on_side_of`, `same_side_of`, or `opposite_side_of` constraints: the object placement must preserve the declared side relationship to the reference line/boundary; fail `geometry_consistency` if the object is placed on the wrong side or on the boundary when no incidence constraint is declared.\n"
                     + "- `layout_api_usage` [RECOMMENDED]: the code uses appropriate layout APIs (`.arrange()`, `.next_to()`, `.to_edge()` with `buff >= 0.5`) to maintain one clear focus and avoids code-evident persistent crowding; density counts from static analysis are heuristics, not automatic failures, when the code uses staging, dimming, grouping, cleanup, or pauses that keep the frame readable.\n"
                     + "- `continuity_and_identity` [MANDATORY]: persistent code objects remain stable where continuity matters, prefer transforms/restyles over unnecessary redraws, and clean temporary annotations when their beat is done.\n"
-                    + "- `pacing_and_narration` [RECOMMENDED]: important reveals have subtitle-ready beats, `self.add_subcaption(...)` or `subcaption=`, and enough `self.wait(...)` breathing room instead of stacked animations.\n"
-                    + "- `text_readability` [RECOMMENDED]: `Text(...)`/`MarkupText(...)` use monospace fonts, on-screen text uses `font_size >= 18`, `.to_edge()` uses `buff >= 0.5`, long text width is constrained, and light cards have dark text.\n"
+                    + "- `pacing_and_narration` [RECOMMENDED]: important reveals have subtitle-ready or voiceover-synchronized beats, `self.add_subcaption(...)`, `subcaption=`, or `with self.voiceover(text=...) as tracker:` when storyboard actions provide `voiceover_text`, and enough breathing room instead of stacked animations. Preserve valid `VoiceoverScene`, `GTTSService`, `self.voiceover(...)`, and Chinese narration strings.\n"
+                    + "- `text_readability` [RECOMMENDED]: `Text(...)`/`MarkupText(...)` use readable fonts, Chinese prose uses a Chinese-capable font such as `Microsoft YaHei`, on-screen text uses `font_size >= 18`, `.to_edge()` uses `buff >= 0.5`, long text width is constrained, and light cards have dark text.\n"
                     + "- Do not require `MathTex(...)` or `Tex(...)` to use monospace fonts. Review those LaTeX mobjects for valid math/text constructor choice, font size, color contrast, and layout only.\n"
                     + "- `manim_code_hygiene` [MANDATORY]: code uses documented Manim APIs, `self.camera.background_color = BG`, stable animation targets, and no unsafe empty `always_redraw` animation targets.\n"
                     + "- Imported external libraries and aliases used by the code, such as `import numpy as np`, are allowed; do not flag calls like `np.array(...)` or `np.linalg.norm(...)` when the import is present.\n"
@@ -75,6 +78,7 @@ public final class CodeEvaluationPrompts {
                     + "Your primary job is rule-compliance inspection for a GeoGebra teaching construction before render.\n"
                     + "Do not assign numeric quality scores. Instead, check each rule below as pass, warn, fail, or not_applicable using concrete code evidence and storyboard semantic context when useful.\n\n"
                     + SystemPrompts.STORYBOARD_AUTHORITY_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_GEOGEBRA + "\n"
                     + "Rule severity levels determine gate impact:\n"
                     + "- MANDATORY: a fail status blocks render. These rules guard runtime correctness and semantic integrity.\n"
@@ -106,9 +110,13 @@ public final class CodeEvaluationPrompts {
                     + "Rewrite the full code.\n"
                     + "Reduce clutter, preserve continuity with transforms, correct semantically wrong placements, keep 3D camera plans readable, and also fix common Python/Manim runtime mistakes.\n"
                     + SystemPrompts.STORYBOARD_REPAIR_AUTHORITY_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
+                    + SystemPrompts.MANIM_VOICEOVER_RULES
+                    + SystemPrompts.MANIM_CHINESE_TEXT_RENDERING_RULES
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_MANIM + "\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
+                    + "Preserve valid `VoiceoverScene`, `GTTSService`, `self.voiceover(...)`, Chinese `voiceover_text`, and Chinese visible strings while revising.\n"
                     + "Do not apply the monospace-font requirement to `MathTex(...)` or `Tex(...)`; review those LaTeX mobjects for valid math/text constructor choice, font size, color contrast, and layout only.\n"
                     + SystemPrompts.MANIM_CODE_OUTPUT_FORMAT;
 
@@ -118,6 +126,7 @@ public final class CodeEvaluationPrompts {
                     + "Rewrite the full command script.\n"
                     + "Preserve runtime validity, construction coherence, object identities where useful, scene visibility progression, and teaching intent.\n"
                     + SystemPrompts.STORYBOARD_REPAIR_AUTHORITY_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_GEOGEBRA + "\n"
                     + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
                     + SystemPrompts.GEOGEBRA_ANGLE_MARKER_RULES
@@ -169,7 +178,7 @@ public final class CodeEvaluationPrompts {
                             + "Check every rule before render; only MANDATORY-severity failures block render.\n"
                             + "When checking storyboard alignment, use object_registry constraints, scene placement/style, and notes_for_codegen together; scene placement/style is preferred visual-state input, but it may be adjusted to fix offscreen, overlap, readability, rendered evidence, or consistency issues while preserving constraints.\n"
                             + "If an object's coordinates depend on other objects, verify the implementation by calculating the derived coordinates from constraint refs or by recognizing a native dependency-based construction; direct numeric coordinates are acceptable only when they match fixed source geometry and do not break dependency semantics.\n"
-                            + "Focus on whether the actual construction, scene visibility progression, and teaching evidence are coherent, render-ready, and aligned with storyboard hard geometry, notes_for_codegen, constraint semantics, continuity, and teaching semantics.\n"
+                            + "Focus on whether the actual construction, scene visibility progression, Chinese visible text, and teaching evidence are coherent, render-ready, and aligned with storyboard hard geometry, notes_for_codegen, constraint semantics, continuity, and teaching semantics.\n"
                             + "Return only the structured rule-compliance output.",
                     sceneName, storyboardJson, staticAnalysisJson, generatedCode));
         }
@@ -181,7 +190,7 @@ public final class CodeEvaluationPrompts {
                     + "Check every rule before render; only MANDATORY-severity failures block render.\n"
                             + "When checking storyboard alignment, use object_registry constraints, scene placement/style, and notes_for_codegen together; scene placement/style is preferred visual-state input, but it may be adjusted to fix offscreen, overlap, readability, rendered evidence, or consistency issues while preserving constraints.\n"
                             + "If an object's coordinates depend on other objects, verify the implementation by calculating the derived coordinates from constraint refs or by recognizing a native dependency-based construction; direct numeric coordinates are acceptable only when they match fixed source geometry and do not break dependency semantics.\n"
-                            + "Focus on internally consistent geometry, continuity, pacing versus narration, correct spatial relationships, text readability, code-evident clutter, and alignment with storyboard hard geometry, notes_for_codegen, constraint semantics, and continuity.\n"
+                            + "Focus on internally consistent geometry, continuity, pacing versus narration or voiceover, correct spatial relationships, Chinese visible text readability, code-evident clutter, and alignment with storyboard hard geometry, notes_for_codegen, constraint semantics, and continuity.\n"
                         + "Return only the structured rule-compliance output.",
                 sceneName, storyboardJson, staticAnalysisJson, generatedCode));
     }
@@ -240,6 +249,7 @@ public final class CodeEvaluationPrompts {
                             + "Keep implemented geometric relationships internally consistent; preserve storyboard hard geometry, notes_for_codegen, and constraint semantics, and use documented equivalent constructions when exact details are unsafe or unsupported.\n"
                             + "Preserve the initial viewport contract with `SetCoordSystem(-7, 7, -4, 4)`, and fix layout by scaling/spreading/recentering the construction rather than relying on user zoom.\n"
                             + "Use only command names and syntax forms documented in the attached GeoGebra syntax manual. Replace any undocumented command or guessed syntax with a documented equivalent.\n"
+                            + "Preserve Chinese learner-facing visible text from storyboard object content; do not translate it to English or pinyin.\n"
                             + "Return ONLY the full GeoGebra code block.",
                     sceneName, storyboardJson, staticAnalysisJson, reviewJson, generatedCode));
         }
@@ -251,7 +261,7 @@ public final class CodeEvaluationPrompts {
                         + "Current Manim code:\n```python\n%s\n```\n\n"
                         + "Rewrite the FULL code to reduce clutter, preserve continuity, correct semantically wrong placements such as angle arcs or labels attached to the wrong geometry, better match pacing to narration, and keep 3D overlays readable.\n"
                         + "Use object_registry constraints, scene placement/style, and scene notes_for_codegen as semantic guidance; treat placement as preferred layout input that may be adjusted for safety/readability, and never force a derived object to a placement coordinate when structured constraints or notes_for_codegen define a different construction.\n"
-                        + "Keep implemented geometric relationships internally consistent while making layout safer; preserve storyboard hard geometry, notes_for_codegen, constraint semantics, key object identity, scene order, continuity, and teaching intent. Use equivalent documented Manim constructions when exact storyboard details are unsafe or unsupported.\n"
+                        + "Keep implemented geometric relationships internally consistent while making layout safer; preserve storyboard hard geometry, notes_for_codegen, constraint semantics, key object identity, scene order, continuity, Chinese voiceover strings, Chinese visible text, and teaching intent. Use equivalent documented Manim constructions when exact storyboard details are unsafe or unsupported.\n"
                         + "Also fix nearby Python/Manim runtime mistakes. Preserve the scene class name and teaching goal.\n"
                         + "Return ONLY the full Python code block.",
                 sceneName, storyboardJson, staticAnalysisJson, reviewJson, generatedCode));

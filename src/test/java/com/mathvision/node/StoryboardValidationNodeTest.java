@@ -42,7 +42,7 @@ class StoryboardValidationNodeTest {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(
                 List.of(
-                        registryObject("title", "text", "Main title", null),
+                        registryObject("title", "text", "主标题", null),
                         registryObject("diagram", "region", "Main diagram", null)
                 ),
                 List.of(
@@ -59,7 +59,7 @@ class StoryboardValidationNodeTest {
     void reportsOffscreenLayoutWhenBoundsExceedFrame() {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(
-                List.of(registryObject("title", "text", "Main title", null)),
+                List.of(registryObject("title", "text", "主标题", null)),
                 List.of(scenePatch("title", boxPlacement("screen", 6.9, 7.5, 2.0, 2.7))));
 
         List<String> issues = node.validate(storyboard);
@@ -97,7 +97,7 @@ class StoryboardValidationNodeTest {
         style.setFillOpacity(0.9);
         title.setStyle(style);
         Storyboard storyboard = buildSingleSceneStoryboard(
-                List.of(registryObject("title", "text", "Main title", null)),
+                List.of(registryObject("title", "text", "主标题", null)),
                 List.of(title));
 
         List<String> issues = node.validate(storyboard);
@@ -111,8 +111,8 @@ class StoryboardValidationNodeTest {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(
                 List.of(
-                        registryObject("headline", "text", "Headline", null),
-                        registryObject("subhead", "text", "Subhead", null)
+                        registryObject("headline", "text", "标题", null),
+                        registryObject("subhead", "text", "副标题", null)
                 ),
                 List.of(
                         scenePatch("headline", boxPlacement("screen", -1.4, 1.2, 1.8, 2.6)),
@@ -303,7 +303,7 @@ class StoryboardValidationNodeTest {
     void reportsOffscreenChecksForGeoGebraStoryboardValidation() {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
         Storyboard storyboard = buildSingleSceneStoryboard(
-                List.of(registryObject("title", "text", "Main title", null)),
+                List.of(registryObject("title", "text", "主标题", null)),
                 List.of(scenePatch("title", boxPlacement("screen", 6.9, 7.5, 2.0, 2.7))));
 
         List<String> issues = node.validate(storyboard);
@@ -462,7 +462,7 @@ class StoryboardValidationNodeTest {
 
         Storyboard storyboard = buildSingleSceneStoryboard(
                 List.of(
-                        registryObject("title", "text", "Main title", null),
+                        registryObject("title", "text", "主标题", null),
                         registryObject("diagram", "region", "Main diagram", null)
                 ),
                 List.of(
@@ -471,7 +471,7 @@ class StoryboardValidationNodeTest {
                 ));
         Storyboard cleanedStoryboard = buildSingleSceneStoryboard(
                 List.of(
-                        registryObject("title", "text", "Main title", null),
+                        registryObject("title", "text", "主标题", null),
                         registryObject("diagram", "region", "Main diagram", null)
                 ),
                 List.of(
@@ -511,7 +511,7 @@ class StoryboardValidationNodeTest {
         config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_MANIM);
 
         Storyboard storyboard = buildSingleSceneStoryboard(
-                List.of(registryObject("title", "text", "Main title", null)),
+                List.of(registryObject("title", "text", "主标题", null)),
                 List.of(scenePatch("title", boxPlacement("screen", 6.9, 7.5, 2.0, 2.7))));
         Narrative narrative = new Narrative("Demo concept", "Demo description", storyboard);
 
@@ -545,7 +545,7 @@ class StoryboardValidationNodeTest {
         WorkflowConfig config = new WorkflowConfig();
         config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(
-                List.of(registryObject("title", "text", "Main title", null)),
+                List.of(registryObject("title", "text", "主标题", null)),
                 List.of(scenePatch("title", boxPlacement("screen", 6.9, 7.5, 2.0, 2.7))));
         RepeatingStoryboardAiClient aiClient = new RepeatingStoryboardAiClient(storyboard);
 
@@ -571,12 +571,12 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
-    void cleanupPromptIncludesAsciiNormalizationMap() {
+    void cleanupPromptIncludesIdentifierAsciiAndChinesePreservationRules() {
         StoryboardValidationNode node = new StoryboardValidationNode();
         WorkflowConfig config = new WorkflowConfig();
         config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(
-                List.of(registryObject("title", "text", "Main title", null)),
+                List.of(registryObject("title", "text", "主标题", null)),
                 List.of(scenePatch("title", boxPlacement("screen", 6.9, 7.5, 2.0, 2.7))));
         RepeatingStoryboardAiClient aiClient = new RepeatingStoryboardAiClient(storyboard);
 
@@ -589,13 +589,16 @@ class StoryboardValidationNodeTest {
         node.exec(prepNarrative);
 
         String prompt = aiClient.lastSnapshotText;
-        assertTrue(prompt.contains("ASCII repair is mandatory"));
-        assertTrue(prompt.contains("U+2019 -> `'`"));
-        assertTrue(prompt.contains("U+2014 -> `-`"));
-        assertTrue(prompt.contains("U+2260 -> `!=`"));
-        assertTrue(prompt.contains("becomes `PB' - a`"));
-        assertTrue(prompt.contains("becomes `P_test != P_min`"));
-        assertTrue(prompt.contains("no character code is greater than 0x7F"));
+        assertTrue(prompt.contains("Apply ASCII cleanup only to backend identifiers"));
+        assertTrue(prompt.contains("scene_id"));
+        assertTrue(prompt.contains("object ids"));
+        assertTrue(prompt.contains("refs"));
+        assertTrue(prompt.contains("action target ids"));
+        assertTrue(prompt.contains("do not ASCII-normalize titles, narration, descriptions, or visible object content"));
+        assertTrue(prompt.contains("In Manim mode, also preserve voiceover text"));
+        assertTrue(prompt.contains("Visible natural-language object content must be Chinese"));
+        assertTrue(prompt.contains("Manim voiceover rules"));
+        assertFalse(prompt.contains("ASCII repair is mandatory"));
     }
 
     @Test
@@ -643,7 +646,7 @@ class StoryboardValidationNodeTest {
         WorkflowConfig config = new WorkflowConfig();
         config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(
-                List.of(registryObject("title", "text", "Main title", null)),
+                List.of(registryObject("title", "text", "主标题", null)),
                 List.of(scenePatch("title", boxPlacement("screen", 6.9, 7.5, 2.0, 2.7))));
         RepeatingStoryboardAiClient aiClient = new RepeatingStoryboardAiClient(storyboard);
 
@@ -699,6 +702,83 @@ class StoryboardValidationNodeTest {
         String joinedIssues = String.join("\n", issues);
 
         assertTrue(joinedIssues.contains("object_registry: duplicate object id 'A'"), () -> joinedIssues);
+    }
+
+    @Test
+    void validatesChineseVisibleContentAndSymbolicExceptions() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(
+                        registryObject("title", "text", "这是中文标题", null),
+                        registryObject("A_label", "label", "A", null),
+                        registryObject("formula", "equation", "a^2 + b^2 = c^2", null)),
+                List.of(
+                        scenePatch("title", boxPlacement("screen", -2.0, 2.0, 2.1, 2.8)),
+                        scenePatch("A_label", boxPlacement("world", -0.2, 0.2, -0.2, 0.2)),
+                        scenePatch("formula", boxPlacement("screen", -2.0, 2.0, 1.1, 1.8))));
+
+        List<String> issues = node.validate(storyboard);
+
+        assertTrue(issues.isEmpty(), () -> String.join("\n", issues));
+    }
+
+    @Test
+    void reportsEnglishNaturalLanguageVisibleContentForBothBackends() {
+        StoryboardValidationNode manimNode = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardValidationNode geoGebraNode = prepareNode(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(registryObject("title", "text", "English title", null)),
+                List.of(scenePatch("title", boxPlacement("screen", -2.0, 2.0, 2.1, 2.8))));
+
+        String manimIssues = String.join("\n", manimNode.validate(storyboard));
+        String geoGebraIssues = String.join("\n", geoGebraNode.validate(storyboard));
+
+        assertTrue(manimIssues.contains("visible natural-language content must be Chinese"), () -> manimIssues);
+        assertTrue(geoGebraIssues.contains("visible natural-language content must be Chinese"), () -> geoGebraIssues);
+    }
+
+    @Test
+    void reportsNonAsciiIdentifiersButAllowsChineseNarrativeFields() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardScene scene = baseScene("场景一");
+        scene.setTitle("中文标题");
+        scene.setGoal("展示中文目标");
+        scene.setNarration("这段旁白允许中文。");
+        scene.setEnteringObjects(List.of(scenePatch("标题", boxPlacement("screen", -2.0, 2.0, 2.1, 2.8))));
+        Storyboard storyboard = storyboardWithScenes(
+                List.of(registryObject("标题", "text", "中文内容", null)),
+                List.of(scene));
+
+        String issues = String.join("\n", node.validate(storyboard));
+
+        assertTrue(issues.contains("scene_id: identifier must be ASCII-only"), () -> issues);
+        assertTrue(issues.contains("object_registry[0].id: identifier must be ASCII-only"), () -> issues);
+        assertFalse(issues.contains("中文标题"), () -> issues);
+        assertFalse(issues.contains("这段旁白允许中文"), () -> issues);
+    }
+
+    @Test
+    void validatesManimVoiceoverTextOnlyInManimMode() {
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(registryObject("title", "text", "中文标题", null)),
+                List.of(scenePatch("title", boxPlacement("screen", -2.0, 2.0, 2.1, 2.8))));
+        Narrative.StoryboardAction englishVoiceover = new Narrative.StoryboardAction();
+        englishVoiceover.setOrder(1);
+        englishVoiceover.setType("write");
+        englishVoiceover.setTargets(List.of("title"));
+        englishVoiceover.setDescription("Write title.");
+        englishVoiceover.setVoiceoverText("Explain the title.");
+        storyboard.getScenes().get(0).setActions(List.of(englishVoiceover));
+
+        String manimIssues = String.join("\n", prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM).validate(storyboard));
+        String geoGebraIssues = String.join("\n", prepareNode(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA).validate(storyboard));
+
+        assertTrue(manimIssues.contains("voiceover_text must be Chinese in Manim mode"), () -> manimIssues);
+        assertFalse(geoGebraIssues.contains("voiceover_text"), () -> geoGebraIssues);
+
+        englishVoiceover.setVoiceoverText("解释这个标题。");
+        String fixedIssues = String.join("\n", prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM).validate(storyboard));
+        assertFalse(fixedIssues.contains("voiceover_text"), () -> fixedIssues);
     }
 
     @Test

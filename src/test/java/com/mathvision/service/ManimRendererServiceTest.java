@@ -84,6 +84,36 @@ class ManimRendererServiceTest {
     }
 
     @Test
+    void voiceoverCodeDisablesManimCachingDuringRender() {
+        ManimRendererService service = new ManimRendererService() {
+            @Override
+            protected Process startProcess(List<String> cmd, Path workingDir, Path geometryOutputPath)
+                    throws IOException {
+                assertTrue(cmd.contains("--disable_caching"));
+                throw new IOException("stop after inspection");
+            }
+        };
+
+        ManimRendererService.RenderAttemptResult result = service.render(
+                String.join("\n",
+                        "from manim import *",
+                        "from manim_voiceover import VoiceoverScene",
+                        "from manim_voiceover.services.gtts import GTTSService",
+                        "",
+                        "class DemoScene(VoiceoverScene):",
+                        "    def construct(self):",
+                        "        with self.voiceover(text=\"中文旁白\") as tracker:",
+                        "            self.wait(tracker.duration)"),
+                "DemoScene",
+                "low",
+                tempDir
+        );
+
+        assertFalse(result.success());
+        assertTrue(result.stderr().contains("stop after inspection"));
+    }
+
+    @Test
     void geometryExportHelperTracksOnlyExplicitRemovalTargets() {
         ManimRendererService service = new ManimRendererService() {
             @Override

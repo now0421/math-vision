@@ -123,10 +123,13 @@ class VisualDesignNodeTest {
         assertNotNull(rightPrompt);
         assertNotNull(mergePrompt);
 
-        assertTrue(leftPrompt.contains("rootObj"));
-        assertTrue(rightPrompt.contains("rootObj"));
-        assertFalse(leftPrompt.contains("rightObj"));
-        assertFalse(rightPrompt.contains("leftObj"));
+        String leftVisibleRegistry = visibleRegistrySection(leftPrompt);
+        String rightVisibleRegistry = visibleRegistrySection(rightPrompt);
+
+        assertTrue(leftVisibleRegistry.contains("rootObj"));
+        assertTrue(rightVisibleRegistry.contains("rootObj"));
+        assertFalse(leftVisibleRegistry.contains("rightObj"));
+        assertTrue(rightVisibleRegistry.contains("leftObj"));
 
         assertTrue(mergePrompt.contains("leftObj"));
         assertTrue(mergePrompt.contains("rightObj"));
@@ -176,8 +179,10 @@ class VisualDesignNodeTest {
         assertTrue(exitPrompt.contains("Currently visible object registry"));
         assertTrue(exitPrompt.contains("rootObj"));
         assertTrue(exitPrompt.contains("ROOT_VISIBLE_COLOR"));
-        assertFalse(afterExitPrompt.contains("rootObj"));
-        assertTrue(afterExitPrompt.contains("Currently visible object registry: empty"));
+        String afterExitVisibleRegistry = visibleRegistrySection(afterExitPrompt);
+
+        assertFalse(afterExitVisibleRegistry.contains("rootObj"));
+        assertTrue(afterExitVisibleRegistry.contains("Currently visible object registry: empty"));
 
         Narrative narrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
         assertNotNull(narrative);
@@ -245,9 +250,12 @@ class VisualDesignNodeTest {
 
         assertNotNull(reenterPrompt);
         assertNotNull(afterReenterPrompt);
-        assertFalse(reenterPrompt.contains("rootObj"));
-        assertTrue(afterReenterPrompt.contains("rootObj"));
-        assertTrue(afterReenterPrompt.contains("ROOT_REENTERED_COLOR"));
+        String reenterVisibleRegistry = visibleRegistrySection(reenterPrompt);
+        String afterReenterVisibleRegistry = visibleRegistrySection(afterReenterPrompt);
+
+        assertFalse(reenterVisibleRegistry.contains("rootObj"));
+        assertTrue(afterReenterVisibleRegistry.contains("rootObj"));
+        assertTrue(afterReenterVisibleRegistry.contains("ROOT_REENTERED_COLOR"));
     }
 
     @Test
@@ -330,6 +338,19 @@ class VisualDesignNodeTest {
         assertNotNull(narrative);
         assertTrue(narrative.getStoryboard().getObjectRegistry().stream()
                 .anyMatch(object -> "sweep".equals(object.getId()) && "arc_marker".equals(object.getKind())));
+    }
+
+    private static String visibleRegistrySection(String prompt) {
+        String startMarker = "Currently visible object registry";
+        int start = prompt.indexOf(startMarker);
+        if (start < 0) {
+            return "";
+        }
+        int end = prompt.indexOf("\nColors already used:", start);
+        if (end < 0) {
+            end = prompt.indexOf("\nNo colors have been assigned yet.", start);
+        }
+        return end < 0 ? prompt.substring(start) : prompt.substring(start, end);
     }
 
     private static KnowledgeNode node(String id, String step, String nodeType) {

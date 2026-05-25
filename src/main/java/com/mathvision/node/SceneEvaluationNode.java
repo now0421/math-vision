@@ -290,8 +290,9 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 ? WorkflowConfig.OUTPUT_TARGET_GEOGEBRA
                 : WorkflowConfig.OUTPUT_TARGET_MANIM);
         request.setExpectedSceneName(isGeoGebra ? GeoGebraCodeUtils.EXPECTED_FIGURE_NAME : "MainScene");
+        String outputTarget = isGeoGebra ? WorkflowConfig.OUTPUT_TARGET_GEOGEBRA : WorkflowConfig.OUTPUT_TARGET_MANIM;
         request.setStoryboardJson(storyboard != null
-                ? StoryboardJsonBuilder.buildForSceneEvaluationFix(storyboard)
+                ? StoryboardJsonBuilder.buildForSceneEvaluationFix(storyboard, outputTarget)
                 : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
         request.setFixHistory(new ArrayList<>(retryState.fixHistory));
         return request;

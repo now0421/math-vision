@@ -103,56 +103,71 @@ public final class StoryboardSchemaPrompts {
             "        { \"id\": \"string, id of an object removed in this scene\" }";
 
     /** Schema for the actions array entries within a scene. */
-    public static final String ACTION_SCHEMA =
-            "        {\n"
-                    + "          \"order\": \"integer, execution order within the scene\",\n"
-                    + "          \"type\": \"string, action category such as create|write|transform|highlight|move|fade_out|camera; each action should correspond to one learner-visible beat or one small grouped beat\",\n"
-                    + "          \"targets\": [\n"
-                    + "            \"string, object id mainly affected by the action\"\n"
-                    + "          ],\n"
-                    + "          \"description\": \"string, precise visual action intent and visible change, including why the learner should notice this beat\"\n"
-                    + "        }";
+    public static final String ACTION_SCHEMA = actionSchema("geogebra");
+
+    public static String actionSchema(String outputTarget) {
+        String base = "        {\n"
+                + "          \"order\": \"integer, execution order within the scene\",\n"
+                + "          \"type\": \"string, action category such as create|write|transform|highlight|move|fade_out|camera; each action should correspond to one learner-visible beat or one small grouped beat\",\n"
+                + "          \"targets\": [\n"
+                + "            \"string, object id mainly affected by the action\"\n"
+                + "          ],\n"
+                + "          \"description\": \"string, precise visual action intent and visible change, including why the learner should notice this beat\"";
+        if (isManim(outputTarget)) {
+            base += ",\n"
+                    + "          \"voiceover_text\": \"string, Manim-only Chinese narration for this action beat, synchronized with the visible change\",\n"
+                    + "          \"expected_seconds\": \"number, optional Manim-only expected duration for this narrated beat\"";
+        }
+        return base + "\n        }";
+    }
 
     /** Schema for the notes_for_codegen array entries within a scene. */
     public static final String NOTES_FOR_CODEGEN_SCHEMA =
             "        \"string, hard scene-level implementation constraint that downstream generation and repair must preserve\"";
 
     /** Full scene-field block (scene_id through notes_for_codegen) excluding the wrapping braces. */
-    public static final String SCENE_FIELDS_SCHEMA =
-            "    \"scene_id\": \"string, stable unique scene id\",\n"
-                    + "    \"title\": \"string, short production label for the scene\",\n"
-                    + "    \"goal\": \"string, what the learner should understand or what solving progress should be achieved by the end of the scene\",\n"
-                    + "    \"narration\": \"string, concise learner-facing voiceover text for this scene only; its sentences should align with visible beats\",\n"
-                    + "    \"duration_seconds\": \"integer, approximate runtime for pacing\",\n"
-                    + "    \"scene_mode\": \"string, 2d by default or 3d only when depth is essential\",\n"
-                    + "    \"camera_anchor\": \"string, main camera focus region or anchor object\",\n"
-                    + "    \"camera_plan\": \"string, how the camera behaves in this scene\",\n"
-                    + "    \"layout_goal\": \"string, intended screen composition and relative placement of major elements, including where the main visual focus and empty breathing room should be\",\n"
-                    + "    \"safe_area_plan\": \"string, how important content stays readable and inside the safe frame\",\n"
-                    + "    \"screen_overlay_plan\": \"string, what text or formulas stay fixed relative to the viewport rather than the main geometry, and where the safe overlay zone is\",\n"
-                    + "    \"constraints\": [\"object, machine-readable scene-level invariant with domain, relation, refs, optional parameters, strength, and reason\"],\n"
-                    + "    \"entering_objects\": [\n"
-                    + ENTERING_OBJECT_SCHEMA + "\n"
-                    + "    ],\n"
-                    + "    \"persistent_objects\": [\n"
-                    + PERSISTENT_OBJECT_SCHEMA + "\n"
-                    + "    ],\n"
-                    + "    \"exiting_objects\": [\n"
-                    + EXITING_OBJECT_SCHEMA + "\n"
-                    + "    ],\n"
-                    + "    \"actions\": [\n"
-                    + ACTION_SCHEMA + "\n"
-                    + "    ],\n"
-                    + "    \"notes_for_codegen\": [\n"
-                    + NOTES_FOR_CODEGEN_SCHEMA + "\n"
-                    + "    ]";
+    public static final String SCENE_FIELDS_SCHEMA = sceneFieldsSchema("geogebra");
+
+    public static String sceneFieldsSchema(String outputTarget) {
+        return "    \"scene_id\": \"string, stable unique scene id\",\n"
+                + "    \"title\": \"string, short production label for the scene\",\n"
+                + "    \"goal\": \"string, what the learner should understand or what solving progress should be achieved by the end of the scene\",\n"
+                + "    \"narration\": \"string, concise learner-facing narration text for this scene only; its sentences should align with visible beats\",\n"
+                + "    \"duration_seconds\": \"integer, approximate runtime for pacing\",\n"
+                + "    \"scene_mode\": \"string, 2d by default or 3d only when depth is essential\",\n"
+                + "    \"camera_anchor\": \"string, main camera focus region or anchor object\",\n"
+                + "    \"camera_plan\": \"string, how the camera behaves in this scene\",\n"
+                + "    \"layout_goal\": \"string, intended screen composition and relative placement of major elements, including where the main visual focus and empty breathing room should be\",\n"
+                + "    \"safe_area_plan\": \"string, how important content stays readable and inside the safe frame\",\n"
+                + "    \"screen_overlay_plan\": \"string, what text or formulas stay fixed relative to the viewport rather than the main geometry, and where the safe overlay zone is\",\n"
+                + "    \"constraints\": [\"object, machine-readable scene-level invariant with domain, relation, refs, optional parameters, strength, and reason\"],\n"
+                + "    \"entering_objects\": [\n"
+                + ENTERING_OBJECT_SCHEMA + "\n"
+                + "    ],\n"
+                + "    \"persistent_objects\": [\n"
+                + PERSISTENT_OBJECT_SCHEMA + "\n"
+                + "    ],\n"
+                + "    \"exiting_objects\": [\n"
+                + EXITING_OBJECT_SCHEMA + "\n"
+                + "    ],\n"
+                + "    \"actions\": [\n"
+                + actionSchema(outputTarget) + "\n"
+                + "    ],\n"
+                + "    \"notes_for_codegen\": [\n"
+                + NOTES_FOR_CODEGEN_SCHEMA + "\n"
+                + "    ]";
+    }
+
+    private static boolean isManim(String outputTarget) {
+        return outputTarget == null || "manim".equalsIgnoreCase(outputTarget);
+    }
 
     /** Schema for an object_registry / new_objects entry: identity, content, style, and hard constraints. */
     public static final String OBJECT_DEFINITION_SCHEMA =
             "    {\n"
                     + "      \"id\": \"string, stable visual identity for continuity and transforms; keep ids concise and non-redundant since `kind` carries the type; follow only the active backend's naming rules\",\n"
                     + "      \"kind\": \"string, concrete render/construction primitive such as point|line|ray|segment|vector|circle|arc|angle_marker|right_angle_marker|polygon|polyline|axes|number_line|function_curve|parametric_curve|implicit_curve|conic|region|brace|tick_marker|distance_marker|text|equation|image; prefer text/equation over text_card/formula_card (cards should only be used when the box itself is teaching-essential); avoid broad kinds like graph/helper when a concrete primitive fits; do not repeat this type inside `id`\",\n"
-                    + "      \"content\": \"string, mathematical or visual content shown by the object; if this text references other storyboard objects, mention those objects by id only and do not repeat their kind\",\n"
+                    + "      \"content\": \"string, exact mathematical or visual content shown by the object; keep visible labels concise and mathematically named, especially kind=text (e.g. B′ not 反射点B′, l not 直线l, AB not 线段AB); visible natural-language content must be Chinese; if this text references other storyboard objects, mention those objects by id only and do not repeat their kind\",\n"
                     + STYLE_SCHEMA + ",\n"
                     + "      \"constraints\": [\n"
                     + "        {\n"

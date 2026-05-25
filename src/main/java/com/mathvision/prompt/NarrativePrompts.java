@@ -49,10 +49,13 @@ public final class NarrativePrompts {
                     + "- Use a single typed `style` object per storyboard object, never a style array and never custom style keys.\n"
                     + "- Style describes the object itself only. Create separate storyboard objects for labels, badges, helper outlines, cards, or callouts that have their own identity.\n"
                     + "- Prefer `kind = text` or `kind = equation` over `kind = text_card` or `kind = formula_card`. Display text directly without a background box/card unless the card itself is teaching-essential (e.g. a titled result panel). Most formulas and labels are clearer without a surrounding box. Convert existing text_card/formula_card objects to text/equation when the card is not teaching-essential.\n"
+                    + "- Simplify visible mathematical label content aggressively. For `kind = text` objects attached to geometry or representing element names, `content` must be the exact concise mathematical label only: use `B′`, `l`, `AB`, `P_min`, not `反射点B′`, `直线l`, `线段AB`, or other descriptive phrases. Keep prose in narration, action descriptions, goals, or notes instead.\n"
+                    + "- Do not expand a valid symbolic label into Chinese prose just to satisfy visible-text rules; symbolic mathematical labels and equations are valid as-is.\n"
                     + "- Preserve the motion-first visual-action teaching intent from exploration and visual design: do not turn a movable reveal, construction, transform, or manipulation into a static text/formula-only explanation unless backend practicality makes the motion impossible.\n"
                     + "- When repairing clutter, overlap, or redundancy, simplify supporting text or cards before removing the movable object, action, dependency, or visual evidence that carries the idea.\n"
                     + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n"
-                    + SystemPrompts.ASCII_TEXT_RULES;
+                    + SystemPrompts.ASCII_TEXT_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES;
 
     private static final String GEOGEBRA_RULES =
             "GeoGebra-specific storyboard validation rules:\n"
@@ -71,24 +74,25 @@ public final class NarrativePrompts {
                     + StoryboardSchemaPrompts.MANIM_COMPANION_LABEL_EXAMPLE
                     + "- Prefer dark backgrounds (#1C1C1C to #2D2B55) with light content for maximum contrast and cinema feel when the storyboard does not already establish a different valid style.\n";
 
-    private static final String OUTPUT_FORMAT =
-            "Output format:\n"
-                    + StoryboardSchemaPrompts.JSON_SYNTAX_REQUIREMENTS
-                    + "Return a JSON object with this shape:\n"
-                    + StoryboardSchemaPrompts.PATCH_SEMANTICS_NOTE
-                    + "{\n"
-                    + "  \"continuity_plan\": \"string, how object identities, anchors, and layout stay stable across scenes\",\n"
-                    + "  \"global_visual_rules\": [\"string, global staging rule that should hold across the whole presentation\"],\n"
-                    + "  \"object_registry\": [\n"
-                    + StoryboardSchemaPrompts.OBJECT_DEFINITION_SCHEMA
-                    + "\n  ],\n"
-                    + "  \"scenes\": [\n"
-                    + "    {\n"
-                    + StoryboardSchemaPrompts.SCENE_FIELDS_SCHEMA
-                    + "\n    }\n"
-                    + "  ]\n"
-                    + "}\n"
-                    + StoryboardSchemaPrompts.TEXT_STYLE_SEMANTICS;
+    private static String outputFormat(String outputTarget) {
+        return "Output format:\n"
+                + StoryboardSchemaPrompts.JSON_SYNTAX_REQUIREMENTS
+                + "Return a JSON object with this shape:\n"
+                + StoryboardSchemaPrompts.PATCH_SEMANTICS_NOTE
+                + "{\n"
+                + "  \"continuity_plan\": \"string, how object identities, anchors, and layout stay stable across scenes\",\n"
+                + "  \"global_visual_rules\": [\"string, global staging rule that should hold across the whole presentation\"],\n"
+                + "  \"object_registry\": [\n"
+                + StoryboardSchemaPrompts.OBJECT_DEFINITION_SCHEMA
+                + "\n  ],\n"
+                + "  \"scenes\": [\n"
+                + "    {\n"
+                + StoryboardSchemaPrompts.sceneFieldsSchema(outputTarget)
+                + "\n    }\n"
+                + "  ]\n"
+                + "}\n"
+                + StoryboardSchemaPrompts.TEXT_STYLE_SEMANTICS;
+    }
 
     private static final String EXAMPLE_OUTPUT =
             "Example output:\n"
@@ -118,12 +122,13 @@ public final class NarrativePrompts {
                     + "  ]\n"
                     + "}\n\n";
 
-    private static final String RESPONSE_RULES =
-            OUTPUT_FORMAT
-                    + "\n"
-                    + EXAMPLE_OUTPUT
-                    + SystemPrompts.TOOL_CALL_HINT
-                    + SystemPrompts.JSON_ONLY_OUTPUT + " Do not wrap it in markdown.";
+    private static String responseRules(String outputTarget) {
+        return outputFormat(outputTarget)
+                + "\n"
+                + EXAMPLE_OUTPUT
+                + SystemPrompts.TOOL_CALL_HINT
+                + SystemPrompts.JSON_ONLY_OUTPUT + " Do not wrap it in markdown.";
+    }
 
     // ========================================================================
     // Placement enrichment prompts (for layout validation of derived objects)
@@ -174,6 +179,9 @@ public final class NarrativePrompts {
     public static String buildRepairRules(String outputTarget) {
         String defaultBackground = WorkflowConfig.OUTPUT_TARGET_GEOGEBRA.equalsIgnoreCase(outputTarget)
                 ? "#FFFFFF" : "#000000";
+        String backendSpecific = "manim".equalsIgnoreCase(outputTarget)
+                ? SystemPrompts.MANIM_VOICEOVER_RULES
+                : "";
         return "Storyboard validation repair rules:\n"
                 + "Constraint relation catalog for reference:\n"
                 + com.mathvision.util.StoryboardConstraintCatalog.detailedCatalogSummary()
@@ -188,9 +196,11 @@ public final class NarrativePrompts {
                 + " at ratio >= 3.0.\n"
                 + "- If a derived object is out of bounds, adjust upstream source objects from structured constraint refs, the whole constrained group, or the camera/layout; do not repair by directly moving that derived object when it would contradict structured constraints.\n"
                 + "- Every dependency-driven object must define structured constraints for hard geometric invariants, with refs naming owner objects and source objects using catalog role names.\n"
-                + "- ASCII repair is mandatory: rewrite every JSON string value so it contains only characters with code <= 0x7F.\n"
-                + "- Apply this normalization map wherever needed: U+2018 and U+2019 -> `'`; U+201C and U+201D -> `\"`; U+2013 and U+2014 -> `-`; U+2212 -> `-`; U+00D7 -> `x`; U+2260 -> `!=`; U+2264 -> `<=`; U+2265 -> `>=`.\n"
-                + "- Repair examples: `hiker` + U+2019 + `s` becomes `hiker's`; `PB'` + U+2014 + `a` becomes `PB' - a`; `right` + U+2014 + `the` becomes `right - the`; `P_test ` + U+2260 + ` P_min` becomes `P_test != P_min`.\n"
+                + "- Place each object-level constraint on the registry object named by its catalog owner ref role. For example, `point_at` with refs {\"point\":\"lLeft\"} must be stored on object `lLeft`, not on parent line `l`; `label_for` with refs {\"label\":\"labelA\",\"anchor\":\"A\"} must be stored on `labelA`, not on point `A`.\n"
+                + "- ASCII repair applies only to backend identifiers such as scene_id, object ids, constraint ids, action target ids, and structured ref role names; preserve Chinese learner-facing titles, narration, object content, descriptions, and visible text.\n"
+                + "- Visible natural-language `object_registry[].content` must be Chinese; symbolic mathematical labels and equations should stay concise and symbolic.\n"
+                + "- For `kind = text` objects that label mathematical elements, simplify content to the mathematical name only: `B′`, not `反射点B′`; `l`, not `直线l`; `AB`, not `线段AB`.\n"
+                + backendSpecific
                 + "Angle boundary-vertex consistency rules:\n"
                 + "- For every angle_between, right_angle_at, or angle-like arc_sweep constraint, each boundary line (line_a, line_b, start_boundary, end_boundary, ray_a, ray_b) must pass through the declared vertex/anchor.\n"
                 + "- A boundary line passes through the vertex when a structured connector constraint names the vertex as one endpoint (e.g. `connects_points` refs include both endpoints; `line_through_points` or `ray_from_to` refs include the vertex and another point).\n"
@@ -210,10 +220,9 @@ public final class NarrativePrompts {
     public static String buildCleanupUserPrompt(String storyboardJson, java.util.List<String> issues) {
         StringBuilder userPrompt = new StringBuilder();
         userPrompt.append("Please clean up this storyboard so it is coherent, and ensure that all coordinate-based elements stay within bounds and do not visibly overlap.\n");
-        userPrompt.append("Preserve the original narrative order, object identity, and motion-first visual teaching intent as much as possible; only adjust the layout and wording where necessary.\n");
-        userPrompt.append("Replace every non-ASCII text token reported below with an ASCII equivalent across the full storyboard.\n");
-        userPrompt.append("For each reported token, locate every occurrence in the current storyboard and rewrite the surrounding sentence if needed so the whole string is ASCII-only. For example, replace curly apostrophes with straight apostrophes, em/en dashes with ` - ` or `-`, and mathematical comparison glyphs with ASCII operators such as `!=`, `<=`, or `>=`.\n");
-        userPrompt.append("Before returning, perform a final character-by-character pass over every JSON string value and ensure no character code is greater than 0x7F.\n");
+        userPrompt.append("Preserve the original narrative order, object identity, Chinese learner-facing text, and motion-first visual teaching intent as much as possible; only adjust the layout and wording where necessary.\n");
+        userPrompt.append("Apply ASCII cleanup only to backend identifiers such as scene_id, object ids, constraint ids, refs, and action target ids; do not ASCII-normalize titles, narration, descriptions, or visible object content. In Manim mode, also preserve voiceover text.\n");
+        userPrompt.append("Visible natural-language object content must be Chinese, but symbolic mathematical labels and equations should remain concise and symbolic. For `kind=text` objects that label geometry, simplify redundant descriptions to the element name only, e.g. `反射点B′` -> `B′`, `直线l` -> `l`, `线段AB` -> `AB`.\n");
         userPrompt.append("If you find issues, fix them directly. If there are no issues, still perform a full cleanup to make the storyboard more stable and readable.\n");
         if (issues != null && !issues.isEmpty()) {
             userPrompt.append("Static validation findings:\n");
@@ -242,7 +251,7 @@ public final class NarrativePrompts {
             prompt += SystemPrompts.STORYBOARD_FIELD_GUIDE_MANIM_REPAIR;
             prompt += "\n" + MANIM_RULES;
         }
-        prompt += "\n" + RESPONSE_RULES;
+        prompt += "\n" + responseRules(outputTarget);
         if ("geogebra".equalsIgnoreCase(outputTarget)) {
             return SystemPrompts.buildRulesSection(SystemPrompts.ensureGeoGebraStyleReference(prompt));
         }
@@ -281,7 +290,7 @@ public final class NarrativePrompts {
     public static String storyboardCodegenPrompt(Storyboard storyboard,
                                                  String outputTarget) {
         return storyboardCodegenPrompt(
-                StoryboardJsonBuilder.buildForCodegen(storyboard),
+                StoryboardJsonBuilder.buildForCodegen(storyboard, outputTarget),
                 outputTarget);
     }
 

@@ -303,12 +303,13 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                                              String sceneName,
                                              String generatedCode,
                                              StaticAnalysis analysis) {
+        String outputTarget = NodeSupport.resolveOutputTarget(workflowConfig);
         String storyboardJson = narrative != null && narrative.hasStoryboard()
-                ? StoryboardJsonBuilder.buildForCodegen(narrative.getStoryboard())
+                ? StoryboardJsonBuilder.buildForCodegen(narrative.getStoryboard(), outputTarget)
                 : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON;
         String staticAnalysisJson = JsonUtils.toPrettyJson(analysis);
         String userPrompt = CodeEvaluationPrompts.reviewUserPrompt(
-                sceneName, storyboardJson, staticAnalysisJson, generatedCode, NodeSupport.resolveOutputTarget(workflowConfig));
+                sceneName, storyboardJson, staticAnalysisJson, generatedCode, outputTarget);
 
         try {
             JsonNode payload = AiRequestUtils.requestJsonObjectAsync(
@@ -383,8 +384,9 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         request.setTargetDescription(codeResult.getTargetDescription());
         request.setSceneName(sceneName);
         request.setExpectedSceneName(sceneName);
+        String outputTarget = NodeSupport.resolveOutputTarget(workflowConfig);
         request.setStoryboardJson(narrative != null && narrative.hasStoryboard()
-                ? StoryboardJsonBuilder.buildForCodegen(narrative.getStoryboard())
+                ? StoryboardJsonBuilder.buildForCodegen(narrative.getStoryboard(), outputTarget)
                 : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
         request.setStaticAnalysisJson(JsonUtils.toPrettyJson(result.getFinalStaticAnalysis()));
         request.setReviewJson(JsonUtils.toPrettyJson(result.getFinalReview()));

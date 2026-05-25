@@ -327,7 +327,9 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
 
         // All remaining checks use the original storyboard
         issues.addAll(validateStoryboardObjectStructure(storyboard));
-        issues.addAll(validateAsciiText(storyboard));
+        issues.addAll(validateIdentifierAscii(storyboard));
+        issues.addAll(validateVisibleChineseText(storyboard));
+        issues.addAll(validateManimVoiceoverChineseText(storyboard));
         issues.addAll(validateStoryboardColors(storyboard));
         issues.addAll(validateStructuredConstraints(storyboard));
         issues.addAll(validateGeometricMarkerDefinitions(storyboard));
@@ -1142,56 +1144,240 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         return null;
     }
 
-    private List<String> validateAsciiText(Storyboard storyboard) {
+    private List<String> validateIdentifierAscii(Storyboard storyboard) {
         List<String> issues = new ArrayList<>();
-        List<String> nonAsciiTokens = findNonAsciiTextTokens(storyboard);
-        if (!nonAsciiTokens.isEmpty()) {
-            issues.add("Storyboard contains non-ASCII text tokens that must be replaced with ASCII equivalents: "
-                    + nonAsciiTokens);
+        if (storyboard == null) {
+            return issues;
+        }
+        validateIdentifier("continuity_plan/global scope", null, issues);
+        if (storyboard.getObjectRegistry() != null) {
+            for (int i = 0; i < storyboard.getObjectRegistry().size(); i++) {
+                StoryboardObject object = storyboard.getObjectRegistry().get(i);
+                String objectLabel = "object_registry[" + i + "]";
+                validateIdentifier(objectLabel + ".id", object != null ? object.getId() : null, issues);
+                validateConstraintIdentifiers(objectLabel,
+                        object != null ? object.getConstraints() : null,
+                        issues);
+            }
+        }
+        if (storyboard.getScenes() != null) {
+            for (int i = 0; i < storyboard.getScenes().size(); i++) {
+                StoryboardScene scene = storyboard.getScenes().get(i);
+                String sceneLabel = "scene " + (i + 1);
+                validateIdentifier(sceneLabel + ".scene_id", scene != null ? scene.getSceneId() : null, issues);
+                validateConstraintIdentifiers(sceneLabel,
+                        scene != null ? scene.getConstraints() : null,
+                        issues);
+                validatePatchIdentifiers(sceneLabel + ".entering_objects",
+                        scene != null ? scene.getEnteringObjects() : null,
+                        issues);
+                validatePatchIdentifiers(sceneLabel + ".persistent_objects",
+                        scene != null ? scene.getPersistentObjects() : null,
+                        issues);
+                validatePatchIdentifiers(sceneLabel + ".exiting_objects",
+                        scene != null ? scene.getExitingObjects() : null,
+                        issues);
+                validateActionTargetIdentifiers(sceneLabel,
+                        scene != null ? scene.getActions() : null,
+                        issues);
+            }
         }
         return issues;
     }
 
-    private List<String> findNonAsciiTextTokens(Storyboard storyboard) {
-        LinkedHashSet<String> tokens = new LinkedHashSet<>();
-        if (storyboard == null) {
-            return new ArrayList<>();
-        }
-        JsonNode root = JsonUtils.mapper().valueToTree(storyboard);
-        collectNonAsciiTextTokens(root, tokens);
-        return new ArrayList<>(tokens);
-    }
-
-    private void collectNonAsciiTextTokens(JsonNode node, Set<String> tokens) {
-        if (node == null || node.isNull()) {
+    private void validatePatchIdentifiers(String label,
+                                          List<StoryboardObject> objects,
+                                          List<String> issues) {
+        if (objects == null) {
             return;
         }
-        if (node.isTextual()) {
-            addNonAsciiTokens(node.asText(), tokens);
-            return;
-        }
-        if (node.isArray()) {
-            for (JsonNode item : node) {
-                collectNonAsciiTextTokens(item, tokens);
-            }
-            return;
-        }
-        if (node.isObject()) {
-            node.fields().forEachRemaining(entry ->
-                    collectNonAsciiTextTokens(entry.getValue(), tokens));
+        for (int i = 0; i < objects.size(); i++) {
+            StoryboardObject object = objects.get(i);
+            validateIdentifier(label + "[" + i + "].id", object != null ? object.getId() : null, issues);
         }
     }
 
-    private void addNonAsciiTokens(String text, Set<String> tokens) {
-        if (isBlank(text) || !containsNonAscii(text)) {
+    private void validateActionTargetIdentifiers(String sceneLabel,
+                                                 List<Narrative.StoryboardAction> actions,
+                                                 List<String> issues) {
+        if (actions == null) {
             return;
         }
-        for (String rawToken : text.split("\\s+")) {
-            String token = trimAsciiBoundaryPunctuation(rawToken);
-            if (!token.isBlank() && containsNonAscii(token)) {
-                tokens.add(token);
+        for (int i = 0; i < actions.size(); i++) {
+            Narrative.StoryboardAction action = actions.get(i);
+            if (action == null || action.getTargets() == null) {
+                continue;
+            }
+            for (int j = 0; j < action.getTargets().size(); j++) {
+                validateIdentifier(sceneLabel + ".actions[" + i + "].targets[" + j + "]",
+                        action.getTargets().get(j), issues);
             }
         }
+    }
+
+    private void validateConstraintIdentifiers(String ownerLabel,
+                                               List<StoryboardConstraint> constraints,
+                                               List<String> issues) {
+        if (constraints == null) {
+            return;
+        }
+        for (int i = 0; i < constraints.size(); i++) {
+            StoryboardConstraint constraint = constraints.get(i);
+            if (constraint == null) {
+                continue;
+            }
+            String label = ownerLabel + ".constraints[" + i + "]";
+            validateIdentifier(label + ".id", constraint.getId(), issues);
+            validateAsciiKeyMap(label + ".refs", constraint.getRefs(), issues);
+            validateAsciiKeyMap(label + ".parameters", constraint.getParameters(), issues);
+        }
+    }
+
+    private void validateAsciiKeyMap(String label,
+                                     Map<String, Object> map,
+                                     List<String> issues) {
+        if (map == null) {
+            return;
+        }
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            validateIdentifier(label + " key", entry.getKey(), issues);
+            if (label.endsWith(".refs")) {
+                validateRefIdentifierValue(label + "." + entry.getKey(), entry.getValue(), issues);
+            }
+        }
+    }
+
+    private void validateRefIdentifierValue(String label,
+                                            Object value,
+                                            List<String> issues) {
+        if (value == null) {
+            return;
+        }
+        if (value instanceof String) {
+            validateIdentifier(label, (String) value, issues);
+            return;
+        }
+        if (value instanceof Iterable<?>) {
+            int i = 0;
+            for (Object item : (Iterable<?>) value) {
+                validateRefIdentifierValue(label + "[" + i + "]", item, issues);
+                i++;
+            }
+            return;
+        }
+        if (value instanceof Map<?, ?>) {
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
+                validateIdentifier(label + " nested key", String.valueOf(entry.getKey()), issues);
+                validateRefIdentifierValue(label + "." + entry.getKey(), entry.getValue(), issues);
+            }
+        }
+    }
+
+    private void validateIdentifier(String label, String value, List<String> issues) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        String trimmed = value.trim();
+        if (containsNonAscii(trimmed)) {
+            issues.add(label + ": identifier must be ASCII-only, but was '" + trimmed + "'");
+        }
+        if (containsWhitespace(trimmed)) {
+            issues.add(label + ": identifier must not contain whitespace, but was '" + trimmed + "'");
+        }
+        if (containsControlCharacter(trimmed)) {
+            issues.add(label + ": identifier must not contain control characters");
+        }
+    }
+
+    private List<String> validateVisibleChineseText(Storyboard storyboard) {
+        List<String> issues = new ArrayList<>();
+        if (storyboard == null || storyboard.getObjectRegistry() == null) {
+            return issues;
+        }
+        for (int i = 0; i < storyboard.getObjectRegistry().size(); i++) {
+            StoryboardObject object = storyboard.getObjectRegistry().get(i);
+            if (!requiresChineseVisibleContent(object)) {
+                continue;
+            }
+            String content = object.getContent();
+            if (!containsCjk(content)) {
+                String id = StoryboardPatchResolver.objectId(object);
+                issues.add("object_registry[" + i + "]" + (id != null ? " ('" + id + "')" : "")
+                        + ": visible natural-language content must be Chinese");
+            }
+        }
+        return issues;
+    }
+
+    private boolean requiresChineseVisibleContent(StoryboardObject object) {
+        if (object == null || isBlank(object.getContent()) || isSymbolicOrFormulaContent(object.getContent())) {
+            return false;
+        }
+        String kind = normalizeForSemanticCheck(object.getKind());
+        return containsAny(kind,
+                " text ", " text_card ", " textcard ", " caption ", " callout ", " title ", " note ", " label ");
+    }
+
+    private List<String> validateManimVoiceoverChineseText(Storyboard storyboard) {
+        List<String> issues = new ArrayList<>();
+        if (!WorkflowConfig.OUTPUT_TARGET_MANIM.equalsIgnoreCase(outputTarget)
+                || storyboard == null || storyboard.getScenes() == null) {
+            return issues;
+        }
+        for (int sceneIndex = 0; sceneIndex < storyboard.getScenes().size(); sceneIndex++) {
+            StoryboardScene scene = storyboard.getScenes().get(sceneIndex);
+            if (scene == null || scene.getActions() == null) {
+                continue;
+            }
+            for (int actionIndex = 0; actionIndex < scene.getActions().size(); actionIndex++) {
+                Narrative.StoryboardAction action = scene.getActions().get(actionIndex);
+                if (action == null || isBlank(action.getVoiceoverText())) {
+                    continue;
+                }
+                if (!containsCjk(action.getVoiceoverText())) {
+                    issues.add("scene " + (sceneIndex + 1) + " actions[" + actionIndex
+                            + "]: voiceover_text must be Chinese in Manim mode");
+                }
+            }
+        }
+        return issues;
+    }
+
+    private boolean isSymbolicOrFormulaContent(String text) {
+        if (text == null) {
+            return true;
+        }
+        String trimmed = text.trim();
+        if (trimmed.isEmpty()) {
+            return true;
+        }
+        if (containsCjk(trimmed)) {
+            return true;
+        }
+        String normalized = trimmed.replace("′", "'").replace("’", "'");
+        if (normalized.matches("[A-Za-z][A-Za-z0-9_']{0,8}")) {
+            return true;
+        }
+        if (trimmed.matches("[A-Za-zΑ-Ωα-ω][A-Za-z0-9Α-Ωα-ω_′'’]{0,8}")) {
+            return true;
+        }
+        return trimmed.matches(".*[=+\\-*/^<>\\\\_{}()\\[\\]0-9].*");
+    }
+
+    private boolean containsCjk(String text) {
+        if (text == null) {
+            return false;
+        }
+        for (int i = 0; i < text.length(); i++) {
+            Character.UnicodeScript script = Character.UnicodeScript.of(text.charAt(i));
+            if (script == Character.UnicodeScript.HAN
+                    || script == Character.UnicodeScript.HIRAGANA
+                    || script == Character.UnicodeScript.KATAKANA
+                    || script == Character.UnicodeScript.HANGUL) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean containsNonAscii(String text) {
@@ -1206,23 +1392,28 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         return false;
     }
 
-    private String trimAsciiBoundaryPunctuation(String token) {
-        if (token == null || token.isBlank()) {
-            return "";
+    private boolean containsWhitespace(String text) {
+        if (text == null) {
+            return false;
         }
-        int start = 0;
-        int end = token.length();
-        while (start < end && isAsciiBoundaryPunctuation(token.charAt(start))) {
-            start++;
+        for (int i = 0; i < text.length(); i++) {
+            if (Character.isWhitespace(text.charAt(i))) {
+                return true;
+            }
         }
-        while (end > start && isAsciiBoundaryPunctuation(token.charAt(end - 1))) {
-            end--;
-        }
-        return token.substring(start, end);
+        return false;
     }
 
-    private boolean isAsciiBoundaryPunctuation(char ch) {
-        return ch <= 0x7F && !Character.isLetterOrDigit(ch);
+    private boolean containsControlCharacter(String text) {
+        if (text == null) {
+            return false;
+        }
+        for (int i = 0; i < text.length(); i++) {
+            if (Character.isISOControl(text.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void validateSceneLayout(String sceneLabel,

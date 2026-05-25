@@ -12,6 +12,9 @@ public final class CodeGenerationPrompts {
                     + "Generate complete, runnable, maintainable Python code that implements the storyboard.\n"
                     + "Treat the provided storyboard JSON as an execution specification, but distinguish canonical object semantics from per-scene visual-state patches.\n\n"
                     + SystemPrompts.STORYBOARD_AUTHORITY_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
+                    + SystemPrompts.MANIM_VOICEOVER_RULES
+                    + SystemPrompts.MANIM_CHINESE_TEXT_RENDERING_RULES
                     + "Mandatory rules:\n"
                     + "- Use `from manim import *`.\n"
                     + "- Do not invent learner-visible objects that are not declared in the storyboard. This includes point labels, line labels, captions, formula badges, helper overlays, angle labels, and explanatory text.\n"
@@ -22,6 +25,7 @@ public final class CodeGenerationPrompts {
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_MANIM + "\n"
                     + "Additional code generation rules:\n"
                     + "- `object_registry[].content` describes candidate visible content; implement only storyboard-declared objects that are necessary or helpful for the teaching beat.\n"
+                    + "- Treat concise mathematical label content literally. If a `kind=text` object content is `B′`, `l`, `AB`, or similar, render exactly that label and do not expand it into descriptive visible prose such as `反射点B′`.\n"
                     + "- When registry `content`, constraint refs, or related fields mention another object, treat those mentions as object ids only rather than as repeated type declarations.\n"
                     + "- If structured constraints define attachment, motion, or derived geometry, implement that relationship continuously with the appropriate Manim mechanism.\n"
                     + "- If an object's actual coordinates are derived from other objects, recompute its coordinates from those source objects or use native backend/API construction helpers. Use scene placement as the preferred initial visual state for independent coordinates and non-derived constrained objects; adjust it only when needed for safe layout, readability, or consistency.\n\n"
@@ -70,6 +74,10 @@ public final class CodeGenerationPrompts {
                     + "- Return one full runnable file with helper methods when they improve clarity.\n"
                     + "- Use descriptive ASCII variable names derived from storyboard ids or roles.\n"
                     + "- Ensure the generated code clearly reflects the storyboard scene order and action order.\n"
+                    + "- When implementing at least one selected important `voiceover_text`, use `VoiceoverScene`, import `manim_voiceover` and `GTTSService`, define `VOICEOVER_SPEED`, call `self.set_speech_service(GTTSService(lang=\"zh-CN\", global_speed=VOICEOVER_SPEED))`, and synchronize selected important narrated beats with `with self.voiceover(text=...) as tracker:`.\n"
+                    + "- Do not implement every `voiceover_text` mechanically. Treat storyboard narration like storyboard elements: select the important narrations that clarify major setup, conceptual turns, non-obvious constructions, important reveals, comparisons, or conclusions, and omit routine narration that would make the animation verbose.\n"
+                    + "- For selected voiced beats with animation, set animation run time from `tracker.duration` unless storyboard timing gives a stricter visual constraint; for selected voiced beats without animation, wait for `tracker.duration`.\n"
+                    + "- Preserve selected Chinese `voiceover_text` and Chinese visible object content exactly unless shortening is required for readability.\n"
                     + "- Use subtitle-ready beats for major reveals when narration alignment matters.\n\n"
                     + SystemPrompts.MANIM_CODE_OUTPUT_FORMAT.replace("corrected", "runnable");
 
@@ -79,6 +87,9 @@ public final class CodeGenerationPrompts {
                     + "Rewrite the full file so it becomes valid, consistent, and ready for the next workflow stage.\n"
                     + "Fix every reported validation problem, preserve the teaching content, keep the requested scene class name, and proactively fix nearby Python/Manim mistakes.\n\n"
                     + SystemPrompts.STORYBOARD_REPAIR_AUTHORITY_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
+                    + SystemPrompts.MANIM_VOICEOVER_RULES
+                    + SystemPrompts.MANIM_CHINESE_TEXT_RENDERING_RULES
                     + "- Do not treat `style.label_visible` as permission to create a label. Render labels only when the storyboard declares explicit text/equation label objects.\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + SystemPrompts.MANIM_CODE_HYGIENE_RULES
@@ -91,6 +102,7 @@ public final class CodeGenerationPrompts {
                     + "You will receive generated GeoGebra command code together with static validation failures.\n"
                     + "Rewrite the full command script so it becomes valid, dependency-safe, and ready for the next workflow stage.\n"
                     + "Fix every reported validation problem, preserve the teaching content, keep the requested figure naming intent, and proactively fix nearby GeoGebra mistakes.\n"
+                    + "Preserve Chinese learner-facing visible text from storyboard object content; use English GeoGebra command names and ASCII backend identifiers.\n"
                     + "Use English GeoGebra command names.\n"
                     + SystemPrompts.STORYBOARD_REPAIR_AUTHORITY_RULES
                     + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
@@ -105,6 +117,7 @@ public final class CodeGenerationPrompts {
                     + "Generate complete, dependency-safe GeoGebra command code that implements the storyboard for teaching.\n"
                     + "Treat object_registry as the semantic authority for object identity, geometry meaning, and dependency relationships; treat scene placement/style as momentary visual-state guidance.\n\n"
                     + SystemPrompts.STORYBOARD_AUTHORITY_RULES
+                    + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
                     + "Mandatory rules:\n"
                     + "- Return GeoGebra commands, not Python and not JavaScript.\n"
                     + "- Build from base objects to derived objects in a clear dependency chain.\n"
@@ -231,6 +244,7 @@ public final class CodeGenerationPrompts {
                         + "If storyboard structured constraints, geometry constraints, or derived-object definitions are present, preserve them while fixing validation issues.\n"
                         + "Treat `notes_for_codegen` as hard scene-level constraints; preserve every concrete range, endpoint, lifecycle, visibility, transform, color, and layout instruction unless it is unsupported, in which case preserve the same intent with a documented equivalent.\n"
                         + "Apply text constructor mapping consistently across the file: `kind=equation -> MathTex`, `kind=text/text_card -> Text` unless the content clearly requires math rendering, and avoid `Tex` except for explicit non-math LaTeX text.\n"
+                        + "Preserve Chinese visible object content. Preserve only the selected important `voiceover_text` items that remain implemented; when voiceover is present, keep the `VoiceoverScene`/`GTTSService`/`self.voiceover(...)` structure synchronized with those selected action beats.\n"
                         + "Keep `%s` as the exact scene class name.\n"
                         + "Return ONLY the full Python code block.",
                 storyboardBlock, sceneName, generatedCode, problemList, sceneName));
@@ -258,6 +272,7 @@ public final class CodeGenerationPrompts {
                         + "If storyboard structured constraints, geometry constraints, or derived-object definitions are present, preserve them while fixing validation issues.\n"
                         + "Treat `notes_for_codegen` as hard scene-level constraints; preserve every concrete range, endpoint, lifecycle, visibility, style, and layout instruction unless it is unsupported, in which case preserve the same intent with a documented equivalent.\n"
                         + "Use English GeoGebra command names and preserve the figure naming intent around `%s`.\n"
+                        + "Preserve Chinese learner-facing visible text from storyboard object content; do not translate it to English or pinyin.\n"
                         + "Return ONLY the full GeoGebra code block.",
                 storyboardBlock, figureName, geoGebraCode, problemList, figureName));
     }
@@ -272,9 +287,10 @@ public final class CodeGenerationPrompts {
         return SystemPrompts.buildCurrentRequestSection(String.format(
                 "Compact storyboard JSON:\n```json\n%s\n```\n\n"
                         + "Generate ONLY the code skeleton for a single-file Manim animation:\n"
-                        + "- `from manim import *` and any other needed imports\n"
-                        + "- Constants and shared helper functions if needed\n"
-                        + "- `class MainScene(Scene):` (or ThreeDScene if any scene uses 3d)\n"
+                        + "- `from manim import *` and any other needed imports; include `manim_voiceover` and `GTTSService` only when you select at least one important `voiceover_text` to implement\n"
+                        + "- Constants and shared helper functions if needed; include `VOICEOVER_SPEED` only when voiceover is implemented\n"
+                        + "- `class MainScene(VoiceoverScene):` when at least one selected action will use `self.voiceover(...)`; otherwise use `Scene` or `ThreeDScene` if needed\n"
+                        + "- When voiceover is implemented, `construct()` must call `self.set_speech_service(GTTSService(lang=\"zh-CN\", global_speed=VOICEOVER_SPEED))` before the first scene method call\n"
                         + "- `def construct(self):` that initializes `self.objects = {}` before calling these scene methods in order: %s\n"
                         + "- A single indented placeholder line `# __SCENE_METHODS__` inside `MainScene`, after `construct()`\n\n"
                         + "Do NOT implement the scene methods yet and do not create `pass` stubs for them.\n"
@@ -314,6 +330,11 @@ public final class CodeGenerationPrompts {
                         + "  * `angle_between` / `right_angle_at` / `arc_sweep`: preserve the declared marker/arc, vertex or center/anchor, ordered boundary refs, sector, direction, and side. Choose a documented Manim API form that keeps those semantics; do not prefer a two-line, three-point, or hand-drawn implementation when it drops any declared ref or sector.\n"
                         + "- For any object with structured constraints that define derived geometry, measurements, or dependency-driven connectors, compute it from constraint refs or use native Manim/API geometry helpers. For non-derived constrained objects, use scene placement as the preferred initial visual state while preserving the constraint; adjust it if needed for safe layout, readability, or consistency.\n"
                         + "- Respect storyboard text semantics strictly: `kind=equation` means `MathTex(...)`; `kind=text` and `kind=text_card` mean `Text(...)` unless the content clearly requires math rendering; avoid `Tex(...)` unless the scene explicitly needs non-math LaTeX text.\n"
+                        + "- Render concise mathematical labels exactly as written in storyboard content, e.g. `B′`, `l`, or `AB`; do not expand labels into explanatory on-screen prose.\n"
+                        + "- Render Chinese prose with `Text(..., font=\"Microsoft YaHei\")`; keep formulas in `MathTex(...)`.\n"
+                        + "- If an action has `voiceover_text`, implement it only when it is one of the scene's important narration beats: major setup, conceptual turn, non-obvious construction, important reveal, comparison, or conclusion. Omit routine narration for simple entries, exits, waits, styling, obvious moves, or labels.\n"
+                        + "- For selected narrated actions, wrap the corresponding visible beat in `with self.voiceover(text=...) as tracker:` and synchronize animation or wait duration with `tracker.duration`.\n"
+                        + "- Preserve selected Chinese `voiceover_text` and Chinese visible object content exactly unless shortening is required for readability.\n"
                         + "- Return the method body via the write_scene_code tool.",
                 methodName, sceneIndex + 1, totalScenes,
                 sceneJson, methodName, methodName));
@@ -362,6 +383,7 @@ public final class CodeGenerationPrompts {
                         + "  * `angle_between` / `right_angle_at` / `arc_sweep`: preserve the declared marker/arc, vertex or center/anchor, ordered boundary refs, sector, direction, and side. Choose a documented GeoGebra form that keeps those semantics; do not prefer line-based, vector-based, three-point, or helper-object syntax when it drops any declared ref or sector.\n"
                         + "- For derived objects such as intersections, reflections, midpoints, projections, connecting segments, and angle markers, construct them from their dependency objects with native GeoGebra commands instead of hardcoded placement coordinates\n"
                         + "- Apply styles and visibility settings\n"
+                        + "- Preserve Chinese learner-facing visible text from storyboard object content; use English GeoGebra command names and ASCII backend identifiers.\n"
                         + "- Reference shared objects from the skeleton by their established names\n"
                         + "- The current request may include a Runtime object state block. Every id listed there has already been constructed in an earlier scene section; update/reuse those names instead of defining replacement objects under the same storyboard id.\n"
                         + "- Return the scene code via the write_scene_code tool.",

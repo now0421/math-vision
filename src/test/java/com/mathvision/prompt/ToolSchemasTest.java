@@ -233,6 +233,27 @@ class ToolSchemasTest {
     }
 
     @Test
+    void manimStoryboardSchemasIncludeVoiceoverFieldsButGeoGebraSchemasDoNot() {
+        String manimStoryboard = ToolSchemas.storyboard("manim");
+        String manimSceneDesign = ToolSchemas.sceneDesign("manim");
+        String geoGebraStoryboard = ToolSchemas.storyboard("geogebra");
+        String geoGebraSceneDesign = ToolSchemas.sceneDesign("geogebra");
+
+        assertTrue(manimStoryboard.contains("\"voiceover_text\""));
+        assertTrue(manimStoryboard.contains("\"expected_seconds\""));
+        assertTrue(manimSceneDesign.contains("\"voiceover_text\""));
+        assertTrue(manimSceneDesign.contains("\"expected_seconds\""));
+        assertFalse(geoGebraStoryboard.contains("voiceover_text"));
+        assertFalse(geoGebraStoryboard.contains("expected_seconds"));
+        assertFalse(geoGebraStoryboard.contains("VoiceoverScene"));
+        assertFalse(geoGebraStoryboard.contains("GTTSService"));
+        assertFalse(geoGebraStoryboard.contains("self.voiceover"));
+        assertFalse(geoGebraSceneDesign.contains("voiceover_text"));
+        assertFalse(geoGebraSceneDesign.contains("expected_seconds"));
+        assertFalse(geoGebraSceneDesign.contains("manim_voiceover"));
+    }
+
+    @Test
     void sceneDesignSchemaIncludesSceneLevelConstraintsContract() throws Exception {
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         com.fasterxml.jackson.databind.JsonNode schema = mapper.readTree(ToolSchemas.SCENE_DESIGN);

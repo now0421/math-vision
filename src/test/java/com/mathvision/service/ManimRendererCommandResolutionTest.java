@@ -2,9 +2,12 @@ package com.mathvision.service;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ManimRendererCommandResolutionTest {
 
@@ -25,6 +28,32 @@ class ManimRendererCommandResolutionTest {
         List<String> cmd = service.resolveManimLauncherPrefix();
 
         assertEquals(List.of("cmd.exe", "/c", "manim"), cmd);
+    }
+
+    @Test
+    void voiceoverRenderCommandDisablesCachingOnlyWhenRequested() {
+        ManimRendererService service = new ManimRendererService() {
+            @Override
+            protected boolean isWindows() {
+                return false;
+            }
+        };
+
+        List<String> normal = service.buildManimCommand(
+                Path.of("scene_render.py"),
+                "MainScene",
+                "low",
+                Path.of("out"),
+                false);
+        List<String> voiceover = service.buildManimCommand(
+                Path.of("scene_render.py"),
+                "MainScene",
+                "low",
+                Path.of("out"),
+                true);
+
+        assertFalse(normal.contains("--disable_caching"));
+        assertTrue(voiceover.contains("--disable_caching"));
     }
 
     @Test

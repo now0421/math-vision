@@ -638,6 +638,12 @@ public class Narrative {
         @JsonProperty("description")
         private String description;
 
+        @JsonProperty("voiceover_text")
+        private String voiceoverText;
+
+        @JsonProperty("expected_seconds")
+        private Double expectedSeconds;
+
         public StoryboardAction() {}
 
         public int getOrder() { return order; }
@@ -651,5 +657,11 @@ public class Narrative {
 
         public String getDescription() { return description; }
         public void setDescription(String description) { this.description = description; }
+
+        public String getVoiceoverText() { return voiceoverText; }
+        public void setVoiceoverText(String voiceoverText) { this.voiceoverText = voiceoverText; }
+
+        public Double getExpectedSeconds() { return expectedSeconds; }
+        public void setExpectedSeconds(Double expectedSeconds) { this.expectedSeconds = expectedSeconds; }
     }
 }

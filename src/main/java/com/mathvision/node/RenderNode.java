@@ -495,8 +495,11 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         request.setExpectedSceneName(codeResult.isGeoGebraTarget()
                 ? (codeResult.getSceneName() != null ? codeResult.getSceneName() : GeoGebraCodeUtils.EXPECTED_FIGURE_NAME)
                 : ManimCodeUtils.EXPECTED_SCENE_NAME);
+        String outputTarget = codeResult.isGeoGebraTarget()
+                ? WorkflowConfig.OUTPUT_TARGET_GEOGEBRA
+                : WorkflowConfig.OUTPUT_TARGET_MANIM;
         request.setStoryboardJson(input.narrative() != null && input.narrative().hasStoryboard()
-                ? StoryboardJsonBuilder.buildForCodegen(input.narrative().getStoryboard())
+                ? StoryboardJsonBuilder.buildForCodegen(input.narrative().getStoryboard(), outputTarget)
                 : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
         request.setErrorContextMode("summary_signature");
         request.setInputTextHealth(TextHealthDiagnostics.summarize(

@@ -26,10 +26,12 @@ public final class StoryboardJsonBuilder {
     private static final class BuildOptions {
         private final boolean includeSceneFixFields;
         private final boolean includePlacement;
+        private final boolean includeVoiceoverFields;
 
-        private BuildOptions(boolean includeSceneFixFields, boolean includePlacement) {
+        private BuildOptions(boolean includeSceneFixFields, boolean includePlacement, boolean includeVoiceoverFields) {
             this.includeSceneFixFields = includeSceneFixFields;
             this.includePlacement = includePlacement;
+            this.includeVoiceoverFields = includeVoiceoverFields;
         }
     }
 
@@ -39,7 +41,11 @@ public final class StoryboardJsonBuilder {
      * Builds a compact storyboard JSON string optimized for code generation.
      */
     public static String buildForCodegen(Storyboard storyboard) {
-        return build(storyboard, new BuildOptions(true, true));
+        return buildForCodegen(storyboard, "manim");
+    }
+
+    public static String buildForCodegen(Storyboard storyboard, String outputTarget) {
+        return build(storyboard, new BuildOptions(true, true, includeVoiceoverFields(outputTarget)));
     }
 
     /**
@@ -48,7 +54,22 @@ public final class StoryboardJsonBuilder {
      * so the fixer can recover layout without breaking geometric constraints.
      */
     public static String buildForSceneEvaluationFix(Storyboard storyboard) {
-        return build(storyboard, new BuildOptions(true, false));
+        return buildForSceneEvaluationFix(storyboard, "manim");
+    }
+
+    public static String buildForSceneEvaluationFix(Storyboard storyboard, String outputTarget) {
+        return build(storyboard, new BuildOptions(true, false, includeVoiceoverFields(outputTarget)));
+    }
+
+    public static String buildSceneForCodegen(StoryboardScene scene, String outputTarget) {
+        ObjectNode root = JsonUtils.mapper().createObjectNode();
+        ArrayNode scenesArray = root.putArray("scenes");
+        addSceneNode(scenesArray, scene, new BuildOptions(true, true, includeVoiceoverFields(outputTarget)));
+        return scenesArray.isEmpty() ? "{}" : JsonUtils.toPrettyJson(scenesArray.get(0));
+    }
+
+    private static boolean includeVoiceoverFields(String outputTarget) {
+        return outputTarget == null || "manim".equalsIgnoreCase(outputTarget);
     }
 
     private static String build(Storyboard storyboard, BuildOptions options) {
@@ -106,7 +127,7 @@ public final class StoryboardJsonBuilder {
         addPatchObjectArray(sceneNode, "entering_objects", scene.getEnteringObjects(), options.includePlacement, false);
         addPatchObjectArray(sceneNode, "persistent_objects", scene.getPersistentObjects(), options.includePlacement, false);
         addPatchObjectArray(sceneNode, "exiting_objects", scene.getExitingObjects(), false, true);
-        addActions(sceneNode, scene.getActions());
+        addActions(sceneNode, scene.getActions(), options.includeVoiceoverFields);
         putTrimmedStringArray(sceneNode, "notes_for_codegen", scene.getNotesForCodegen());
     }
 
@@ -229,7 +250,7 @@ public final class StoryboardJsonBuilder {
         objectNode.set("style", JsonUtils.mapper().valueToTree(style));
     }
 
-    private static void addActions(ObjectNode sceneNode, List<StoryboardAction> actions) {
+    private static void addActions(ObjectNode sceneNode, List<StoryboardAction> actions, boolean includeVoiceoverFields) {
         ArrayNode actionsArray = sceneNode.putArray("actions");
         if (actions == null) {
             return;
@@ -246,6 +267,12 @@ public final class StoryboardJsonBuilder {
             putNonBlank(actionNode, "type", action.getType());
             putTrimmedStringArray(actionNode, "targets", action.getTargets());
             putNonBlank(actionNode, "description", action.getDescription());
+            if (includeVoiceoverFields) {
+                putNonBlank(actionNode, "voiceover_text", action.getVoiceoverText());
+                if (action.getExpectedSeconds() != null && action.getExpectedSeconds() > 0) {
+                    actionNode.put("expected_seconds", action.getExpectedSeconds());
+                }
+            }
         }
     }
 

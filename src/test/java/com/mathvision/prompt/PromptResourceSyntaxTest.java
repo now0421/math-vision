@@ -121,7 +121,7 @@ class PromptResourceSyntaxTest {
 
     private static PythonParseResult parsePython(String code) throws IOException, InterruptedException {
         Process process = new ProcessBuilder("cmd.exe", "/c", "python", "-c",
-                "import ast, sys; ast.parse(sys.stdin.read())")
+                "import ast, sys; ast.parse(sys.stdin.buffer.read().decode('utf-8'))")
                 .start();
 
         try (BufferedWriter writer = new BufferedWriter(

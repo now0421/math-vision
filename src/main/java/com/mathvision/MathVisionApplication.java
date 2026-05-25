@@ -279,6 +279,7 @@ public class MathVisionApplication {
             case "deepseek":
             case "zhipu":
             case "aliyun":
+            case "anthropic":
             case "openai":
                 return new OpenAiCompatibleAiClient(modelConfig);
             default:
