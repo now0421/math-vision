@@ -1,5 +1,8 @@
 package com.mathvision.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.mathvision.util.NodeConversationContext;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,6 +29,10 @@ public class CodeFixRequest {
     private int staticAuditIssueCount;
     private String staticAuditSummary;
     private List<String> fixHistory = new ArrayList<>();
+    private String rulesPrompt;
+    private String fixedContextPrompt;
+    @JsonIgnore
+    private NodeConversationContext conversationContext;
 
     public CodeFixSource getSource() { return source; }
     public void setSource(CodeFixSource source) { this.source = source; }
@@ -85,5 +92,18 @@ public class CodeFixRequest {
     public List<String> getFixHistory() { return fixHistory; }
     public void setFixHistory(List<String> fixHistory) {
         this.fixHistory = fixHistory != null ? new ArrayList<>(fixHistory) : new ArrayList<>();
+    }
+
+    public String getRulesPrompt() { return rulesPrompt; }
+    public void setRulesPrompt(String rulesPrompt) { this.rulesPrompt = rulesPrompt; }
+
+    public String getFixedContextPrompt() { return fixedContextPrompt; }
+    public void setFixedContextPrompt(String fixedContextPrompt) {
+        this.fixedContextPrompt = fixedContextPrompt;
+    }
+
+    public NodeConversationContext getConversationContext() { return conversationContext; }
+    public void setConversationContext(NodeConversationContext conversationContext) {
+        this.conversationContext = conversationContext;
     }
 }

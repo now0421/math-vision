@@ -70,6 +70,46 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
+    void treatsColorOnlyStyledPointsAsNonTextualObjects() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardObject pointA = scenePatch("A", valuePlacement("world", 0.0, 0.0));
+        Narrative.StoryboardStyle styleA = new Narrative.StoryboardStyle();
+        styleA.setColor("#F87171");
+        pointA.setStyle(styleA);
+        StoryboardObject pointB = scenePatch("B", valuePlacement("world", 0.0, 0.0));
+        Narrative.StoryboardStyle styleB = new Narrative.StoryboardStyle();
+        styleB.setColor("#60A5FA");
+        pointB.setStyle(styleB);
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(
+                        registryObject("A", "point", "A", null),
+                        registryObject("B", "point", "B", null)),
+                List.of(pointA, pointB));
+
+        String issues = String.join("\n", node.validate(storyboard));
+
+        assertTrue(issues.contains("objects 'A' and 'B' overlap"), () -> issues);
+        assertFalse(issues.contains("text objects 'A' and 'B' overlap"), () -> issues);
+    }
+
+    @Test
+    void treatsPointSizeAsVisualSizeInsteadOfWorldRadius() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardObject point = scenePatch("A", valuePlacement("world", -3.2, 1.45));
+        Narrative.StoryboardStyle style = new Narrative.StoryboardStyle();
+        style.setColor("#F87171");
+        style.setPointSize(9.0);
+        point.setStyle(style);
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(registryObject("A", "point", "A", null)),
+                List.of(point));
+
+        String issues = String.join("\n", node.validate(storyboard));
+
+        assertFalse(issues.contains("extends outside the frame bounds"), () -> issues);
+    }
+
+    @Test
     void usesDefaultBlackTextBackgroundWhenOnlyBackgroundStrokeColorIsPresent() {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         StoryboardObject label = scenePatch("label_l", boxPlacement("screen", -1.5, -1.0, 2.1, 2.4));
@@ -705,11 +745,11 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
-    void validatesChineseVisibleContentAndSymbolicExceptions() {
+    void allowsVisibleContentInAnyLanguageAndSymbolicText() {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
         Storyboard storyboard = buildSingleSceneStoryboard(
                 List.of(
-                        registryObject("title", "text", "这是中文标题", null),
+                        registryObject("title", "text", "English title", null),
                         registryObject("A_label", "label", "A", null),
                         registryObject("formula", "equation", "a^2 + b^2 = c^2", null)),
                 List.of(
@@ -723,7 +763,7 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
-    void reportsEnglishNaturalLanguageVisibleContentForBothBackends() {
+    void doesNotRequireChineseVisibleContentForEitherBackend() {
         StoryboardValidationNode manimNode = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         StoryboardValidationNode geoGebraNode = prepareNode(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
         Storyboard storyboard = buildSingleSceneStoryboard(
@@ -733,8 +773,8 @@ class StoryboardValidationNodeTest {
         String manimIssues = String.join("\n", manimNode.validate(storyboard));
         String geoGebraIssues = String.join("\n", geoGebraNode.validate(storyboard));
 
-        assertTrue(manimIssues.contains("visible natural-language content must be Chinese"), () -> manimIssues);
-        assertTrue(geoGebraIssues.contains("visible natural-language content must be Chinese"), () -> geoGebraIssues);
+        assertFalse(manimIssues.contains("visible natural-language content must be Chinese"), () -> manimIssues);
+        assertFalse(geoGebraIssues.contains("visible natural-language content must be Chinese"), () -> geoGebraIssues);
     }
 
     @Test
@@ -758,9 +798,9 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
-    void validatesManimVoiceoverTextOnlyInManimMode() {
+    void doesNotRequireChineseManimVoiceoverText() {
         Storyboard storyboard = buildSingleSceneStoryboard(
-                List.of(registryObject("title", "text", "中文标题", null)),
+                List.of(registryObject("title", "text", "English title", null)),
                 List.of(scenePatch("title", boxPlacement("screen", -2.0, 2.0, 2.1, 2.8))));
         Narrative.StoryboardAction englishVoiceover = new Narrative.StoryboardAction();
         englishVoiceover.setOrder(1);
@@ -773,12 +813,8 @@ class StoryboardValidationNodeTest {
         String manimIssues = String.join("\n", prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM).validate(storyboard));
         String geoGebraIssues = String.join("\n", prepareNode(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA).validate(storyboard));
 
-        assertTrue(manimIssues.contains("voiceover_text must be Chinese in Manim mode"), () -> manimIssues);
+        assertFalse(manimIssues.contains("voiceover_text must be Chinese in Manim mode"), () -> manimIssues);
         assertFalse(geoGebraIssues.contains("voiceover_text"), () -> geoGebraIssues);
-
-        englishVoiceover.setVoiceoverText("解释这个标题。");
-        String fixedIssues = String.join("\n", prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM).validate(storyboard));
-        assertFalse(fixedIssues.contains("voiceover_text"), () -> fixedIssues);
     }
 
     @Test

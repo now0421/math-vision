@@ -1,9 +1,11 @@
 package com.mathvision.node.support;
 
+import com.mathvision.config.ModelConfig;
 import com.mathvision.config.WorkflowConfig;
 import com.mathvision.model.CodeFixResult;
 import com.mathvision.model.CodeFixSource;
 import com.mathvision.model.WorkflowKeys;
+import com.mathvision.util.NodeConversationContext;
 
 import java.util.Map;
 
@@ -42,5 +44,33 @@ public final class NodeSupport {
      */
     public static boolean isGeoGebraTarget(WorkflowConfig workflowConfig) {
         return workflowConfig != null && workflowConfig.isGeoGebraTarget();
+    }
+
+    /**
+     * Returns the caller-owned code-fix conversation context, creating and pinning
+     * the caller-selected prompts on first use.
+     */
+    public static NodeConversationContext ensureCodeFixConversationContext(FixRetryState state,
+                                                                           WorkflowConfig workflowConfig,
+                                                                           int maxRollingRounds,
+                                                                           String rulesPrompt,
+                                                                           String fixedContextPrompt) {
+        int maxInputTokens = workflowConfig != null
+                ? workflowConfig.resolveMaxInputTokens()
+                : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
+        NodeConversationContext context = state != null ? state.getConversationContext() : null;
+        if (context == null) {
+            context = new NodeConversationContext(maxInputTokens, Math.max(maxRollingRounds, 0));
+            if (rulesPrompt != null && !rulesPrompt.isBlank()) {
+                context.setSystemMessage(rulesPrompt);
+            }
+            if (fixedContextPrompt != null && !fixedContextPrompt.isBlank()) {
+                context.setFixedContextMessage(fixedContextPrompt);
+            }
+            if (state != null) {
+                state.setConversationContext(context);
+            }
+        }
+        return context;
     }
 }

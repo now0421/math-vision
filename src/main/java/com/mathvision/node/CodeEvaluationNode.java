@@ -57,6 +57,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     private static final Logger log = LoggerFactory.getLogger(CodeEvaluationNode.class);
 
     private static final int DEFAULT_MAX_CODE_FIX_ATTEMPTS = 3;
+    private static final int CODE_FIX_CONTEXT_ROUNDS = 4;
 
     private static final Pattern FADE_IN_PATTERN = Pattern.compile("\\bFadeIn\\s*\\(");
     private static final Pattern FADE_OUT_PATTERN = Pattern.compile("\\bFadeOut\\s*\\(");
@@ -385,12 +386,42 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         request.setSceneName(sceneName);
         request.setExpectedSceneName(sceneName);
         String outputTarget = NodeSupport.resolveOutputTarget(workflowConfig);
+        request.setOutputTarget(outputTarget);
         request.setStoryboardJson(narrative != null && narrative.hasStoryboard()
                 ? StoryboardJsonBuilder.buildForCodegen(narrative.getStoryboard(), outputTarget)
                 : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
         request.setStaticAnalysisJson(JsonUtils.toPrettyJson(result.getFinalStaticAnalysis()));
         request.setReviewJson(JsonUtils.toPrettyJson(result.getFinalReview()));
+        attachEvaluationCodeFixContext(input.fixState(), request, codeResult, sceneName, outputTarget);
         return request;
+    }
+
+    private void attachEvaluationCodeFixContext(EvaluationFixState fixState,
+                                                CodeFixRequest request,
+                                                CodeResult codeResult,
+                                                String sceneName,
+                                                String outputTarget) {
+        String targetConcept = codeResult != null && codeResult.getTargetConcept() != null
+                && !codeResult.getTargetConcept().isBlank()
+                ? codeResult.getTargetConcept()
+                : sceneName;
+        String targetDescription = codeResult != null && codeResult.getTargetDescription() != null
+                ? codeResult.getTargetDescription()
+                : "";
+        String rulesPrompt = CodeEvaluationPrompts.buildRevisionRulesPrompt(outputTarget);
+        String fixedContextPrompt = CodeEvaluationPrompts.buildRevisionFixedContextPrompt(
+                targetConcept,
+                targetDescription,
+                outputTarget);
+        NodeConversationContext conversationContext = NodeSupport.ensureCodeFixConversationContext(
+                fixState,
+                workflowConfig,
+                CODE_FIX_CONTEXT_ROUNDS,
+                rulesPrompt,
+                fixedContextPrompt);
+        request.setRulesPrompt(rulesPrompt);
+        request.setFixedContextPrompt(fixedContextPrompt);
+        request.setConversationContext(conversationContext);
     }
 
     /**

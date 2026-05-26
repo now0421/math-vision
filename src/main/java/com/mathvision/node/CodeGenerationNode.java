@@ -111,7 +111,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
 
         if (this.conversationContext == null) {
             int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
-            this.conversationContext = new NodeConversationContext(maxInputTokens, 3);
+            this.conversationContext = new NodeConversationContext(maxInputTokens);
         }
 
         Narrative narrative = input.narrative();

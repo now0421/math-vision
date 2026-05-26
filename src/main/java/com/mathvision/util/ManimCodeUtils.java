@@ -58,6 +58,14 @@ public final class ManimCodeUtils {
             "cls"
     );
 
+    private static final Set<String> COMMON_EXTERNAL_MODULE_RECEIVERS = Set.of(
+            "math",
+            "np",
+            "numpy",
+            "random",
+            "statistics"
+    );
+
     public static String extractCode(String response) {
         if (response == null || response.isBlank()) {
             return "";
@@ -380,6 +388,9 @@ public final class ManimCodeUtils {
                         || importedReceivers.contains(receiverRoot)) {
                     continue;
                 }
+                if (!methodName.contains("_") && !COMMON_EXTERNAL_MODULE_RECEIVERS.contains(receiverRoot)) {
+                    continue;
+                }
                 if (!documented.contains(methodName)) {
                     String fragment = trimmed.length() > 80 ? trimmed.substring(0, 80) + "..." : trimmed;
                     evidences.add("line " + (i + 1) + ": " + receiver + "." + methodName + "() - " + fragment);
@@ -523,7 +534,9 @@ public final class ManimCodeUtils {
                 continue;
             }
 
-            if ("Text".equals(constructor) && looksLikeLatexMath(normalizedContent)) {
+            if ("Text".equals(constructor)
+                    && looksLikeLatexMath(normalizedContent)
+                    && !looksLikeProseWithInlineMathLabel(normalizedContent)) {
                 issues.add("Static rule warning: Text constructor with math-like content, consider MathTex"
                         + " (line " + line + ": " + summarizeSnippet(normalizedContent) + ")");
                 continue;
@@ -574,7 +587,33 @@ public final class ManimCodeUtils {
         if (content.matches(".*[\\u2200-\\u22FF\\u0391-\\u03C9\\u2070-\\u209F].*")) {
             return true;
         }
-        return false;
+        return looksLikeFormulaExpression(content);
+    }
+
+    private static boolean looksLikeFormulaExpression(String content) {
+        String normalized = content.replaceAll("\\s+", "");
+        if (normalized.isEmpty() || normalized.matches(".*[\\u4E00-\\u9FFF].*")) {
+            return false;
+        }
+        return normalized.matches(".*[A-Za-z0-9)][=+*/<>≤≥-][A-Za-z0-9(].*");
+    }
+
+    private static boolean looksLikeProseWithInlineMathLabel(String content) {
+        if (content == null || !content.matches(".*[\\u4E00-\\u9FFF].*")) {
+            return false;
+        }
+        if (content.contains("$")
+                || content.matches(".*\\\\[a-zA-Z]{2,}.*")
+                || content.matches(".*[=+*/<>≤≥∑∫√].*")) {
+            return false;
+        }
+
+        String proseWithoutLabels = content
+                .replaceAll("\\b[A-Za-z][\\u2070-\\u209F\\u2032'’]*\\b", "")
+                .replaceAll("\\b[A-Za-z]_[A-Za-z0-9]+\\b", "")
+                .replaceAll("[\\u2070-\\u209F\\u2032'’]", "")
+                .trim();
+        return proseWithoutLabels.matches(".*[\\u4E00-\\u9FFF].*");
     }
 
     /**

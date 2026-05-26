@@ -114,6 +114,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         }
 
         Narrative current = narrative;
+        int originalSceneCount = sceneCount(current.getStoryboard());
         Instant initialValidationStart = Instant.now();
         List<String> issues = validate(current.getStoryboard());
         this.storyboardValidationReport = baseReport(current.getStoryboard(), issues);
@@ -165,32 +166,53 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                 return current;
             }
 
-            current = fixed;
-            fixApplied = true;
-            issues = validate(current.getStoryboard());
-            appendValidationTraceEntry(
-                    current.getStoryboard(),
-                    "post_cleanup_validation",
-                    attempts,
-                    true,
-                    true,
-                    issues,
-                    cleanupToolCalls,
-                    TimeUtils.secondsSince(cleanupStart),
-                    issues.isEmpty()
-                            ? "Optional cleanup pass preserved a valid storyboard"
-                            : "Optional cleanup pass introduced " + issues.size()
-                                    + " storyboard validation issue(s)");
-            if (issues.isEmpty()) {
-                log.info("LLM storyboard cleanup completed successfully after clean validation");
-                finalizeReport(storyboardValidationReport, true, true, true, issues,
-                        "Storyboard validation passed and optional LLM cleanup completed successfully");
-                return current;
-            }
+            int fixedSceneCount = sceneCount(fixed.getStoryboard());
+            if (fixedSceneCount != originalSceneCount) {
+                List<String> sceneCountIssues = List.of(sceneCountMismatchIssue(originalSceneCount, fixedSceneCount));
+                appendSceneCountMismatchFeedback(originalSceneCount, fixedSceneCount);
+                appendValidationTraceEntry(
+                        fixed.getStoryboard(),
+                        "cleanup_rejected_scene_count_mismatch",
+                        attempts,
+                        true,
+                        false,
+                        sceneCountIssues,
+                        cleanupToolCalls,
+                        TimeUtils.secondsSince(cleanupStart),
+                        "Optional cleanup pass was rejected because scene count changed from "
+                                + originalSceneCount + " to " + fixedSceneCount);
+                issues = sceneCountIssues;
+                log.warn("LLM storyboard cleanup pass {}/{} changed scene count from {} to {}; retrying with feedback",
+                        attempts, maxValidationFixAttempts, originalSceneCount, fixedSceneCount);
+                logValidationIssues(issues);
+            } else {
+                current = fixed;
+                fixApplied = true;
+                issues = validate(current.getStoryboard());
+                appendValidationTraceEntry(
+                        current.getStoryboard(),
+                        "post_cleanup_validation",
+                        attempts,
+                        true,
+                        true,
+                        issues,
+                        cleanupToolCalls,
+                        TimeUtils.secondsSince(cleanupStart),
+                        issues.isEmpty()
+                                ? "Optional cleanup pass preserved a valid storyboard"
+                                : "Optional cleanup pass introduced " + issues.size()
+                                        + " storyboard validation issue(s)");
+                if (issues.isEmpty()) {
+                    log.info("LLM storyboard cleanup completed successfully after clean validation");
+                    finalizeReport(storyboardValidationReport, true, true, true, issues,
+                            "Storyboard validation passed and optional LLM cleanup completed successfully");
+                    return current;
+                }
 
-            log.warn("LLM storyboard cleanup pass {}/{} left {} issues",
-                    attempts, maxValidationFixAttempts, issues.size());
-            logValidationIssues(issues);
+                log.warn("LLM storyboard cleanup pass {}/{} left {} issues",
+                        attempts, maxValidationFixAttempts, issues.size());
+                logValidationIssues(issues);
+            }
         }
 
         while (!issues.isEmpty() && attempts < maxValidationFixAttempts) {
@@ -217,6 +239,28 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                 finalizeReport(storyboardValidationReport, false, true, fixApplied, issues,
                         "Storyboard validation found issues and the automatic LLM cleanup did not succeed");
                 return current;
+            }
+
+            int fixedSceneCount = sceneCount(fixed.getStoryboard());
+            if (fixedSceneCount != originalSceneCount) {
+                List<String> sceneCountIssues = List.of(sceneCountMismatchIssue(originalSceneCount, fixedSceneCount));
+                appendSceneCountMismatchFeedback(originalSceneCount, fixedSceneCount);
+                appendValidationTraceEntry(
+                        fixed.getStoryboard(),
+                        "cleanup_rejected_scene_count_mismatch",
+                        attempts,
+                        true,
+                        false,
+                        sceneCountIssues,
+                        cleanupToolCalls,
+                        TimeUtils.secondsSince(cleanupStart),
+                        "Cleanup pass " + attempts + " was rejected because scene count changed from "
+                                + originalSceneCount + " to " + fixedSceneCount);
+                issues = sceneCountIssues;
+                log.warn("LLM storyboard cleanup pass {}/{} changed scene count from {} to {}; retrying with feedback",
+                        attempts, maxValidationFixAttempts, originalSceneCount, fixedSceneCount);
+                logValidationIssues(issues);
+                continue;
             }
 
             current = fixed;
@@ -259,6 +303,32 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             return DEFAULT_VALIDATION_FIX_ATTEMPTS;
         }
         return Math.max(workflowConfig.getStoryboardValidationMaxRetries(), 0);
+    }
+
+    private int sceneCount(Storyboard storyboard) {
+        return storyboard != null && storyboard.getScenes() != null
+                ? storyboard.getScenes().size()
+                : 0;
+    }
+
+    private String sceneCountMismatchIssue(int expectedSceneCount, int actualSceneCount) {
+        return "Storyboard cleanup changed the number of scenes from " + expectedSceneCount
+                + " to " + actualSceneCount
+                + "; regenerate the full storyboard with exactly " + expectedSceneCount
+                + " scenes in the original narrative order.";
+    }
+
+    private void appendSceneCountMismatchFeedback(int expectedSceneCount, int actualSceneCount) {
+        if (fixConversationContext == null) {
+            return;
+        }
+        fixConversationContext.addUserMessage(
+                "The previous storyboard cleanup response was rejected because it changed the scene count from "
+                        + expectedSceneCount + " to " + actualSceneCount + ". "
+                        + "Regenerate the corrected storyboard JSON with exactly " + expectedSceneCount
+                        + " scenes, preserving the original narrative order, scene ids, object identity, metadata, "
+                        + "and Manim voiceover_text fields. Do not return an empty scenes array, a partial storyboard, "
+                        + "or only scene_1.");
     }
 
     private void logValidationIssues(List<String> issues) {
@@ -328,8 +398,6 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         // All remaining checks use the original storyboard
         issues.addAll(validateStoryboardObjectStructure(storyboard));
         issues.addAll(validateIdentifierAscii(storyboard));
-        issues.addAll(validateVisibleChineseText(storyboard));
-        issues.addAll(validateManimVoiceoverChineseText(storyboard));
         issues.addAll(validateStoryboardColors(storyboard));
         issues.addAll(validateStructuredConstraints(storyboard));
         issues.addAll(validateGeometricMarkerDefinitions(storyboard));
@@ -965,7 +1033,8 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         if (storyboard == null) {
             return issues;
         }
-        validateObjectColors("object_registry", storyboard.getObjectRegistry(), issues);
+        Map<String, StoryboardObject> registryDefinitions = buildRegistryDefinitions(storyboard);
+        validateObjectColors("object_registry", storyboard.getObjectRegistry(), null, issues);
         if (storyboard.getScenes() != null) {
             for (int i = 0; i < storyboard.getScenes().size(); i++) {
                 StoryboardScene scene = storyboard.getScenes().get(i);
@@ -973,8 +1042,10 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                 if (scene == null) {
                     continue;
                 }
-                validateObjectColors(sceneLabel + " entering_objects", scene.getEnteringObjects(), issues);
-                validateObjectColors(sceneLabel + " persistent_objects", scene.getPersistentObjects(), issues);
+                validateObjectColors(sceneLabel + " entering_objects",
+                        scene.getEnteringObjects(), registryDefinitions, issues);
+                validateObjectColors(sceneLabel + " persistent_objects",
+                        scene.getPersistentObjects(), registryDefinitions, issues);
             }
         }
         return issues;
@@ -982,6 +1053,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
 
     private void validateObjectColors(String context,
                                       List<StoryboardObject> objects,
+                                      Map<String, StoryboardObject> registryDefinitions,
                                       List<String> issues) {
         if (objects == null || objects.isEmpty()) {
             return;
@@ -991,7 +1063,8 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                 continue;
             }
             String objectId = StoryboardPatchResolver.objectId(object);
-            List<ColorReference> colors = collectColorReferences(object);
+            StoryboardObject colorObject = mergeColorValidationObject(object, registryDefinitions);
+            List<ColorReference> colors = collectColorReferences(colorObject);
             for (ColorReference color : colors) {
                 if (!isSixDigitHexColor(color.value)) {
                     issues.add(context + ": object '" + objectId + "' uses invalid color '" + color.value
@@ -999,8 +1072,26 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                             + "; expected 6-digit hex format #RRGGBB with opacity in a separate opacity field");
                 }
             }
-            validateObjectColorContrast(context, objectId, object, colors, issues);
+            validateObjectColorContrast(context, objectId, colorObject, colors, issues);
         }
+    }
+
+    private StoryboardObject mergeColorValidationObject(StoryboardObject object,
+                                                       Map<String, StoryboardObject> registryDefinitions) {
+        if (object == null || registryDefinitions == null || registryDefinitions.isEmpty()) {
+            return object;
+        }
+        String id = StoryboardPatchResolver.objectId(object);
+        StoryboardObject registryObject = id != null ? registryDefinitions.get(id) : null;
+        if (registryObject == null) {
+            return object;
+        }
+        StoryboardObject merged = StoryboardPatchResolver.copyObject(registryObject);
+        if (merged == null) {
+            return object;
+        }
+        applyValidationScenePatch(merged, object);
+        return merged;
     }
 
     private List<ColorReference> collectColorReferences(StoryboardObject object) {
@@ -1287,60 +1378,6 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         if (containsControlCharacter(trimmed)) {
             issues.add(label + ": identifier must not contain control characters");
         }
-    }
-
-    private List<String> validateVisibleChineseText(Storyboard storyboard) {
-        List<String> issues = new ArrayList<>();
-        if (storyboard == null || storyboard.getObjectRegistry() == null) {
-            return issues;
-        }
-        for (int i = 0; i < storyboard.getObjectRegistry().size(); i++) {
-            StoryboardObject object = storyboard.getObjectRegistry().get(i);
-            if (!requiresChineseVisibleContent(object)) {
-                continue;
-            }
-            String content = object.getContent();
-            if (!containsCjk(content)) {
-                String id = StoryboardPatchResolver.objectId(object);
-                issues.add("object_registry[" + i + "]" + (id != null ? " ('" + id + "')" : "")
-                        + ": visible natural-language content must be Chinese");
-            }
-        }
-        return issues;
-    }
-
-    private boolean requiresChineseVisibleContent(StoryboardObject object) {
-        if (object == null || isBlank(object.getContent()) || isSymbolicOrFormulaContent(object.getContent())) {
-            return false;
-        }
-        String kind = normalizeForSemanticCheck(object.getKind());
-        return containsAny(kind,
-                " text ", " text_card ", " textcard ", " caption ", " callout ", " title ", " note ", " label ");
-    }
-
-    private List<String> validateManimVoiceoverChineseText(Storyboard storyboard) {
-        List<String> issues = new ArrayList<>();
-        if (!WorkflowConfig.OUTPUT_TARGET_MANIM.equalsIgnoreCase(outputTarget)
-                || storyboard == null || storyboard.getScenes() == null) {
-            return issues;
-        }
-        for (int sceneIndex = 0; sceneIndex < storyboard.getScenes().size(); sceneIndex++) {
-            StoryboardScene scene = storyboard.getScenes().get(sceneIndex);
-            if (scene == null || scene.getActions() == null) {
-                continue;
-            }
-            for (int actionIndex = 0; actionIndex < scene.getActions().size(); actionIndex++) {
-                Narrative.StoryboardAction action = scene.getActions().get(actionIndex);
-                if (action == null || isBlank(action.getVoiceoverText())) {
-                    continue;
-                }
-                if (!containsCjk(action.getVoiceoverText())) {
-                    issues.add("scene " + (sceneIndex + 1) + " actions[" + actionIndex
-                            + "]: voiceover_text must be Chinese in Manim mode");
-                }
-            }
-        }
-        return issues;
     }
 
     private boolean isSymbolicOrFormulaContent(String text) {
@@ -1639,7 +1676,8 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                 return style.getRadius();
             }
             if (style.getPointSize() != null && style.getPointSize() > 0.0) {
-                return style.getPointSize();
+                double pointSize = style.getPointSize();
+                return pointSize > 1.0 ? pointSize / 72.0 : pointSize;
             }
         }
         return 0.12;
@@ -2021,7 +2059,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             return false;
         }
         Narrative.StoryboardStyle style = object.getStyle();
-        return !isBlank(style.getColor()) || style.getFontSize() != null || !isBlank(style.getFontFamily());
+        return style.getFontSize() != null || !isBlank(style.getFontFamily());
     }
 
     private boolean isAttachedLabelPair(StoryboardObject textObject,
@@ -2175,51 +2213,180 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             }
 
             String storyboardJson = JsonUtils.mapper().writeValueAsString(storyboard);
+            int maxRetries = resolvePlacementEnrichmentMaxRetries();
+            int maxAttempts = maxRetries + 1;
+            int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
 
-            NodeConversationContext conversationContext = new NodeConversationContext(Integer.MAX_VALUE);
+            NodeConversationContext conversationContext =
+                    new NodeConversationContext(maxInputTokens, Math.max(maxAttempts, 1));
             conversationContext.setSystemMessage(NarrativePrompts.PLACEMENT_ENRICHMENT_SYSTEM_PROMPT);
 
             String userPrompt = NarrativePrompts.buildPlacementEnrichmentUserPrompt(storyboardJson);
+            List<String> lastIssues = List.of();
 
-            JsonNode enrichedData = AiRequestUtils.requestJsonObjectAsync(
-                            aiClient,
-                            log,
-                            "placement-enrichment",
-                            conversationContext.getPinnedMessages(),
-                            conversationContext.getMaxInputTokens(),
-                            SystemPrompts.buildCurrentRequestSection(userPrompt),
-                            ToolSchemas.storyboard(outputTarget),
-                            () -> toolCalls++)
-                    .join();
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                JsonNode enrichedData = AiRequestUtils.requestJsonObjectAsync(
+                                aiClient,
+                                log,
+                                "placement-enrichment",
+                                conversationContext,
+                                SystemPrompts.buildCurrentRequestSection(userPrompt),
+                                ToolSchemas.storyboard(outputTarget),
+                                () -> toolCalls++)
+                        .join();
 
-            if (enrichedData == null) {
-                log.debug("Placement enrichment returned no data");
-                return null;
+                if (enrichedData == null) {
+                    lastIssues = List.of("placement enrichment returned no data");
+                    log.debug("Placement enrichment returned no data on attempt {}/{}",
+                            attempt, maxAttempts);
+                } else {
+                    JsonNode storyboardNode = enrichedData.has("storyboard")
+                            ? enrichedData.get("storyboard") : enrichedData;
+                    if (storyboardNode == null || !storyboardNode.has("scenes")) {
+                        lastIssues = List.of("placement enrichment returned invalid storyboard structure");
+                        log.debug("Placement enrichment returned invalid storyboard structure on attempt {}/{}",
+                                attempt, maxAttempts);
+                    } else {
+                        Storyboard enrichedStoryboard =
+                                JsonUtils.mapper().treeToValue(storyboardNode, Storyboard.class);
+                        enrichedStoryboard = StoryboardNormalizer.normalize(enrichedStoryboard);
+                        lastIssues = validatePlacementEnrichmentScenePatches(enrichedStoryboard);
+                        if (lastIssues.isEmpty()) {
+                            // Verify existing placements are preserved: compare object counts with placements
+                            int originalWithPlacement = countObjectsWithPlacement(storyboard);
+                            int enrichedWithPlacement = countObjectsWithPlacement(enrichedStoryboard);
+                            log.info("Placement enrichment accepted on attempt {}/{}: objects with placement {} -> {}",
+                                    attempt, maxAttempts, originalWithPlacement, enrichedWithPlacement);
+                            return enrichedStoryboard;
+                        }
+                        log.warn("Placement enrichment attempt {}/{} was rejected: {}",
+                                attempt, maxAttempts, summarizePlacementEnrichmentIssues(lastIssues));
+                    }
+                }
+
+                if (attempt < maxAttempts) {
+                    userPrompt = buildPlacementEnrichmentRetryPrompt(lastIssues);
+                }
             }
 
-            JsonNode storyboardNode = enrichedData.has("storyboard")
-                    ? enrichedData.get("storyboard") : enrichedData;
-            if (storyboardNode == null || !storyboardNode.has("scenes")) {
-                log.debug("Placement enrichment returned invalid storyboard structure");
-                return null;
-            }
-
-            Storyboard enrichedStoryboard = JsonUtils.mapper().treeToValue(storyboardNode, Storyboard.class);
-            enrichedStoryboard = StoryboardNormalizer.normalize(enrichedStoryboard);
-
-            // Verify existing placements are preserved: compare object counts with placements
-            int originalWithPlacement = countObjectsWithPlacement(storyboard);
-            int enrichedWithPlacement = countObjectsWithPlacement(enrichedStoryboard);
-            log.info("Placement enrichment: objects with placement {} -> {}",
-                    originalWithPlacement, enrichedWithPlacement);
-
-            return enrichedStoryboard;
+            log.warn("Placement enrichment failed validation after {} attempt(s): {}",
+                    maxAttempts, summarizePlacementEnrichmentIssues(lastIssues));
+            return null;
         } catch (CompletionException e) {
             log.warn("Placement enrichment call failed: {}", e.getMessage());
             return null;
         } catch (Exception e) {
             log.warn("Placement enrichment failed: {}", e.getMessage());
             return null;
+        }
+    }
+
+    private int resolvePlacementEnrichmentMaxRetries() {
+        if (workflowConfig == null) {
+            return 3;
+        }
+        return Math.max(workflowConfig.getPlacementEnrichmentMaxRetries(), 0);
+    }
+
+    private List<String> validatePlacementEnrichmentScenePatches(Storyboard storyboard) {
+        List<String> issues = new ArrayList<>();
+        if (storyboard == null || storyboard.getScenes() == null) {
+            issues.add("placement enrichment response has no scenes");
+            return issues;
+        }
+
+        Set<String> registryPlacementIds = new LinkedHashSet<>();
+        if (storyboard.getObjectRegistry() != null) {
+            for (StoryboardObject object : storyboard.getObjectRegistry()) {
+                String id = StoryboardPatchResolver.objectId(object);
+                if (id != null && hasPlacement(object)) {
+                    registryPlacementIds.add(id);
+                }
+            }
+        }
+
+        for (int sceneIndex = 0; sceneIndex < storyboard.getScenes().size(); sceneIndex++) {
+            StoryboardScene scene = storyboard.getScenes().get(sceneIndex);
+            String sceneLabel = "scene " + (sceneIndex + 1)
+                    + (scene != null && scene.getSceneId() != null
+                    ? " (" + scene.getSceneId() + ")" : "");
+            if (scene == null) {
+                issues.add(sceneLabel + ": missing scene");
+                continue;
+            }
+            validatePlacementEnrichmentPatchList(
+                    sceneLabel, "entering_objects", scene.getEnteringObjects(), registryPlacementIds, issues);
+            validatePlacementEnrichmentPatchList(
+                    sceneLabel, "persistent_objects", scene.getPersistentObjects(), registryPlacementIds, issues);
+        }
+        return issues;
+    }
+
+    private void validatePlacementEnrichmentPatchList(String sceneLabel,
+                                                      String fieldName,
+                                                      List<StoryboardObject> objects,
+                                                      Set<String> registryPlacementIds,
+                                                      List<String> issues) {
+        if (objects == null) {
+            return;
+        }
+        for (int i = 0; i < objects.size(); i++) {
+            StoryboardObject object = objects.get(i);
+            String id = StoryboardPatchResolver.objectId(object);
+            if (id == null) {
+                continue;
+            }
+            if (!hasPlacement(object)) {
+                String message = sceneLabel + "." + fieldName + "[" + i + "] object '" + id
+                        + "': missing scene-level placement";
+                if (registryPlacementIds != null && registryPlacementIds.contains(id)) {
+                    message += "; placement appears in object_registry, but it must be copied to this scene patch";
+                }
+                issues.add(message);
+            }
+        }
+    }
+
+    private boolean hasPlacement(StoryboardObject object) {
+        return object != null && object.getPlacement() != null && object.getPlacement().hasData();
+    }
+
+    private String buildPlacementEnrichmentRetryPrompt(List<String> issues) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("The previous placement-enrichment response was rejected.\n")
+                .append("Every visible scene patch object in `scenes[].entering_objects` and ")
+                .append("`scenes[].persistent_objects` must include a `placement` with data.\n")
+                .append("Do not put computed placements only in `object_registry`; copy each computed placement ")
+                .append("onto every scene-level patch where that object appears.\n")
+                .append("Preserve the full storyboard structure and return the complete storyboard JSON.\n\n")
+                .append("Issues to fix:\n");
+        appendIssueList(sb, issues, 40);
+        return sb.toString();
+    }
+
+    private String summarizePlacementEnrichmentIssues(List<String> issues) {
+        if (issues == null || issues.isEmpty()) {
+            return "none";
+        }
+        int limit = Math.min(issues.size(), 5);
+        String summary = String.join(" | ", issues.subList(0, limit));
+        if (issues.size() > limit) {
+            summary += " | ... +" + (issues.size() - limit) + " more";
+        }
+        return summary;
+    }
+
+    private void appendIssueList(StringBuilder sb, List<String> issues, int limit) {
+        if (issues == null || issues.isEmpty()) {
+            sb.append("- Unknown placement enrichment validation issue\n");
+            return;
+        }
+        int count = Math.min(issues.size(), limit);
+        for (int i = 0; i < count; i++) {
+            sb.append("- ").append(issues.get(i)).append("\n");
+        }
+        if (issues.size() > count) {
+            sb.append("- ... ").append(issues.size() - count).append(" more issue(s)\n");
         }
     }
 
@@ -2339,7 +2506,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
     private NodeConversationContext fixConversationContext(Narrative narrative) {
         if (fixConversationContext == null) {
             int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
-            fixConversationContext = new NodeConversationContext(maxInputTokens, 2);
+            fixConversationContext = new NodeConversationContext(maxInputTokens, 8);
             String systemPrompt = NarrativePrompts.buildRulesPrompt(outputTarget)
                     + "\n\n" + NarrativePrompts.buildRepairRules(outputTarget);
             fixConversationContext.setSystemMessage(systemPrompt);

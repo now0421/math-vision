@@ -244,7 +244,7 @@ public final class SystemPrompts {
                     + "- Keep visual weight balanced across the frame instead of clustering everything on one side.\n"
                     + "- Preserve intentional empty space and a safe overlay zone; do not solve layout problems by piling overlays or opaque objects over the active geometry.\n"
                     + "- Place formulas near edges, not over the main geometry.\n"
-                    + "- If the view becomes crowded, split the content, dim the old context, or remove temporary annotations instead of squeezing everything tighter.\n"
+                    + "- If the view becomes crowded, reduce cognitive load by choosing among splitting content, dimming context, grouping, scaling, repositioning, or exiting objects. Base the choice on whether each object will help upcoming reasoning; exiting is allowed, but persistence is not automatically better.\n"
                     + "- When correcting out-of-bounds elements, reposition them with adequate clearance from every frame edge (minimum 0.5 units on all sides); never fix a boundary violation by placing objects flush against the edge.\n"
                     + "- When a derived object (reflection, projection, intersection, etc.) extends outside the frame, do NOT change its placement directly - it is computed from its source objects at render time. Instead, trace the structured constraints in object_registry to identify the upstream source object(s) and adjust their coordinates so the derived result lands inside the frame. For example, if a reflected point B' is offscreen because it mirrors B across line l, move B closer to l or shift l itself; never override B' with an arbitrary coordinate that contradicts its geometric definition.\n";
 
@@ -331,8 +331,9 @@ public final class SystemPrompts {
                     + "- Every learner-visible object that should appear in the scene or construction must be declared explicitly in the storyboard; do not rely on unstated inferred visuals.\n"
                     + "- If an object remains visible across beats or steps, keep the same visual identity instead of silently recreating it.\n"
                     + "- If an object depends on another object's motion, make the dependency explicit in structured constraints and preserve it in code.\n"
-                    + "- Temporary annotations, comparison aids, and helper overlays need an exit plan; once they have taught their point, remove or dim them.\n"
-                    + "- End scenes or steps cleanly: use clean breaks, carry-forward anchors, or transition bridges intentionally rather than leaving accidental residue.\n";
+                    + "- Decide each object's lifecycle intentionally: persist, dim, transform, or exit it based on whether it supports upcoming reasoning, continuity, comparison, dependency evidence, or learner orientation.\n"
+                    + "- Temporary annotations, comparison aids, and helper overlays need an exit-or-dim plan once they have taught their point; do not let them linger by accident.\n"
+                    + "- End scenes or steps cleanly by balancing continuity and cognitive load. A clean break, carry-forward anchor, transition bridge, dimmed context, or object exit can all be correct when chosen for teaching clarity.\n";
 
     // ========================================================================
     // Manim-specific rules
@@ -342,9 +343,9 @@ public final class SystemPrompts {
     public static final String MANIM_LAYOUT_FRAME_RULES =
             "Keep important content within x[-6.5,6.5] and y[-3.5,3.5] whenever possible.\n"
                     + "Reserve a readable top title band and a bottom note band instead of packing the whole frame.\n"
-                    + "Keep simultaneously active foreground elements around 6 to 8; brief bursts up to about 10 are acceptable when staging and hierarchy stay clear.\n"
-                    + "If a scene would have more than 12 simultaneously visible foreground elements, dim context objects (opacity 0.3-0.4) before introducing new ones rather than showing everything at full strength.\n"
-                    + "Prefer staggered reveals: create groups of 3-4 objects, then dim before creating the next group.\n"
+                    + "Keep simultaneously active foreground elements around 6 to 8 when possible; brief bursts up to about 10 are acceptable when staging and hierarchy stay clear.\n"
+                    + "If a scene would have more than 12 simultaneously visible foreground elements, decide which objects still support upcoming reasoning: dim context objects, group or scale supporting elements, or exit completed elements rather than showing everything at full strength.\n"
+                    + "Prefer staggered reveals when they clarify the teaching flow: create groups of 3-4 objects, then dim, transform, or exit according to their future usefulness before creating the next group.\n"
                     + "Leave a meaningful empty zone for overlays, captions, or upcoming reveals.\n";
 
     /** Shared Manim motion and pacing rules. */
@@ -504,7 +505,7 @@ public final class SystemPrompts {
                     + "- `kind = text` must render with `Text(...)`.\n"
                     + "- `kind = text_card` or `kind = formula_card` should be avoided; if present, render as plain `Text(...)` without a background box unless the card is teaching-essential.\n"
                     + "- Avoid `Tex(...)` unless the storyboard explicitly calls for non-math LaTeX text.\n"
-                    + "- If the kind/content disagree, infer from content: formulas, Greek letters, angle notation, superscripts, subscripts, and LaTeX control sequences are math text; ordinary labels and prose fragments are plain text.\n";
+                    + "- If the kind/content disagree, infer from content: standalone formulas, Greek letters used as formulas, angle notation, superscripts, subscripts, and LaTeX control sequences are math text; ordinary labels and prose fragments are plain text. Chinese or natural-language prose that only embeds a short symbolic label such as `P₀`, `B′`, or `A_1` remains plain `Text(...)`.\n";
 
     // ========================================================================
     // GeoGebra-specific rules

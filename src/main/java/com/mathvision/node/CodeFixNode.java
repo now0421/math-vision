@@ -90,14 +90,11 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             return result;
         }
 
-        int maxInputTokens = workflowConfig != null
-                ? workflowConfig.resolveMaxInputTokens()
-                : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
-        NodeConversationContext conversationContext = new NodeConversationContext(maxInputTokens);
-        String rulesPrompt = selectRulesPrompt(request);
-        String fixedContextPrompt = selectFixedContextPrompt(request);
-        conversationContext.setSystemMessage(rulesPrompt);
-        conversationContext.setFixedContextMessage(fixedContextPrompt);
+        String rulesPrompt = TextUtils.firstNonBlank(request.getRulesPrompt(), selectRulesPrompt(request));
+        String fixedContextPrompt = TextUtils.firstNonBlank(
+                request.getFixedContextPrompt(), selectFixedContextPrompt(request));
+        NodeConversationContext conversationContext = resolveConversationContext(
+                request, rulesPrompt, fixedContextPrompt);
         result.setRulesPrompt(rulesPrompt);
         result.setFixedContextPrompt(fixedContextPrompt);
 
@@ -193,6 +190,39 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         }
 
         return result != null ? result.getReturnAction() : null;
+    }
+
+    private NodeConversationContext resolveConversationContext(CodeFixRequest request,
+                                                               String rulesPrompt,
+                                                               String fixedContextPrompt) {
+        NodeConversationContext conversationContext =
+                request != null ? request.getConversationContext() : null;
+        if (conversationContext == null) {
+            int maxInputTokens = workflowConfig != null
+                    ? workflowConfig.resolveMaxInputTokens()
+                    : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
+            conversationContext = new NodeConversationContext(maxInputTokens, fallbackContextRounds(request));
+        }
+        if (conversationContext.getPinnedMessages().isEmpty()) {
+            conversationContext.setSystemMessage(rulesPrompt);
+            conversationContext.setFixedContextMessage(fixedContextPrompt);
+        }
+        return conversationContext;
+    }
+
+    private int fallbackContextRounds(CodeFixRequest request) {
+        if (request == null || request.getSource() == null) {
+            return 4;
+        }
+        switch (request.getSource()) {
+            case CODE_RENDER:
+                return 6;
+            case SCENE_LAYOUT_EVALUATION:
+                return 5;
+            case CODE_EVALUATION:
+            default:
+                return 4;
+        }
     }
 
     @SuppressWarnings("unchecked")

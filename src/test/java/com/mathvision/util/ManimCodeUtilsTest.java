@@ -268,6 +268,59 @@ class ManimCodeUtilsTest {
     }
 
     @Test
+    void validateManimRules_allowsAmbiguousSingleWordMobjectMethods() {
+        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
+                + "        length_number = DecimalNumber(0)\n"
+                + "        length_number.scale(0.72)\n"
+                + "        length_number.become(DecimalNumber(1))\n"
+                + "        length_number.update()";
+
+        List<String> warnings = ManimCodeUtils.validateFullWarnings(code);
+
+        assertTrue(warnings.stream().noneMatch(v -> v.contains("scale")), () -> String.join("\n", warnings));
+        assertTrue(warnings.stream().noneMatch(v -> v.contains("become")), () -> String.join("\n", warnings));
+        assertTrue(warnings.stream().noneMatch(v -> v.contains("update")), () -> String.join("\n", warnings));
+    }
+
+    @Test
+    void validateManimRules_allowsChineseProseWithInlineMathLabels() {
+        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
+                + "        finalText = Text(\"最佳取水点就是 P₀\", font=\"Microsoft YaHei\")\n"
+                + "        hint = Text(\"交点记作 P₀\", font=\"Microsoft YaHei\")\n"
+                + "        reflection = Text(\"把 B′ 接回原来的 B\", font=\"Microsoft YaHei\")";
+
+        List<String> warnings = ManimCodeUtils.validateFullWarnings(code);
+
+        assertTrue(warnings.stream().noneMatch(v -> v.contains("Text constructor with math-like content")),
+                () -> String.join("\n", warnings));
+    }
+
+    @Test
+    void validateManimRules_stillFlagsFormulaDominantTextConstructorMisuse() {
+        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
+                + "        formula = Text(\"L(P)=AP+PB\")\n"
+                + "        ineq = Text(r\"AP+PB\\\\geq AP_0+P_0B\")";
+
+        List<String> warnings = ManimCodeUtils.validateFullWarnings(code);
+
+        assertTrue(warnings.stream().anyMatch(v -> v.contains("Text constructor with math-like content")
+                && v.contains("L(P)=AP+PB")), () -> String.join("\n", warnings));
+        assertTrue(warnings.stream().anyMatch(v -> v.contains("Text constructor with math-like content")
+                && v.contains("AP+PB")), () -> String.join("\n", warnings));
+    }
+
+    @Test
+    void validateManimRules_stillFlagsUnimportedCommonExternalModuleCalls() {
+        String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
+                + "        point = Dot(np.array([0, 0, 0]))";
+
+        List<String> warnings = ManimCodeUtils.validateFullWarnings(code);
+
+        assertTrue(warnings.stream().anyMatch(v -> v.contains("Static rule warning")
+                && v.contains("np.array")), () -> String.join("\n", warnings));
+    }
+
+    @Test
     void validateManimRules_flagsTexMathModeMisuse() {
         String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
                 + "        label = Tex(r\"B^\\\\prime\")";

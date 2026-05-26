@@ -42,7 +42,8 @@ public final class NarrativePrompts {
                     + "- " + SystemPrompts.COLOR_FORMAT_RULES + "\n"
                     + "Storyboard style cleanup rules:\n"
                     + "- Treat the visual design pass as a strong draft, not an immutable contract; this stage may repair layout, style, continuity, and backend practicality before the storyboard becomes the validated downstream authority.\n"
-                    + "- Remove or merge redundant storyboard objects introduced by the visual design pass when they do not carry distinct teaching, geometry, dependency, or continuity meaning.\n"
+                    + "- Decide object lifecycle by teaching utility rather than by a blanket keep/remove rule: preserve, dim, transform, merge, or exit objects based on whether they remain useful for upcoming reasoning, continuity, comparison, dependency evidence, or learner orientation.\n"
+                    + "- Remove or merge redundant storyboard objects introduced by the visual design pass when they do not carry distinct teaching, geometry, dependency, continuity, or future support meaning.\n"
                     + "- Prefer one reusable object plus actions/style changes over multiple near-duplicate labels, highlights, helper objects, or repeated construction elements.\n"
                     + "- Preserve intentional scene-level placement, style, color, and visual hierarchy from the visual design pass unless they cause global consistency, overlap, or readability problems.\n"
                     + "- Once a color is assigned to a concept, it keeps that meaning across the entire storyboard. Record color-to-concept assignments in `global_visual_rules`.\n"
@@ -52,7 +53,7 @@ public final class NarrativePrompts {
                     + "- Simplify visible mathematical label content aggressively. For `kind = text` objects attached to geometry or representing element names, `content` must be the exact concise mathematical label only: use `B′`, `l`, `AB`, `P_min`, not `反射点B′`, `直线l`, `线段AB`, or other descriptive phrases. Keep prose in narration, action descriptions, goals, or notes instead.\n"
                     + "- Do not expand a valid symbolic label into Chinese prose just to satisfy visible-text rules; symbolic mathematical labels and equations are valid as-is.\n"
                     + "- Preserve the motion-first visual-action teaching intent from exploration and visual design: do not turn a movable reveal, construction, transform, or manipulation into a static text/formula-only explanation unless backend practicality makes the motion impossible.\n"
-                    + "- When repairing clutter, overlap, or redundancy, simplify supporting text or cards before removing the movable object, action, dependency, or visual evidence that carries the idea.\n"
+                    + "- When repairing clutter, overlap, or redundancy, choose among simplifying text/cards, dimming context, merging duplicates, repositioning groups, or exiting objects according to each object's future teaching utility; do not preserve or remove an object solely because it is mathematically important in isolation.\n"
                     + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n"
                     + SystemPrompts.ASCII_TEXT_RULES
                     + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES;
@@ -219,11 +220,11 @@ public final class NarrativePrompts {
      */
     public static String buildCleanupUserPrompt(String storyboardJson, java.util.List<String> issues) {
         StringBuilder userPrompt = new StringBuilder();
-        userPrompt.append("Please clean up this storyboard so it is coherent, and ensure that all coordinate-based elements stay within bounds and do not visibly overlap.\n");
+        userPrompt.append("Please clean up this storyboard so it is coherent, and ensure that all coordinate-based elements stay within bounds and do not visibly overlap. Optimize cognitive load by judging which objects should persist, dim, transform, merge, or exit based on their usefulness for upcoming teaching steps.\n");
         userPrompt.append("Preserve the original narrative order, object identity, Chinese learner-facing text, and motion-first visual teaching intent as much as possible; only adjust the layout and wording where necessary.\n");
         userPrompt.append("Apply ASCII cleanup only to backend identifiers such as scene_id, object ids, constraint ids, refs, and action target ids; do not ASCII-normalize titles, narration, descriptions, or visible object content. In Manim mode, also preserve voiceover text.\n");
         userPrompt.append("Visible natural-language object content must be Chinese, but symbolic mathematical labels and equations should remain concise and symbolic. For `kind=text` objects that label geometry, simplify redundant descriptions to the element name only, e.g. `反射点B′` -> `B′`, `直线l` -> `l`, `线段AB` -> `AB`.\n");
-        userPrompt.append("If you find issues, fix them directly. If there are no issues, still perform a full cleanup to make the storyboard more stable and readable.\n");
+        userPrompt.append("If you find issues, fix them directly. If there are no issues, still perform a full cleanup to make the storyboard more stable and readable, but do not make objects persist or exit mechanically; decide lifecycle from future teaching utility and visual clarity.\n");
         if (issues != null && !issues.isEmpty()) {
             userPrompt.append("Static validation findings:\n");
             for (String issue : issues) {

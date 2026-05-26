@@ -17,10 +17,13 @@ import com.mathvision.model.SceneEvaluationResult.SampleEvaluation;
 import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.node.support.FixRetryState;
+import com.mathvision.node.support.NodeSupport;
+import com.mathvision.prompt.SceneEvaluationPrompts;
 import com.mathvision.prompt.StoryboardJsonBuilder;
 import com.mathvision.util.ErrorSummarizer;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.service.FileOutputService;
+import com.mathvision.util.NodeConversationContext;
 import com.mathvision.util.StoryboardConstraintUtils;
 import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TextUtils;
@@ -65,6 +68,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     private static final double GEOGEBRA_MIN_VIEW_WIDTH_UTILIZATION = 0.25;
     private static final double GEOGEBRA_MIN_VIEW_HEIGHT_UTILIZATION = 0.20;
     private static final int DEFAULT_MAX_FIX_ATTEMPTS = 2;
+    private static final int CODE_FIX_CONTEXT_ROUNDS = 5;
     private static final int MAX_FIX_REPORT_SAMPLES = 12;
     private static final int MAX_ISSUES_PER_SAMPLE_IN_FIX_REPORT = 6;
 
@@ -295,7 +299,35 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 ? StoryboardJsonBuilder.buildForSceneEvaluationFix(storyboard, outputTarget)
                 : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
         request.setFixHistory(new ArrayList<>(retryState.fixHistory));
+        attachSceneEvaluationCodeFixContext(input, request, outputTarget);
         return request;
+    }
+
+    private void attachSceneEvaluationCodeFixContext(SceneEvaluationInput input,
+                                                     CodeFixRequest request,
+                                                     String outputTarget) {
+        CodeResult codeResult = input.codeResult();
+        String targetConcept = codeResult != null && codeResult.getTargetConcept() != null
+                && !codeResult.getTargetConcept().isBlank()
+                ? codeResult.getTargetConcept()
+                : request.getSceneName();
+        String targetDescription = codeResult != null && codeResult.getTargetDescription() != null
+                ? codeResult.getTargetDescription()
+                : "";
+        String rulesPrompt = SceneEvaluationPrompts.buildLayoutFixRulesPrompt(outputTarget);
+        String fixedContextPrompt = SceneEvaluationPrompts.buildLayoutFixFixedContextPrompt(
+                targetConcept,
+                targetDescription,
+                outputTarget);
+        NodeConversationContext conversationContext = NodeSupport.ensureCodeFixConversationContext(
+                input.retryState(),
+                input.config(),
+                CODE_FIX_CONTEXT_ROUNDS,
+                rulesPrompt,
+                fixedContextPrompt);
+        request.setRulesPrompt(rulesPrompt);
+        request.setFixedContextPrompt(fixedContextPrompt);
+        request.setConversationContext(conversationContext);
     }
 
     private void appendPendingIssueToFixHistory(SceneEvaluationRetryState retryState,

@@ -11,6 +11,8 @@ import com.mathvision.model.RenderResult;
 import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.node.support.FixRetryState;
+import com.mathvision.node.support.NodeSupport;
+import com.mathvision.prompt.RenderFixPrompts;
 import com.mathvision.prompt.StoryboardJsonBuilder;
 import com.mathvision.service.FileOutputService;
 import com.mathvision.service.GeoGebraRenderService;
@@ -19,6 +21,7 @@ import com.mathvision.service.ManimRendererService.RenderAttemptResult;
 import com.mathvision.util.ErrorSummarizer;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.ManimCodeUtils;
+import com.mathvision.util.NodeConversationContext;
 import com.mathvision.util.TextHealthDiagnostics;
 import com.mathvision.util.TimeUtils;
 import io.github.the_pocket.PocketFlow;
@@ -41,6 +44,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
 
     private static final Logger log = LoggerFactory.getLogger(RenderNode.class);
     private static final int DEFAULT_MAX_RENDER_RETRIES = 4;
+    private static final int CODE_FIX_CONTEXT_ROUNDS = 6;
 
     private final ManimRendererService renderer;
     private final GeoGebraRenderService geoGebraRenderer;
@@ -507,7 +511,35 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         request.setStaticAuditIssueCount(retryState.pendingStaticAuditIssues.size());
         request.setStaticAuditSummary(String.join(" | ", retryState.pendingStaticAuditIssues));
         request.setFixHistory(new ArrayList<>(retryState.fixHistory));
+        attachRenderCodeFixContext(input, request, outputTarget);
         return request;
+    }
+
+    private void attachRenderCodeFixContext(RenderInput input,
+                                            CodeFixRequest request,
+                                            String outputTarget) {
+        CodeResult codeResult = input.codeResult();
+        String targetConcept = codeResult != null && codeResult.getTargetConcept() != null
+                && !codeResult.getTargetConcept().isBlank()
+                ? codeResult.getTargetConcept()
+                : request.getSceneName();
+        String targetDescription = codeResult != null && codeResult.getTargetDescription() != null
+                ? codeResult.getTargetDescription()
+                : "";
+        String rulesPrompt = RenderFixPrompts.buildRulesPrompt(outputTarget);
+        String fixedContextPrompt = RenderFixPrompts.buildFixedContextPrompt(
+                targetConcept,
+                targetDescription,
+                outputTarget);
+        NodeConversationContext conversationContext = NodeSupport.ensureCodeFixConversationContext(
+                input.retryState(),
+                input.config(),
+                CODE_FIX_CONTEXT_ROUNDS,
+                rulesPrompt,
+                fixedContextPrompt);
+        request.setRulesPrompt(rulesPrompt);
+        request.setFixedContextPrompt(fixedContextPrompt);
+        request.setConversationContext(conversationContext);
     }
 
     private RenderResult skippedResult(CodeResult codeResult,

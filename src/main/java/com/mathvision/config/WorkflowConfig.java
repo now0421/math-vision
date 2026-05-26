@@ -25,6 +25,7 @@ public class WorkflowConfig {
     private int maxConcurrent;
     private int visualDesignSceneMaxRetries = 3;
     private int storyboardValidationMaxRetries = 3;
+    private int placementEnrichmentMaxRetries = 3;
     private int codeGenMaxRetries = 2;
     private int codeEvaluationMaxRetries = 3;
     private boolean renderEnabled;
@@ -98,6 +99,10 @@ public class WorkflowConfig {
     public int getStoryboardValidationMaxRetries() { return storyboardValidationMaxRetries; }
     public void setStoryboardValidationMaxRetries(int storyboardValidationMaxRetries) {
         this.storyboardValidationMaxRetries = storyboardValidationMaxRetries;
+    }
+    public int getPlacementEnrichmentMaxRetries() { return placementEnrichmentMaxRetries; }
+    public void setPlacementEnrichmentMaxRetries(int placementEnrichmentMaxRetries) {
+        this.placementEnrichmentMaxRetries = placementEnrichmentMaxRetries;
     }
     public int getCodeGenMaxRetries() { return codeGenMaxRetries; }
     public void setCodeGenMaxRetries(int codeGenMaxRetries) { this.codeGenMaxRetries = codeGenMaxRetries; }

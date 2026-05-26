@@ -11,8 +11,10 @@ it keeps the stricter construction rules required by this renderer.
   referenced later.
 - Create coordinate points with `Point({x, y})` or `Point({x, y, z})`; do not
   use bare coordinate assignment such as `A = (1, 2)`.
-- Use `Point(path)` or `PointIn(region)` for draggable points constrained by
-  existing geometry.
+- Use `Point(path)` for draggable points constrained by an existing path.
+  `Point(path, parameter)` returns the point at that path parameter; with a
+  constant parameter it is a dependent fixed-position point, not a draggable
+  path point. Use `PointIn(region)` for points constrained to a region.
 - Use `Slider(...)` when motion, angle, scale, opacity, or animation state must
   stay inside an explicit numeric range.
 - Use `SetCoordSystem(-7, 7, -4, 4)` for the project's initial 2D graphics
@@ -48,24 +50,29 @@ only.
 ## Point
 
 ```text
-Point( <Object> )                 // point constrained to an existing path or object
-Point( <Object>, <Parameter> )    // parameter chooses the initial position on that object
+Point( <Object> )                 // point on an object; movable along its path
+Point( <Object>, <Parameter> )    // point at the given path parameter; constant parameters are not draggable
 Point( <Point>, <Vector> )        // vector is a displacement from the given point
-Point( <List> )                   // list of two or three coordinates
+Point( <List> )                   // coordinate list; official 2D syntax uses two numbers; 3D examples may use three
 PointIn( <Region> )               // point constrained to the interior of the region
 ```
 
 ```geogebra
-fixedPoint = Point({0, 0})
+coordinatePoint = Point({0, 0})
 freePoint = Point({3, 1})
 point3d = Point({1, 2, 3})
 pointOnLine = Point(lineAB)
 pointOnCircle = Point(circle1)
-pointOnSegmentAtParameter = Point(segmentAB, 0.25)
+fixedPointOnSegmentAtParameter = Point(segmentAB, 0.25)
 pointInTriangle = PointIn(triangle)
 ```
 
-To keep a constructed point fixed after creation, apply `SetFixed(fixedPoint,
+Do not use `Point(path, constant)` when the intended output is a draggable
+point with an initial position on the path. Use `Point(path)` for direct
+dragging, or use a slider/expression as the parameter when the position should
+be controlled by another object.
+
+To keep a constructed point fixed after creation, apply `SetFixed(coordinatePoint,
 true)` as a later scripting command rather than mixing it into an
 assignment-style construction example.
 
@@ -130,9 +137,9 @@ angle marker. Prefer the form that best preserves the intended vertex and
 direction.
 
 ```text
-Angle( <Line>, <Line> )                 // smaller angle between two lines
-Angle( <Point>, <Point>, <Point> )      // angle with the middle point as vertex
-Angle( <Vector>, <Vector> )             // directed angle from the first vector to the second
+Angle( <Line>, <Line> )                 // angle between the direction vectors of the lines
+Angle( <Point>, <Apex>, <Point> )       // angle defined by two points and the apex
+Angle( <Vector>, <Vector> )             // angle between two vectors
 ```
 
 ```geogebra
@@ -145,10 +152,11 @@ directedAPB = Angle(Vector(P, A), Vector(P, B))
 
 Notes:
 
-- `Angle(PA, PB)` returns the smaller angle between the two line objects.
-- `Angle(A, P, B)` measures angle APB with `P` as the vertex.
-- `Angle(Vector(P, A), Vector(P, B))` is the directed angle from ray `P->A` to
-  ray `P->B`; use this form when clockwise/counterclockwise order matters.
+- `Angle(PA, PB)` returns the angle between the direction vectors of the two
+  lines.
+- `Angle(A, P, B)` uses `P` as the apex of angle APB.
+- These angle forms return values in `[0, 2 * pi]` when radians are used, not
+  always the smaller angle.
 - For storyboard angle arcs, specify the ordered sweep explicitly, for example
   "arc from ray P->A to ray P->B at vertex P". Do not rely on label placement or
   a vague quadrant note to define the measured sector.
@@ -222,9 +230,10 @@ IntegralBetween( <Function>, <Function>, <Start x-Value>, <End x-Value> )
 Limit( <Function>, <Value> )
 LimitAbove( <Function>, <Value> )
 LimitBelow( <Function>, <Value> )
-Root( <Function> )
-Root( <Function>, <Start x-Value> )
-Roots( <Function> )
+Root( <Polynomial> )
+Root( <Function>, <Initial x-Value> )
+Root( <Function>, <Start x-Value>, <End x-Value> )
+Roots( <Function>, <Start x-Value>, <End x-Value> )
 Extremum( <Function> )
 InflectionPoint( <Polynomial> )
 Tangent( <Point>, <Function> )
@@ -259,7 +268,7 @@ df = Derivative(f)
 secondDerivative = Derivative(f, 2)
 areaUnderCurve = Integral(f, 0, 2)
 tangentAtA = Tangent(Point({1, f(1)}), f)
-rootsOfF = Roots(f)
+rootsOfF = Roots(f, -1, 4)
 turningPoints = Extremum(f)
 taylorNearZero = TaylorPolynomial(sin(x), 0, 5)
 ```
@@ -322,7 +331,7 @@ Ellipse( <Focus>, <Focus>, <SemiMajorAxis Length> )
 Hyperbola( <Focus>, <Focus>, <SemiMajorAxis Length> )
 Parabola( <Focus>, <Directrix> )
 Focus( <Conic> )
-Directrix( <Parabola> )
+Directrix( <Conic> )
 Eccentricity( <Conic> )
 MajorAxis( <Conic> )
 MinorAxis( <Conic> )
@@ -429,7 +438,7 @@ not depend on ambiguous symbolic results unless they are named and then used
 explicitly.
 
 ```text
-Solve( <Equation> )
+Solve( <Equation in x> )
 Solve( <List of Equations>, <List of Variables> )
 Solutions( <Equation> )
 NSolve( <Equation> )
@@ -439,7 +448,8 @@ CSolve( <Equation> )
 CSolutions( <Equation> )
 Factor( <Polynomial> )
 Expand( <Expression> )
-Simplify( <Expression> )
+Simplify( <Function> )
+Simplify( <Text> )
 Substitute( <Expression>, <Substitution List> )
 Eliminate( <List of Polynomials>, <List of Variables> )
 Numeric( <Expression> )
@@ -539,8 +549,8 @@ FitPow( <List of Points> )
 FitSin( <List of Points> )
 RSquare( <List of Points>, <Function> )
 SumSquaredErrors( <List of Points>, <Function> )
-TTest( <List of Sample Data>, <Hypothesized Mean> )
-ZMeanTest( <List of Sample Data>, <Standard Deviation>, <Hypothesized Mean> )
+TTest( <List of Sample Data>, <Hypothesized Mean>, <Tail> )
+ZMeanTest( <List of Sample Data>, <Standard Deviation>, <Hypothesized Mean>, <Tail> )
 ChiSquaredTest( <Matrix> )
 ```
 
@@ -577,7 +587,7 @@ GeoGebra charts are appropriate for simple mathematical visuals. For rich
 business charts, prefer the project's ECharts path instead of GeoGebra.
 
 ```text
-BarChart( <List of Data> )
+BarChart( <List of Data>, <List of Frequencies> )
 BoxPlot( <yOffset>, <yScale>, <List of Raw Data> )
 DotPlot( <List of Raw Data> )
 FrequencyPolygon( <List of Class Boundaries>, <List of Heights> )
@@ -594,8 +604,9 @@ StickGraph( <List of Points> )
 ```
 
 ```geogebra
-barData = {10, 20, 15, 25}
-barChart1 = BarChart(barData)
+barCategories = {1, 2, 3, 4}
+barHeights = {10, 20, 15, 25}
+barChart1 = BarChart(barCategories, barHeights)
 boxPlot1 = BoxPlot(1, 0.5, data)
 dotPlot1 = DotPlot(data)
 histogram1 = Histogram({0, 10, 20, 30, 40}, {2, 5, 4, 1})
@@ -620,7 +631,7 @@ Last( <List>, <Number of Elements> )
 Take( <List>, <Start Position>, <End Position> )
 Append( <List>, <Object> )
 Insert( <Object>, <List>, <Position> )
-Remove( <List>, <Object> )
+Remove( <List>, <List> )
 RemoveUndefined( <List> )
 Reverse( <List> )
 Sort( <List> )
@@ -674,9 +685,9 @@ RotateText( <Text>, <Angle> )
 IndexOf( <Text>, <Text> )
 ReplaceAll( <Text>, <Text to Match>, <Text to Replace> )
 Split( <Text>, <List of Texts to Split On> )
-LetterToUnicode( <Letter> )
+LetterToUnicode( <"Letter"> )
 UnicodeToLetter( <Integer> )
-TextToUnicode( <Text> )
+TextToUnicode( <"Text"> )
 UnicodeToText( <List of Integers> )
 ```
 
@@ -732,7 +743,8 @@ Use 3D commands only when the requested output needs a spatial figure. A 2D
 construction is usually more reliable for ordinary geometry diagrams.
 
 ```text
-Axes( )
+Axes( <Conic> )
+Axes( <Quadric> )
 Plane( <Point>, <Point>, <Point> )
 PerpendicularPlane( <Point>, <Line> )
 PlaneBisector( <Segment> )
@@ -756,10 +768,10 @@ Ends( <Quadric> )
 Side( <Quadric> )
 Volume( <Solid> )
 Height( <Solid> )
-Radius( <Quadric> )
+Radius( <Conic> )
 Circumference( <Conic> )
-CircularArc( <Point>, <Point>, <Point> )
-CircularSector( <Point>, <Point>, <Point> )
+CircularArc( <Midpoint>, <Point A>, <Point B> )
+CircularSector( <Midpoint>, <Point A>, <Point B> )
 CircumcircularArc( <Point>, <Point>, <Point> )
 CircumcircularSector( <Point>, <Point>, <Point> )
 InteriorAngles( <Polygon> )
@@ -801,7 +813,8 @@ SetBackgroundColor( <Object>, <Red>, <Green>, <Blue> )
 SetBackgroundColor( <Object>, <"Color"> )
 SetBackgroundColor( <Red>, <Green>, <Blue> )         // active Graphics View; numeric channels use 0..1
 SetBackgroundColor( <"Color"> )                      // active Graphics View
-SetColor( <Object>, <ProjectColor> )                 // storyboard ProjectColor is a #RRGGBB hex color
+SetColor( <Object>, <Red>, <Green>, <Blue> )
+SetColor( <Object>, <"Color"> )                      // project examples use #RRGGBB hex strings
 SetDynamicColor( <Object>, <Red>, <Green>, <Blue> )
 SetDynamicColor( <Object>, <Red>, <Green>, <Blue>, <Opacity> ) // all numeric inputs use 0..1
 SetLineThickness( <Object>, <Number> )
@@ -833,11 +846,11 @@ ShowGrid( <Boolean> )
 ShowGrid( <View>, <Boolean> )                        // view 1, 2, or 3
 SetLevelOfDetail( <Surface>, <Level of Detail> )     // 0 faster, 1 more accurate
 CenterView( <Point> )
-SetValue( <Boolean>, <Boolean> )
+SetValue( <Boolean>, <0 | 1> )
 SetValue( <Object>, <Object> )
 StartAnimation( )
 StartAnimation( <Boolean> )
-StartAnimation( <Slider>, <Boolean> )
+StartAnimation( <Point or Slider>, <Point or Slider>, ..., <Boolean> )
 ZoomIn( <Scale Factor> )
 ZoomOut( <Scale Factor> )
 ```
@@ -873,7 +886,7 @@ not a normal GeoGebra input-bar construction command. The renderer executes it
 as `ggbApplet.setCoordSystem(xmin, xmax, ymin, ymax)`.
 
 ```text
-SetCoordSystem( <xMin>, <xMax>, <yMin>, <yMax> )
+SetCoordSystem( <xMin>, <xMax>, <yMin>, <yMax> ) // project API helper, not an official GeoGebra command
 ```
 
 ```geogebra

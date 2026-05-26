@@ -6,6 +6,7 @@
   "max_concurrent": 16,
   "visual_design_scene_max_retries": 3,
   "storyboard_validation_max_retries": 5,
+  "placement_enrichment_max_retries": 3,
   "code_gen_max_retries": 2,
   "code_evaluation_max_retries": 3,
   "render_enabled": true,
@@ -13,6 +14,6 @@
   "render_max_retries": 10,
   "scene_evaluation_max_retries": 5,
   "input_mode": "auto",
-  "output_target": "manim",
+  "output_target": "geogebra",
   "model": "claude-opus-4-7"
 }

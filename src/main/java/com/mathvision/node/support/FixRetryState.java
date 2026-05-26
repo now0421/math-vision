@@ -1,5 +1,7 @@
 package com.mathvision.node.support;
 
+import com.mathvision.util.NodeConversationContext;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,6 +21,7 @@ public class FixRetryState {
     protected String originalGeneratedCodeBeforeFix;
     protected int originalIssueCount;
     protected List<String> currentIssues = new ArrayList<>();
+    protected NodeConversationContext conversationContext;
 
     public FixRetryState() {
         // Do not call reset() here - subclass fields may not be initialized yet
@@ -41,6 +44,7 @@ public class FixRetryState {
         attempts = 0;
         fixToolCalls = 0;
         carryoverToolCalls = 0;
+        conversationContext = null;
         clearPending();
     }
 
@@ -139,5 +143,13 @@ public class FixRetryState {
 
     public void setCurrentIssues(List<String> currentIssues) {
         this.currentIssues = currentIssues != null ? currentIssues : new ArrayList<>();
+    }
+
+    public NodeConversationContext getConversationContext() {
+        return conversationContext;
+    }
+
+    public void setConversationContext(NodeConversationContext conversationContext) {
+        this.conversationContext = conversationContext;
     }
 }
