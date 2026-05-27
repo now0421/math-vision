@@ -292,6 +292,78 @@ class VisualDesignNodeTest {
     }
 
     @Test
+    void keepsGeoGebraDefaultPlaceablePlacementForManim() {
+        CapturingAiClient aiClient = new CapturingAiClient(geoGebraDefaultPlaceablePlacementResponse());
+        KnowledgeNode step = node("placement", "Keep Manim default-placeable placements", KnowledgeNode.NODE_TYPE_CONSTRUCTION);
+        KnowledgeGraph graph = graph(List.of(step), Map.of(), List.of("placement"));
+        WorkflowConfig config = new WorkflowConfig();
+        config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_MANIM);
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.KNOWLEDGE_GRAPH, graph);
+        ctx.put(WorkflowKeys.CONFIG, config);
+
+        new VisualDesignNode().run(ctx);
+
+        Narrative narrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
+        assertNotNull(narrative);
+        List<StoryboardObject> enteringObjects = narrative.getStoryboard().getScenes().get(0).getEnteringObjects();
+        StoryboardObject pathPoint = enteringObjects.stream()
+                .filter(object -> "P".equals(object.getId()))
+                .findFirst()
+                .orElseThrow();
+        StoryboardObject movingPoint = enteringObjects.stream()
+                .filter(object -> "Q".equals(object.getId()))
+                .findFirst()
+                .orElseThrow();
+        StoryboardObject freePoint = enteringObjects.stream()
+                .filter(object -> "R".equals(object.getId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertNotNull(pathPoint.getPlacement());
+        assertNotNull(movingPoint.getPlacement());
+        assertNotNull(freePoint.getPlacement());
+    }
+
+    @Test
+    void stripsGeoGebraDefaultPlaceablePlacementForGeoGebra() {
+        CapturingAiClient aiClient = new CapturingAiClient(geoGebraDefaultPlaceablePlacementResponse());
+        KnowledgeNode step = node("placement", "Strip GeoGebra default-placeable placements", KnowledgeNode.NODE_TYPE_CONSTRUCTION);
+        KnowledgeGraph graph = graph(List.of(step), Map.of(), List.of("placement"));
+        WorkflowConfig config = new WorkflowConfig();
+        config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.KNOWLEDGE_GRAPH, graph);
+        ctx.put(WorkflowKeys.CONFIG, config);
+
+        new VisualDesignNode().run(ctx);
+
+        Narrative narrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
+        assertNotNull(narrative);
+        List<StoryboardObject> enteringObjects = narrative.getStoryboard().getScenes().get(0).getEnteringObjects();
+        StoryboardObject pathPoint = enteringObjects.stream()
+                .filter(object -> "P".equals(object.getId()))
+                .findFirst()
+                .orElseThrow();
+        StoryboardObject movingPoint = enteringObjects.stream()
+                .filter(object -> "Q".equals(object.getId()))
+                .findFirst()
+                .orElseThrow();
+        StoryboardObject freePoint = enteringObjects.stream()
+                .filter(object -> "R".equals(object.getId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertNull(pathPoint.getPlacement());
+        assertNull(movingPoint.getPlacement());
+        assertNotNull(freePoint.getPlacement());
+    }
+
+    @Test
     void retriesSceneDesignWhenGeometricMarkerDefinitionIsIncomplete() {
         RetryMarkerAiClient aiClient = new RetryMarkerAiClient(false);
         KnowledgeNode step = node("angle", "Introduce angle sweep", KnowledgeNode.NODE_TYPE_OBSERVATION);
@@ -519,6 +591,7 @@ class VisualDesignNodeTest {
         ObjectNode message = choices.addObject().putObject("message");
         ArrayNode toolCalls = message.putArray("tool_calls");
         ObjectNode function = toolCalls.addObject().putObject("function");
+
         function.put("name", "write_scene_design");
 
         ObjectNode arguments = JsonUtils.mapper().createObjectNode();
@@ -553,6 +626,44 @@ class VisualDesignNodeTest {
         return response;
     }
 
+    private static JsonNode geoGebraDefaultPlaceablePlacementResponse() {
+        ObjectNode response = JsonUtils.mapper().createObjectNode();
+        ArrayNode choices = response.putArray("choices");
+        ObjectNode message = choices.addObject().putObject("message");
+        ArrayNode toolCalls = message.putArray("tool_calls");
+        ObjectNode function = toolCalls.addObject().putObject("function");
+        function.put("name", "write_scene_design");
+
+        ObjectNode arguments = JsonUtils.mapper().createObjectNode();
+        ObjectNode scene = arguments.putObject("scene");
+        scene.put("scene_id", "scene_1");
+        scene.put("title", "GeoGebra default-placeable placement filter");
+        scene.put("goal", "Filter GeoGebra default-placeable placements");
+        scene.put("narration", "Filter placements.");
+        scene.put("layout_goal", "Centered layout");
+        scene.put("scene_mode", "2d");
+        ArrayNode enteringObjects = scene.putArray("entering_objects");
+        enteringObjects.add(enteringObject("P", "#00FF00"));
+        enteringObjects.add(enteringObject("Q", "#0000FF"));
+        enteringObjects.add(enteringObject("R", "#FF00FF"));
+        scene.putArray("actions");
+
+        ArrayNode newObjects = arguments.putArray("new_objects");
+        newObjects.add(registryObject("l"));
+        ObjectNode pathPoint = registryObject("P");
+        pathPoint.putArray("constraints").add(liesOnConstraintNode("P_on_l", "P", "l"));
+        newObjects.add(pathPoint);
+        ObjectNode movingPoint = registryObject("Q");
+        movingPoint.putArray("constraints").add(movesOnObjectConstraintNode("Q_moves_on_l", "Q", "l"));
+        newObjects.add(movingPoint);
+        ObjectNode freePoint = registryObject("R");
+        freePoint.putArray("constraints").add(pointAtConstraintNode("R_point_at", "R"));
+        newObjects.add(freePoint);
+
+        function.put("arguments", JsonUtils.toJson(arguments));
+        return response;
+    }
+
     private static ObjectNode reflectionConstraintNode() {
         ObjectNode constraint = JsonUtils.mapper().createObjectNode();
         constraint.put("id", "Bprime_reflection");
@@ -568,14 +679,44 @@ class VisualDesignNodeTest {
     }
 
     private static ObjectNode pointAtConstraintNode() {
+        return pointAtConstraintNode("P_point_at", "P");
+    }
+
+    private static ObjectNode pointAtConstraintNode(String id, String point) {
         ObjectNode constraint = JsonUtils.mapper().createObjectNode();
-        constraint.put("id", "P_point_at");
+        constraint.put("id", id);
         constraint.put("domain", "placement");
         constraint.put("relation", "point_at");
         ObjectNode refs = constraint.putObject("refs");
-        refs.put("point", "P");
+        refs.put("point", point);
         ObjectNode parameters = constraint.putObject("parameters");
         parameters.put("coordinate", "screen center");
+        constraint.put("strength", "hard");
+        return constraint;
+    }
+
+    private static ObjectNode liesOnConstraintNode(String id, String point, String support) {
+        ObjectNode constraint = JsonUtils.mapper().createObjectNode();
+        constraint.put("id", id);
+        constraint.put("domain", "constraint");
+        constraint.put("relation", "lies_on");
+        ObjectNode refs = constraint.putObject("refs");
+        refs.put("point", point);
+        refs.put("support", support);
+        constraint.putObject("parameters");
+        constraint.put("strength", "hard");
+        return constraint;
+    }
+
+    private static ObjectNode movesOnObjectConstraintNode(String id, String point, String support) {
+        ObjectNode constraint = JsonUtils.mapper().createObjectNode();
+        constraint.put("id", id);
+        constraint.put("domain", "motion");
+        constraint.put("relation", "moves_on_object");
+        ObjectNode refs = constraint.putObject("refs");
+        refs.put("point", point);
+        refs.put("support", support);
+        constraint.putObject("parameters");
         constraint.put("strength", "hard");
         return constraint;
     }

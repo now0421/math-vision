@@ -125,6 +125,10 @@ public final class StoryboardConstraintUtils {
         return constraint != null && StoryboardConstraintCatalog.isCoordinateDerivedRelation(constraint.getRelation());
     }
 
+    public static boolean isGeoGebraDefaultPlaceableConstraint(StoryboardConstraint constraint) {
+        return constraint != null && StoryboardConstraintCatalog.isGeoGebraDefaultPlaceableRelation(constraint.getRelation());
+    }
+
     public static boolean isMotionSensitiveConstraint(StoryboardConstraint constraint) {
         return constraint != null && StoryboardConstraintCatalog.isMotionSensitiveRelation(constraint.getRelation());
     }

@@ -105,6 +105,11 @@ public final class StoryboardConstraintCatalog {
         return spec != null && spec.coordinateDerived();
     }
 
+    public static boolean isGeoGebraDefaultPlaceableRelation(String relation) {
+        RelationSpec spec = relation(relation);
+        return spec != null && spec.geoGebraDefaultPlaceable();
+    }
+
     public static boolean isMotionSensitiveRelation(String relation) {
         RelationSpec spec = relation(relation);
         return spec != null && spec.motionSensitive();
@@ -136,6 +141,7 @@ public final class StoryboardConstraintCatalog {
                 .optionalParams("coordinate_space", "tolerance"));
         add(relations, spec("constraint", "lies_on")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .geoGebraDefaultPlaceable()
                 .ownerRefs("point")
                 .dependencyRefs("support")
                 .requireRef("point")
@@ -342,6 +348,7 @@ public final class StoryboardConstraintCatalog {
         add(relations, spec("motion", "moves_on_object")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .motionSensitive()
+                .geoGebraDefaultPlaceable()
                 .ownerRefs("point")
                 .dependencyRefs("support")
                 .requireRef("point")
@@ -349,12 +356,14 @@ public final class StoryboardConstraintCatalog {
                 .optionalParams("range", "speed", "loop", "tolerance"));
         add(relations, spec("motion", "moves_along_range")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .geoGebraDefaultPlaceable()
                 .ownerRefs("object", "point")
                 .requireAnyRef("object", "point")
                 .requireParam("range")
                 .optionalParams("coordinate_space", "speed", "loop"));
         add(relations, spec("motion", "slider_driven")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .geoGebraDefaultPlaceable()
                 .ownerRefs("object", "target")
                 .requireAnyRef("object", "target")
                 .optionalRefs("slider")
@@ -362,6 +371,7 @@ public final class StoryboardConstraintCatalog {
                 .optionalParams("parameter", "speed", "loop"));
         add(relations, spec("motion", "follows_path")
                 .scopes(Scope.OBJECT, Scope.SCENE)
+                .geoGebraDefaultPlaceable()
                 .ownerRefs("object", "point")
                 .requireAnyRef("object", "point")
                 .requireAnyRef("path", "support")
@@ -540,6 +550,7 @@ public final class StoryboardConstraintCatalog {
         private final Set<String> optionalParameters;
         private final Map<String, Set<String>> enumParameters;
         private final boolean coordinateDerived;
+        private final boolean geoGebraDefaultPlaceable;
         private final boolean motionSensitive;
         private final Set<String> ownerRefRoles;
         private final Set<String> dependencyRefRoles;
@@ -554,6 +565,7 @@ public final class StoryboardConstraintCatalog {
             this.optionalParameters = Collections.unmodifiableSet(new LinkedHashSet<>(builder.optionalParameters));
             this.enumParameters = deepUnmodifiableMap(builder.enumParameters);
             this.coordinateDerived = builder.coordinateDerived;
+            this.geoGebraDefaultPlaceable = builder.geoGebraDefaultPlaceable;
             this.motionSensitive = builder.motionSensitive
                     || builder.coordinateDerived
                     || "motion".equals(builder.domain)
@@ -610,6 +622,10 @@ public final class StoryboardConstraintCatalog {
 
         public boolean coordinateDerived() {
             return coordinateDerived;
+        }
+
+        public boolean geoGebraDefaultPlaceable() {
+            return geoGebraDefaultPlaceable;
         }
 
         public boolean motionSensitive() {
@@ -686,6 +702,7 @@ public final class StoryboardConstraintCatalog {
             private final Set<String> ownerRefRoles = new LinkedHashSet<>();
             private final Set<String> dependencyRefRoles = new LinkedHashSet<>();
             private boolean coordinateDerived;
+            private boolean geoGebraDefaultPlaceable;
             private boolean motionSensitive;
 
             private Builder(String domain, String relation) {
@@ -701,6 +718,11 @@ public final class StoryboardConstraintCatalog {
             /** Marks relations whose owner geometry is computed from dependency refs. */
             private Builder coordinateDerived() {
                 this.coordinateDerived = true;
+                return this;
+            }
+
+            private Builder geoGebraDefaultPlaceable() {
+                this.geoGebraDefaultPlaceable = true;
                 return this;
             }
 

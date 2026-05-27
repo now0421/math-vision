@@ -421,6 +421,13 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                     result.newObjects,
                     registryDefinitions,
                     visibleObjectSnapshot);
+            if (WorkflowConfig.OUTPUT_TARGET_GEOGEBRA.equalsIgnoreCase(outputTarget)) {
+                stripGeoGebraDefaultPlaceablePlacements(
+                        result.scene,
+                        result.newObjects,
+                        registryDefinitions,
+                        visibleObjectSnapshot);
+            }
             collectedScenes.add(result.scene);
             Map<String, StoryboardObject> nextVisibleState = computeSceneVisibleState(
                     result.scene,
@@ -477,6 +484,18 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         stripPlacementFromPatches(scene.getPersistentObjects(), ownerIds);
     }
 
+    private void stripGeoGebraDefaultPlaceablePlacements(StoryboardScene scene,
+                                                         List<StoryboardObject> newObjects,
+                                                         Map<String, StoryboardObject> registryDefinitions,
+                                                         List<StoryboardObject> batchVisibleObjectSnapshot) {
+        Set<String> ownerIds = collectGeoGebraDefaultPlaceableOwnerIds(scene, newObjects, registryDefinitions, batchVisibleObjectSnapshot);
+        if (ownerIds.isEmpty()) {
+            return;
+        }
+        stripPlacementFromPatches(scene.getEnteringObjects(), ownerIds);
+        stripPlacementFromPatches(scene.getPersistentObjects(), ownerIds);
+    }
+
     private Set<String> collectCoordinateDerivedOwnerIds(StoryboardScene scene,
                                                          List<StoryboardObject> newObjects,
                                                          Map<String, StoryboardObject> registryDefinitions,
@@ -489,6 +508,22 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         collectCoordinateDerivedOwnerIds(ownerIds, objectConstraints(batchVisibleObjectSnapshot));
         if (registryDefinitions != null) {
             collectCoordinateDerivedOwnerIds(ownerIds, objectConstraints(new ArrayList<>(registryDefinitions.values())));
+        }
+        return ownerIds;
+    }
+
+    private Set<String> collectGeoGebraDefaultPlaceableOwnerIds(StoryboardScene scene,
+                                                                List<StoryboardObject> newObjects,
+                                                                Map<String, StoryboardObject> registryDefinitions,
+                                                                List<StoryboardObject> batchVisibleObjectSnapshot) {
+        Set<String> ownerIds = new LinkedHashSet<>();
+        collectGeoGebraDefaultPlaceableOwnerIds(ownerIds, scene != null ? scene.getConstraints() : null);
+        collectGeoGebraDefaultPlaceableOwnerIds(ownerIds, objectConstraints(scene != null ? scene.getEnteringObjects() : null));
+        collectGeoGebraDefaultPlaceableOwnerIds(ownerIds, objectConstraints(scene != null ? scene.getPersistentObjects() : null));
+        collectGeoGebraDefaultPlaceableOwnerIds(ownerIds, objectConstraints(newObjects));
+        collectGeoGebraDefaultPlaceableOwnerIds(ownerIds, objectConstraints(batchVisibleObjectSnapshot));
+        if (registryDefinitions != null) {
+            collectGeoGebraDefaultPlaceableOwnerIds(ownerIds, objectConstraints(new ArrayList<>(registryDefinitions.values())));
         }
         return ownerIds;
     }
@@ -512,6 +547,17 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         }
         for (StoryboardConstraint constraint : constraints) {
             if (StoryboardConstraintUtils.isCoordinateDerivedConstraint(constraint)) {
+                ownerIds.addAll(StoryboardConstraintUtils.ownerIds(constraint));
+            }
+        }
+    }
+
+    private void collectGeoGebraDefaultPlaceableOwnerIds(Set<String> ownerIds, List<StoryboardConstraint> constraints) {
+        if (constraints == null) {
+            return;
+        }
+        for (StoryboardConstraint constraint : constraints) {
+            if (StoryboardConstraintUtils.isGeoGebraDefaultPlaceableConstraint(constraint)) {
                 ownerIds.addAll(StoryboardConstraintUtils.ownerIds(constraint));
             }
         }
