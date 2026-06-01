@@ -153,6 +153,7 @@ public final class CodeGenerationPrompts {
                     + "- " + SystemPrompts.COLOR_FORMAT_RULES
                     + "- " + SystemPrompts.GEOGEBRA_COLOR_RULES
                     + "- Keep the script organized in scene order so downstream scene buttons can toggle the right visible objects.\n"
+                    + SystemPrompts.GEOGEBRA_SCENE_DIRECTIVE_RULES
                     + "- If a requested visual effect would require a command not documented in the manual, re-express it with documented commands or omit that unsupported decoration.\n\n"
                     + "- Do not add specific GeoGebra command names from storyboard notes unless they are documented in the active syntax manual; implement unsupported effects generically with documented commands instead.\n"
                     + SystemPrompts.NARRATIVE_PHILOSOPHY

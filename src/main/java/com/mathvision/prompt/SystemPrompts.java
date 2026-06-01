@@ -548,6 +548,15 @@ public final class SystemPrompts {
     public static final String JSON_ONLY_OUTPUT =
             "Return JSON only.";
 
+    /** GeoGebra scene button metadata schema consumed by Java post-processing. */
+    public static final String GEOGEBRA_SCENE_DIRECTIVE_RULES =
+            "GeoGebra scene directive metadata rules:\n"
+                    + "- `# @scene` lines are Java-consumed metadata comments for scene buttons, not GeoGebra commands.\n"
+                    + "- Each `# @scene` JSON object may contain ONLY these fields: `id`, `title`, `show`, and `hide`.\n"
+                    + "- Required schema: `{\"id\":\"scene_1\",\"title\":\"...\",\"show\":[\"objectId\"],\"hide\":[\"objectId\"]}`.\n"
+                    + "- Do not add `setValue`, `commands`, `actions`, `state`, `sceneState`, or any other extra fields to `# @scene` JSON.\n"
+                    + "- Express scene-specific progression through normal GeoGebra construction/style/visibility commands and the `show`/`hide` object lists only.\n";
+
     /** Manim code block output format. */
     public static final String MANIM_CODE_OUTPUT_FORMAT =
             "Output format:\n"

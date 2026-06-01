@@ -1,5 +1,6 @@
 package com.mathvision.util;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.mathvision.model.Narrative;
 
 import java.util.ArrayList;
@@ -39,6 +40,7 @@ public final class GeoGebraCodeUtils {
     private static final Pattern SET_COORD_SYSTEM_CALL = Pattern.compile(
             "^SetCoordSystem\\s*\\(", Pattern.CASE_INSENSITIVE);
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static final class SceneDirective {
         public String id;
         public String title;

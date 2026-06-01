@@ -393,7 +393,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             blockingCount++;
         }
 
-        List<LayoutIssue> overlapIssues = evaluateOverlapIssues(elements, sample.getSampleRole());
+        List<LayoutIssue> overlapIssues = evaluateOverlapIssues(elements, sample.getSampleRole(), frameMin, frameMax);
         issues.addAll(overlapIssues);
         overlapCount = overlapIssues.size();
         blockingCount += countBlockingIssues(overlapIssues);
@@ -708,16 +708,22 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         return new BoundsPair(element.min, element.max);
     }
 
-    private List<LayoutIssue> evaluateOverlapIssues(List<ElementGeometry> elements, String sampleRole) {
+    private List<LayoutIssue> evaluateOverlapIssues(List<ElementGeometry> elements,
+                                                    String sampleRole,
+                                                    double[] frameMin,
+                                                    double[] frameMax) {
         List<LayoutIssue> issues = new ArrayList<>();
         if (elements.size() < 2) {
             return issues;
         }
 
-        Map<Long, List<Integer>> buckets = buildSpatialBuckets(elements);
+        Map<Long, List<Integer>> buckets = buildSpatialBuckets(elements, frameMin, frameMax);
         for (int i = 0; i < elements.size(); i++) {
             ElementGeometry left = elements.get(i);
-            BucketRange range = bucketRange(left);
+            BucketRange range = bucketRange(left, frameMin, frameMax);
+            if (range == null) {
+                continue;
+            }
             Set<Integer> seenCandidates = new LinkedHashSet<>();
 
             for (int bucketX = range.minX; bucketX <= range.maxX; bucketX++) {
@@ -772,10 +778,15 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         return issues;
     }
 
-    private Map<Long, List<Integer>> buildSpatialBuckets(List<ElementGeometry> elements) {
+    private Map<Long, List<Integer>> buildSpatialBuckets(List<ElementGeometry> elements,
+                                                         double[] frameMin,
+                                                         double[] frameMax) {
         Map<Long, List<Integer>> buckets = new LinkedHashMap<>();
         for (int index = 0; index < elements.size(); index++) {
-            BucketRange range = bucketRange(elements.get(index));
+            BucketRange range = bucketRange(elements.get(index), frameMin, frameMax);
+            if (range == null) {
+                continue;
+            }
             for (int bucketX = range.minX; bucketX <= range.maxX; bucketX++) {
                 for (int bucketY = range.minY; bucketY <= range.maxY; bucketY++) {
                     long key = bucketKey(bucketX, bucketY);
@@ -786,13 +797,36 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         return buckets;
     }
 
-    private BucketRange bucketRange(ElementGeometry element) {
-        BoundsPair bounds = bucketBounds(element);
+    private BucketRange bucketRange(ElementGeometry element, double[] frameMin, double[] frameMax) {
+        BoundsPair bounds = clippedBucketBounds(element, frameMin, frameMax);
+        if (bounds == null) {
+            return null;
+        }
         return new BucketRange(
                 bucketIndex(bounds.min[0]),
                 bucketIndex(bounds.max[0]),
                 bucketIndex(bounds.min[1]),
                 bucketIndex(bounds.max[1]));
+    }
+
+    private BoundsPair clippedBucketBounds(ElementGeometry element, double[] frameMin, double[] frameMax) {
+        BoundsPair bounds = bucketBounds(element);
+        if (bounds == null) {
+            return null;
+        }
+        if (frameMin == null || frameMax == null || frameMin.length < 2 || frameMax.length < 2) {
+            return bounds;
+        }
+        double minX = Math.max(bounds.min[0], frameMin[0]);
+        double maxX = Math.min(bounds.max[0], frameMax[0]);
+        double minY = Math.max(bounds.min[1], frameMin[1]);
+        double maxY = Math.min(bounds.max[1], frameMax[1]);
+        if (minX > maxX || minY > maxY) {
+            return null;
+        }
+        return new BoundsPair(
+                new double[] {minX, minY, 0.0},
+                new double[] {maxX, maxY, 0.0});
     }
 
     private int bucketIndex(double value) {

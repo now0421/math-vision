@@ -137,6 +137,7 @@ public final class CodeEvaluationPrompts {
                     + SystemPrompts.GEOGEBRA_ANGLE_MARKER_RULES
                     + SystemPrompts.GEOGEBRA_VIEWPORT_RULES
                     + SystemPrompts.MINIMIZE_HELPER_OBJECTS_CODEGEN_RULES
+                    + SystemPrompts.GEOGEBRA_SCENE_DIRECTIVE_RULES
                     + SystemPrompts.GEOGEBRA_CODE_OUTPUT_FORMAT;
 
     private CodeEvaluationPrompts() {}

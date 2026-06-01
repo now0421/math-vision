@@ -38,10 +38,18 @@ public final class RenderFixPrompts {
                     + SystemPrompts.STORYBOARD_REPAIR_REFERENCE_RULES
                     + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
                     + "Keep implemented geometric relationships internally consistent while fixing command failures.\n"
+                    + "GeoGebra interactivity is mandatory: preserve storyboard-required movable/draggable objects while fixing runtime failures.\n"
+                    + "For storyboard objects with `moves_on_object`, `moves_along_range`, `follows_path`, `slider_driven`, or explicit movable/draggable semantics, preserve the intended interaction affordance.\n"
+                    + "Direct draggable constrained points must use documented direct path-point syntax such as `Point(path)` or `PointIn(region)`.\n"
+                    + "Do not repair a movable/draggable point by changing it to `Point(path, numericConstant)`, `Point({x, y})`, `Intersect(...)`, `Reflect(...)`, `Midpoint(...)`, or another static/dependent construction.\n"
+                    + "If a `SetValue(...)` command fails for a directly draggable path point, remove or rewrite that positioning command; do not make the point non-draggable to satisfy the failed command.\n"
+                    + "Treat `Point(path, slider)` as slider-driven rather than direct point dragging; use it only when the storyboard explicitly intends slider interaction and the slider is visible/usable.\n"
+                    + "Do not apply `SetFixed(object, true)` to storyboard objects that should remain movable/draggable.\n"
                     + "Treat storyboard scene placement as preferred layout input for non-derived objects, but adjust it when needed to fix runtime failures, viewport safety, readability, or internal consistency while preserving structured constraints.\n"
                     + "Use English GeoGebra command names.\n"
                     + "Preserve Chinese learner-facing visible text from storyboard object content; do not translate it to English or pinyin.\n"
                     + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES
+                    + SystemPrompts.GEOGEBRA_SCENE_DIRECTIVE_RULES
                     + "If you must rename an identifier or introduce a new one, update the commented `SCENE_BUTTONS` script consistently so it still references the final object names.\n"
                     + "Do not output Python, JavaScript, or explanations.\n"
                     + "Fix strategy:\n"
@@ -140,6 +148,12 @@ public final class RenderFixPrompts {
                 .append("```geogebra\n").append(generatedCode).append("\n```\n\n")
                 .append("You MUST audit the ENTIRE command script. The error type and signature are routing hints only; the actual bug may be an earlier construction-order, naming, syntax, visibility, or viewport issue with the same structural pattern.\n")
                 .append("Prioritize the earliest root cause instead of patching downstream false-return symptoms.\n")
+                .append("Preserve storyboard-required GeoGebra interactivity while fixing runtime failures.\n")
+                .append("For movable/draggable storyboard objects or objects with `moves_on_object`, `moves_along_range`, `follows_path`, or `slider_driven`, do not replace direct interaction with a static/dependent construction.\n")
+                .append("Direct draggable constrained points must remain `Point(path)` or another documented direct draggable construction such as `PointIn(region)`.\n")
+                .append("Never fix a failing `SetValue(...)` by changing a directly draggable path point into `Point(path, numericConstant)`; remove or rewrite the positioning command instead.\n")
+                .append("Treat `Point(path, slider)` as slider-driven, and use it only when the storyboard explicitly intends slider interaction and the slider remains visible/usable.\n")
+                .append("Do not apply `SetFixed(object, true)` to objects that the storyboard says should remain movable/draggable.\n")
                 .append("Sweep dependent commands, renamed identifiers, and the commented `SCENE_BUTTONS` block after every fix so the full script remains consistent in one replay pass.\n")
                 .append("Please rewrite the FULL command script so all reported failures become valid in one pass and downstream dependent commands remain correct.\n")
                 .append("Use English GeoGebra command names and keep implemented geometric dependencies internally consistent; use storyboard details, including preferred scene placement for non-derived objects, as repair context.\n")

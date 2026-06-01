@@ -129,6 +129,29 @@ class SceneEvaluationNodeTest {
     }
 
     @Test
+    void clipsGeoGebraInfiniteLineBucketsToFrameBounds() throws IOException {
+        Path geometryPath = tempDir.resolve("5_geogebra_geometry.json");
+        Files.writeString(geometryPath, geoGebraInfiniteLineGeometryJson());
+
+        Map<String, Object> ctx = buildContext(geometryPath);
+        CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
+        codeResult.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+        RenderResult renderResult = (RenderResult) ctx.get(WorkflowKeys.RENDER_RESULT);
+        renderResult.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+        renderResult.setArtifactType("geogebra_preview_html");
+        SceneEvaluationNode node = new SceneEvaluationNode();
+
+        SceneEvaluationNode.SceneEvaluationInput input = node.prep(ctx);
+        SceneEvaluationResult result = node.exec(input);
+        String action = node.post(ctx, input, result);
+
+        assertTrue(result.isEvaluated());
+        assertEquals(1, result.getOffscreenIssueCount());
+        assertEquals(0, result.getOverlapIssueCount());
+        assertEquals(WorkflowActions.FIX_CODE, action);
+    }
+
+    @Test
     void sceneEvaluationFixRequestUsesDetailedStoryboardJson() throws IOException {
         Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
         Files.writeString(geometryPath, problematicGeometryJson());
@@ -441,6 +464,45 @@ class SceneEvaluationNodeTest {
                 "          \"geometry_type\": \"circle\",",
                 "          \"evaluation_shape\": {\"type\": \"circle\", \"center\": [0.0, 0.0, 0.0], \"radius\": 2.0},",
                 "          \"bounds\": {\"min\": [-2.0, -2.0, 0.0], \"max\": [2.0, 2.0, 0.0]}",
+                "        }",
+                "      ]",
+                "    }",
+                "  ]",
+                "}");
+    }
+
+    private String geoGebraInfiniteLineGeometryJson() {
+        return String.join("\n",
+                "{",
+                "  \"scene_name\": \"GeoGebraFigure\",",
+                "  \"report_type\": \"geogebra_element_report\",",
+                "  \"frame_bounds\": {",
+                "    \"min\": [-7.0, -4.0, 0.0],",
+                "    \"max\": [7.0, 4.0, 0.0]",
+                "  },",
+                "  \"samples\": [",
+                "    {",
+                "      \"sample_id\": \"scene_1\",",
+                "      \"sample_role\": \"scene_final\",",
+                "      \"elements\": [",
+                "        {",
+                "          \"stable_id\": \"ggb-g\",",
+                "          \"semantic_name\": \"g\",",
+                "          \"class_name\": \"line\",",
+                "          \"semantic_class\": \"line\",",
+                "          \"visible\": true,",
+                "          \"geometry_type\": \"line\",",
+                "          \"geometry_points\": [[-6003.2, 4601.55, 0.0], [5996.8, -4598.45, 0.0]],",
+                "          \"evaluation_shape\": {\"type\": \"segment\", \"points\": [[-6003.2, 4601.55, 0.0], [5996.8, -4598.45, 0.0]], \"source_type\": \"line\"},",
+                "          \"bounds\": {\"min\": [-6003.25, -4598.5, 0.0], \"max\": [5996.85, 4601.6, 0.0]}",
+                "        },",
+                "        {",
+                "          \"stable_id\": \"label\",",
+                "          \"semantic_name\": \"label\",",
+                "          \"class_name\": \"Text\",",
+                "          \"semantic_class\": \"text\",",
+                "          \"visible\": true,",
+                "          \"bounds\": {\"min\": [5.0, 3.0, 0.0], \"max\": [6.0, 3.5, 0.0]}",
                 "        }",
                 "      ]",
                 "    }",

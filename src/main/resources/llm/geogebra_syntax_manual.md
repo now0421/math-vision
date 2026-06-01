@@ -278,6 +278,14 @@ taylorNearZero = TaylorPolynomial(sin(x), 0, 5)
 Build helper objects explicitly and name them. This makes later style, labels,
 visibility, and scene directives stable.
 
+Scene directive metadata rules:
+
+- `# @scene` lines are Java-consumed metadata comments for scene buttons, not GeoGebra commands.
+- Each `# @scene` JSON object may contain only `id`, `title`, `show`, and `hide`.
+- Required schema: `{"id":"scene_1","title":"...","show":["objectId"],"hide":["objectId"]}`.
+- Do not add `setValue`, `commands`, `actions`, `state`, `sceneState`, or any other extra fields to `# @scene` JSON.
+- Express scene-specific progression through normal GeoGebra construction/style/visibility commands and the `show`/`hide` object lists only.
+
 ```text
 Midpoint( <Point>, <Point> )
 Polyline( <Point>, ..., <Point> )
@@ -847,7 +855,7 @@ ShowGrid( <View>, <Boolean> )                        // view 1, 2, or 3
 SetLevelOfDetail( <Surface>, <Level of Detail> )     // 0 faster, 1 more accurate
 CenterView( <Point> )
 SetValue( <Boolean>, <0 | 1> )
-SetValue( <Object>, <Object> )
+SetValue( <Object>, <Object> )                     // value assignment; not a general geometry positioning command
 StartAnimation( )
 StartAnimation( <Boolean> )
 StartAnimation( <Point or Slider>, <Point or Slider>, ..., <Boolean> )
@@ -878,6 +886,15 @@ CenterView(A)
 SetValue(position, 2)
 StartAnimation(position, true)
 ```
+
+SetValue safety rules:
+
+- `SetValue(object, value)` is not a general-purpose geometry positioning command.
+- Use `SetValue` mainly for sliders, numbers, booleans, text values, or simple free objects when GeoGebra accepts direct reassignment.
+- Do not use `SetValue(P, Q)` to position a directly draggable path point created by `P = Point(path)`, especially when `Q` is a derived point such as `Intersect(...)`, `Reflect(...)`, `Midpoint(...)`, or another dependent construction.
+- For interactive path points, use `P = Point(path)` to preserve direct dragging. Let GeoGebra choose the initial path position, or use a valid free point / path construction pattern if an initial visual position is required.
+- To show an optimal or target point, create and display a separate object such as `Pmin = Intersect(...)`; do not force the draggable point `P` onto it with `SetValue`.
+- Never replace `P = Point(path)` with `P = Point(path, numericConstant)` just to encode the desired position, because this removes direct dragging.
 
 ## Viewport
 
