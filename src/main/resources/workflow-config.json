@@ -15,5 +15,5 @@
   "scene_evaluation_max_retries": 5,
   "input_mode": "auto",
   "output_target": "geogebra",
-  "model": "claude-opus-4-7"
+  "model": "claude-opus-4-8"
 }

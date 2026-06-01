@@ -12,6 +12,7 @@ import com.mathvision.model.CodeEvaluationResult;
 import com.mathvision.model.SceneEvaluationResult;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.service.AiClient;
+import com.mathvision.service.AnthropicAiClient;
 import com.mathvision.service.FileOutputService;
 import com.mathvision.service.GeminiAiClient;
 import com.mathvision.service.OpenAiCompatibleAiClient;
@@ -275,11 +276,12 @@ public class MathVisionApplication {
         switch (provider) {
             case "gemini":
                 return new GeminiAiClient(modelConfig);
+            case "anthropic":
+                return new AnthropicAiClient(modelConfig);
             case "moonshot":
             case "deepseek":
             case "zhipu":
             case "aliyun":
-            case "anthropic":
             case "openai":
                 return new OpenAiCompatibleAiClient(modelConfig);
             default:

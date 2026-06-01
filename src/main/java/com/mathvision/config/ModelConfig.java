@@ -22,6 +22,9 @@ public class ModelConfig {
     private double temperature;
     private int maxOutputTokens;
     private int maxInputTokens = DEFAULT_MAX_INPUT_TOKENS;
+    private boolean adaptiveThinking;
+    private String effort;
+    private boolean supportsVision;
 
     public ModelConfig copyWithModel(String modelName) {
         ModelConfig copy = new ModelConfig();
@@ -34,6 +37,9 @@ public class ModelConfig {
         copy.temperature = temperature;
         copy.maxOutputTokens = maxOutputTokens;
         copy.maxInputTokens = maxInputTokens;
+        copy.adaptiveThinking = adaptiveThinking;
+        copy.effort = effort;
+        copy.supportsVision = supportsVision;
         return copy;
     }
 
@@ -98,7 +104,7 @@ public class ModelConfig {
         if (apiKeyEnv == null || apiKeyEnv.isBlank()) {
             throw new IllegalStateException("Missing api_key_env for model '" + modelName + "'");
         }
-        if (baseUrl == null || baseUrl.isBlank()) {
+        if ((baseUrl == null || baseUrl.isBlank()) && !"anthropic".equals(resolveProvider())) {
             throw new IllegalStateException("Missing base_url for model '" + modelName + "'");
         }
         if (maxInputTokens <= 0) {
@@ -179,6 +185,30 @@ public class ModelConfig {
 
     public void setMaxInputTokens(int maxInputTokens) {
         this.maxInputTokens = maxInputTokens;
+    }
+
+    public boolean isAdaptiveThinking() {
+        return adaptiveThinking;
+    }
+
+    public void setAdaptiveThinking(boolean adaptiveThinking) {
+        this.adaptiveThinking = adaptiveThinking;
+    }
+
+    public String getEffort() {
+        return effort;
+    }
+
+    public void setEffort(String effort) {
+        this.effort = effort;
+    }
+
+    public boolean isSupportsVision() {
+        return supportsVision;
+    }
+
+    public void setSupportsVision(boolean supportsVision) {
+        this.supportsVision = supportsVision;
     }
 
     private static boolean isBlank(String value) {
