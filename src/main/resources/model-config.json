@@ -51,14 +51,6 @@
       "effort": "high",
       "supports_vision": true
     },
-    "kimi-k2-turbo-preview": {
-      "model": "kimi-k2-turbo-preview",
-      "provider": "moonshot",
-      "reasoning_content_fallback": true,
-      "temperature": 0.6,
-      "max_output_tokens": 32000,
-      "max_input_tokens": 262144
-    },
     "kimi-k2.5": {
       "model": "kimi-k2.5",
       "provider": "moonshot",
@@ -71,9 +63,11 @@
       "model": "kimi-k2.6",
       "provider": "moonshot",
       "reasoning_content_fallback": true,
-      "temperature": 1,
+      "temperature": 0.6,
       "max_output_tokens": 32768,
-      "max_input_tokens": 262144
+      "max_input_tokens": 262144,
+      "thinking": "disabled",
+      "supports_vision": true
     },
     "GLM-5": {
       "model": "GLM-5",

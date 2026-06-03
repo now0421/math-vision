@@ -635,11 +635,16 @@ public final class SystemPrompts {
     // ========================================================================
 
     private static final String WORKFLOW_OVERVIEW =
-            "Stage 0 Exploration -> Stage 1a Mathematical Enrichment -> Stage 1b Visual Design"
-                    + " -> Stage 1c Storyboard Validation -> Stage 2 Code Generation"
-                    + " -> Stage 3 Code Evaluation -> Stage 4 Code Rendering"
-                    + " -> Stage 5 Scene Evaluation"
-                    + " (Stages 2-5 may each route to the shared Code Fix node for iterative repair)";
+            "Stage 0 Problem Normalization (merge text/images into a ProblemBundle)"
+                    + " -> Stage 1 Exploration (build the concept/problem knowledge graph)"
+                    + " -> Stage 2 Mathematical Enrichment (add equations, definitions, examples, and interpretations)"
+                    + " -> Stage 3 Visual Design (design one storyboard scene per graph beat and assemble the Narrative)"
+                    + " -> Stage 4 Storyboard Validation (static validation plus optional cleanup and placement enrichment)"
+                    + " -> Stage 5 Code Generation (generate backend-specific Manim or GeoGebra code)"
+                    + " -> Stage 6 Code Evaluation (static/code-review gate before render)"
+                    + " -> Stage 7 Code Rendering (render or validate the backend artifact and collect geometry evidence)"
+                    + " -> Stage 8 Scene Evaluation (inspect rendered geometry and request layout repair if needed)"
+                    + ". Stages 5-8 may route to the shared Code Fix node for iterative repair; CLI resume modes may start from a prebuilt graph or code artifact.";
 
     private SystemPrompts() {}
 

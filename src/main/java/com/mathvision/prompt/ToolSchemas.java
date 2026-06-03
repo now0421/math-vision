@@ -122,7 +122,58 @@ public final class ToolSchemas {
     }
 
     // ========================================================================
-    // Stage 0: Exploration
+    // Stage 0: Problem Normalization
+    // ========================================================================
+
+    public static final String PROBLEM_BUNDLE = "["
+            + "{"
+            + "  \"type\": \"function\","
+            + "  \"function\": {"
+            + "    \"name\": \"write_problem_bundle\","
+            + "    \"parameters\": {"
+            + "      \"type\": \"object\","
+            + "      \"properties\": {"
+            + "        \"id\": { \"type\": \"string\" },"
+            + "        \"title\": { \"type\": \"string\" },"
+            + "        \"input_mode\": { \"type\": \"string\", \"enum\": [\"concept\", \"problem\"] },"
+            + "        \"statement\": { \"type\": \"string\" },"
+            + "        \"diagram\": {"
+            + "          \"type\": \"object\","
+            + "          \"properties\": {"
+            + "            \"present\": { \"type\": \"boolean\" },"
+            + "            \"description\": { \"type\": \"string\" },"
+            + "            \"objects\": {"
+            + "              \"type\": \"array\","
+            + "              \"items\": {"
+            + "                \"type\": \"object\","
+            + "                \"properties\": {"
+            + "                  \"id\": { \"type\": \"string\" },"
+            + "                  \"kind\": { \"type\": \"string\" },"
+            + "                  \"content\": { \"type\": \"string\" },"
+            + "                  " + STORYBOARD_CONSTRAINTS_FIELD
+            + "                },"
+            + "                \"required\": [\"id\", \"kind\", \"content\"],"
+            + "                \"additionalProperties\": false"
+            + "              }"
+            + "            },"
+            + "            " + STORYBOARD_CONSTRAINTS_FIELD + ","
+            + "            \"construction_notes\": {"
+            + "              \"type\": \"array\","
+            + "              \"items\": { \"type\": \"string\" }"
+            + "            }"
+            + "          },"
+            + "          \"required\": [\"present\"],"
+            + "          \"additionalProperties\": false"
+            + "        }"
+            + "      },"
+            + "      \"required\": [\"id\", \"title\", \"input_mode\", \"statement\", \"diagram\"]"
+            + "    }"
+            + "  }"
+            + "}"
+            + "]";
+
+    // ========================================================================
+    // Stage 1: Exploration
     // ========================================================================
 
     public static final String INPUT_MODE = "["
@@ -225,7 +276,7 @@ public final class ToolSchemas {
             + "]";
 
     // ========================================================================
-    // Stage 1a: Math Enrichment
+    // Stage 2: Math Enrichment
     // ========================================================================
 
     public static final String MATH_ENRICHMENT = "["
@@ -259,7 +310,7 @@ public final class ToolSchemas {
             + "]";
 
     // ========================================================================
-    // Stage 1c: Storyboard Validation
+    // Stage 4: Storyboard Validation
     // ========================================================================
 
     public static final String STORYBOARD = "["
@@ -380,7 +431,7 @@ public final class ToolSchemas {
             + "]";
 
     // ========================================================================
-    // Stage 2: Code Generation
+    // Stage 5: Code Generation
     // ========================================================================
 
     public static final String MANIM_CODE = "["
@@ -421,7 +472,7 @@ public final class ToolSchemas {
             + "]";
 
     // ========================================================================
-    // Stage 1b (scene-level): Scene Design
+    // Stage 3 (scene-level): Scene Design
     // ========================================================================
 
     public static final String SCENE_DESIGN = "["
@@ -533,7 +584,7 @@ public final class ToolSchemas {
             + "]";
 
     // ========================================================================
-    // Stage 2 (scene-level): Skeleton + Per-Scene Code
+    // Stage 5 (scene-level): Skeleton + Per-Scene Code
     // ========================================================================
 
     public static final String CODE_SKELETON = "["

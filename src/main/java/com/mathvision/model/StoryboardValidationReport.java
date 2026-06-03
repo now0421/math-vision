@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Structured output for Stage 1c storyboard validation.
+ * Structured output for Stage 4 storyboard validation.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class StoryboardValidationReport {

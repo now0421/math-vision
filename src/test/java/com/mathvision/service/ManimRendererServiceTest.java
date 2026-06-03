@@ -60,7 +60,7 @@ class ManimRendererServiceTest {
                 assertTrue(script.contains("DemoScene = __mathvision_patch_scene(DemoScene)"));
                 assertTrue(Files.exists(workingDir.resolve("mathvision_geometry_export.py")));
                 assertNotNull(geometryOutputPath);
-                assertEquals(workingDir.resolve("5_mobject_geometry.json"), geometryOutputPath);
+                assertEquals(workingDir.resolve(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE), geometryOutputPath);
                 throw new IOException("stop after inspection");
             }
         };

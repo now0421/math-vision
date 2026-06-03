@@ -49,7 +49,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Stage 5: Scene evaluation - inspects sampled geometry output after render and
+ * Stage 8: Scene evaluation - inspects sampled geometry output after render and
  * routes code fixes when layout issues are detected.
  */
 public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.SceneEvaluationInput,
@@ -140,7 +140,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         result.setRenderSuccess(renderResult != null && renderResult.isSuccess());
         result.setGeometryPath(renderResult != null ? renderResult.getGeometryPath() : null);
 
-        log.info("=== Stage 5: Scene Evaluation ===");
+        log.info("=== Stage 8: Scene Evaluation ===");
 
         if (renderResult == null) {
             return skipEvaluation(result, retryState, start, "Scene evaluation skipped: render result unavailable");

@@ -47,7 +47,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 /**
- * Stage 2: Code Generation - generates backend-specific code
+ * Stage 5: Code Generation - generates backend-specific code
  * from the narrative storyboard.
  */
 public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeGenerationInput, CodeResult, String> {
@@ -106,7 +106,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     @Override
     public CodeResult exec(CodeGenerationInput input) {
         Instant start = Instant.now();
-        log.info("=== Stage 2: Code Generation ===");
+        log.info("=== Stage 5: Code Generation ===");
         toolCalls = 0;
 
         if (this.conversationContext == null) {

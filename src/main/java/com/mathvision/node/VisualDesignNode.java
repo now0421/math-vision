@@ -8,6 +8,7 @@ import com.mathvision.model.Narrative.Storyboard;
 import com.mathvision.model.Narrative.StoryboardConstraint;
 import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.Narrative.StoryboardScene;
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.prompt.VisualDesignPrompts;
@@ -44,7 +45,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
- * Stage 1b: Visual Design — generates one StoryboardScene per knowledge-graph
+ * Stage 3: Visual Design — generates one StoryboardScene per knowledge-graph
  * node in teaching order using conversation history for continuity, accumulates
  * a global object registry, and assembles the complete Narrative in post().
  *
@@ -57,6 +58,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
+    private ProblemBundle problemBundle;
     private final AtomicInteger toolCalls = new AtomicInteger(0);
     private boolean parallelEnabled = true;
     private int maxConcurrent = 4;
@@ -82,6 +84,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
     public KnowledgeGraph prep(Map<String, Object> ctx) {
         this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
         this.workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
+        this.problemBundle = (ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE);
         this.maxSceneRetries = 3;
         if (workflowConfig != null) {
             this.parallelEnabled = workflowConfig.isParallelVisualDesign();
@@ -95,7 +98,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
     @Override
     public KnowledgeGraph exec(KnowledgeGraph graph) {
         int concurrency = 1;
-        log.info("=== Stage 1b: Visual Design (output_target={}, sequential teaching order) ===", outputTarget);
+        log.info("=== Stage 3: Visual Design (output_target={}, sequential teaching order) ===", outputTarget);
         if (parallelEnabled && maxConcurrent > 1) {
             log.info("  Visual design ignores configured parallel concurrency={} to preserve scene-to-scene continuity", maxConcurrent);
         }
@@ -920,6 +923,32 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         sb.append("- Depth: ").append(node.getMinDepth()).append("\n");
         if (objectRegistry.isEmpty()) {
             sb.append("- This is the first scene. All objects must be in entering_objects; persistent_objects and exiting_objects must be empty.\n");
+            if (problemBundle != null && problemBundle.hasDiagram()) {
+                sb.append("\nMANDATORY INITIAL DIAGRAM CONTRACT:\n");
+                sb.append("Scene 1 must construct the initial problem diagram before any solution-specific construction.\n");
+                sb.append("Diagram description: ").append(problemBundle.getDiagram().getDescription()).append("\n");
+                sb.append("Required objects (must ALL appear in entering_objects):\n");
+                for (StoryboardObject obj : problemBundle.getDiagram().getObjects()) {
+                    sb.append("  - id=\"").append(obj.getId())
+                            .append("\", kind=\"").append(obj.getKind())
+                            .append("\", content=\"").append(obj.getContent()).append("\"\n");
+                }
+                if (!problemBundle.getDiagram().getConstraints().isEmpty()) {
+                    sb.append("Hard constraints to honor in this scene:\n");
+                    for (StoryboardConstraint c : problemBundle.getDiagram().getConstraints()) {
+                        sb.append("  - ").append(c.getDomain()).append("/").append(c.getRelation())
+                                .append(" refs=").append(c.getRefs())
+                                .append(" (").append(c.getReason()).append(")\n");
+                    }
+                }
+                if (!problemBundle.getDiagram().getConstructionNotes().isEmpty()) {
+                    sb.append("Construction notes:\n");
+                    for (String note : problemBundle.getDiagram().getConstructionNotes()) {
+                        sb.append("  - ").append(note).append("\n");
+                    }
+                }
+                sb.append("Do NOT introduce solution-specific auxiliary objects (reflection points, proof lines, etc.) in this scene.\n");
+            }
         }
         if (node.getReason() != null && !node.getReason().isBlank()) {
             sb.append("- Reason: ").append(node.getReason()).append("\n");

@@ -38,21 +38,21 @@ class FileOutputServiceTest {
         renderResult.setSuccess(true);
         renderResult.setSceneName("DemoScene");
         renderResult.setVideoPath("media/videos/demo.mp4");
-        renderResult.setGeometryPath("5_mobject_geometry.json");
+        renderResult.setGeometryPath(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE);
         renderResult.setAttempts(1);
         renderResult.setToolCalls(0);
 
         FileOutputService.saveRenderResult(tempDir, renderResult);
 
-        String metadata = Files.readString(tempDir.resolve("5_render_result.json"));
+        String metadata = Files.readString(tempDir.resolve(FileOutputService.RENDER_RESULT_FILE));
         assertTrue(metadata.contains("\"geometry_path\""));
-        assertTrue(metadata.contains("5_mobject_geometry.json"));
+        assertTrue(metadata.contains(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE));
     }
 
     @Test
     void loadCodeResultRestoresMetadataWhenPresent() throws IOException {
-        Files.writeString(tempDir.resolve("4_manim_code.py"), sampleCode("RecoveredScene"));
-        Files.writeString(tempDir.resolve("4_code_result.json"), String.join("\n",
+        Files.writeString(tempDir.resolve(FileOutputService.MANIM_CODE_FILE), sampleCode("RecoveredScene"));
+        Files.writeString(tempDir.resolve(FileOutputService.CODE_RESULT_FILE), String.join("\n",
                 "{",
                 "  \"scene_name\": \"RecoveredScene\",",
                 "  \"description\": \"manual resume\",",
@@ -60,7 +60,7 @@ class FileOutputServiceTest {
                 "  \"target_description\": \"Recovered from disk\"",
                 "}"));
 
-        CodeResult codeResult = FileOutputService.loadCodeResult(tempDir.resolve("4_manim_code.py"));
+        CodeResult codeResult = FileOutputService.loadCodeResult(tempDir.resolve(FileOutputService.MANIM_CODE_FILE));
 
         assertEquals("RecoveredScene", codeResult.getSceneName());
         assertEquals("manual resume", codeResult.getDescription());
@@ -71,9 +71,9 @@ class FileOutputServiceTest {
 
     @Test
     void loadCodeResultFallsBackToSceneNameWhenMetadataMissing() throws IOException {
-        Files.writeString(tempDir.resolve("4_manim_code.py"), sampleCode("FallbackScene"));
+        Files.writeString(tempDir.resolve(FileOutputService.MANIM_CODE_FILE), sampleCode("FallbackScene"));
 
-        CodeResult codeResult = FileOutputService.loadCodeResult(tempDir.resolve("4_manim_code.py"));
+        CodeResult codeResult = FileOutputService.loadCodeResult(tempDir.resolve(FileOutputService.MANIM_CODE_FILE));
 
         assertEquals("FallbackScene", codeResult.getSceneName());
         assertEquals("FallbackScene", codeResult.getTargetConcept());
@@ -96,9 +96,9 @@ class FileOutputServiceTest {
 
         FileOutputService.saveCodeResult(tempDir, codeResult);
 
-        assertTrue(Files.exists(tempDir.resolve("4_geogebra_commands.txt")));
+        assertTrue(Files.exists(tempDir.resolve(FileOutputService.GEOGEBRA_COMMANDS_FILE)));
 
-        CodeResult loaded = FileOutputService.loadCodeResult(tempDir.resolve("4_geogebra_commands.txt"));
+        CodeResult loaded = FileOutputService.loadCodeResult(tempDir.resolve(FileOutputService.GEOGEBRA_COMMANDS_FILE));
         assertEquals(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA, loaded.getOutputTarget());
         assertEquals("commands", loaded.getArtifactFormat());
         assertTrue(loaded.getGeneratedCode().contains("lineAB = Line(A, B)"));
@@ -110,7 +110,7 @@ class FileOutputServiceTest {
         result.setEvaluated(true);
         result.setApproved(false);
         result.setSceneName("DemoScene");
-        result.setGeometryPath("5_mobject_geometry.json");
+        result.setGeometryPath(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE);
         result.setSampleCount(3);
         result.setIssueSampleCount(1);
         result.setTotalIssueCount(2);
@@ -118,10 +118,10 @@ class FileOutputServiceTest {
         FileOutputService.saveSceneEvaluation(tempDir, result);
         FileOutputService.saveWorkflowSummary(tempDir, Map.of("scene_name", "DemoScene"));
 
-        String sceneEvaluation = Files.readString(tempDir.resolve("6_scene_evaluation.json"));
+        String sceneEvaluation = Files.readString(tempDir.resolve(FileOutputService.SCENE_EVALUATION_FILE));
         assertTrue(sceneEvaluation.contains("\"sceneName\""));
         assertTrue(sceneEvaluation.contains("DemoScene"));
-        assertTrue(Files.exists(tempDir.resolve("7_workflow_summary.json")));
+        assertTrue(Files.exists(tempDir.resolve(FileOutputService.WORKFLOW_SUMMARY_FILE)));
     }
 
     private static String sampleCode(String sceneName) {

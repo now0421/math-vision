@@ -4,6 +4,7 @@ import com.mathvision.config.ModelConfig;
 import com.mathvision.config.WorkflowConfig;
 import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.prompt.ExplorationPrompts;
 import com.mathvision.prompt.SystemPrompts;
@@ -34,7 +35,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Stage 0: direct knowledge-graph planning for concept and problem inputs.
+ * Stage 1: direct knowledge-graph planning for concept and problem inputs.
  */
 public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, String> {
 
@@ -43,6 +44,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
     private String targetInput;
+    private ProblemBundle problemBundle;
 
     private String inputMode = WorkflowConfig.INPUT_MODE_AUTO;
     private String outputTarget = WorkflowConfig.OUTPUT_TARGET_MANIM;
@@ -65,7 +67,14 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
             this.inputMode = workflowConfig.getInputMode();
             this.outputTarget = workflowConfig.getOutputTarget();
         }
-        return (String) ctx.get(WorkflowKeys.TARGET_INPUT);
+        this.problemBundle = (ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE);
+        if (problemBundle != null && problemBundle.getInputMode() != null
+                && !problemBundle.getInputMode().isBlank()) {
+            this.inputMode = problemBundle.getInputMode();
+        }
+        return problemBundle != null && problemBundle.getStatement() != null
+                ? problemBundle.getStatement()
+                : (String) ctx.get(WorkflowKeys.TARGET_INPUT);
     }
 
     @Override
@@ -80,7 +89,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         String resolvedMode = resolveInputMode(targetInput);
         initializeGraphContexts(maxInputTokens, resolvedMode);
 
-        log.info("=== Stage 0: {} Graph Planning ===",
+        log.info("=== Stage 1: {} Graph Planning ===",
                 WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode) ? "Problem" : "Concept");
         log.info("Target input: {}, mode: {}, output_target: {}",
                 targetInput, resolvedMode, outputTarget);
@@ -513,6 +522,12 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     private String resolveInputMode(String input) {
         if (WorkflowConfig.isExplicitInputMode(inputMode)) {
             return WorkflowConfig.normalizeInputMode(inputMode);
+        }
+
+        // If ProblemBundle already classified mode, use it directly
+        if (problemBundle != null && problemBundle.getInputMode() != null
+                && WorkflowConfig.isExplicitInputMode(problemBundle.getInputMode())) {
+            return WorkflowConfig.normalizeInputMode(problemBundle.getInputMode());
         }
 
         String llmDecision = classifyInputModeWithLlm(input);

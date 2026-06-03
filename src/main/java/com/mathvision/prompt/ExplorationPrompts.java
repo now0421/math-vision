@@ -1,7 +1,7 @@
 package com.mathvision.prompt;
 
 /**
- * Prompts for Stage 0: concept/problem exploration.
+ * Prompts for Stage 1: concept/problem exploration.
  */
 public final class ExplorationPrompts {
 
@@ -111,7 +111,7 @@ public final class ExplorationPrompts {
 
     public static String buildInputModeFixedContextPrompt() {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
-                "Stage 0 / Exploration",
+                "Stage 1 / Exploration",
                 "Input mode classification",
                 "User-provided math input",
                 "Decide whether this input should follow the concept-explanation workflow or the problem-solving workflow.",
@@ -125,7 +125,7 @@ public final class ExplorationPrompts {
 
     public static String buildConceptGraphFixedContextPrompt(String targetDescription) {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
-                "Stage 0 / Exploration",
+                "Stage 1 / Exploration",
                 "Concept teaching-graph planning",
                 "Concept explanation workflow target",
                 targetDescription,
@@ -139,7 +139,7 @@ public final class ExplorationPrompts {
 
     public static String buildProblemGraphFixedContextPrompt(String targetDescription) {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
-                "Stage 0 / Exploration",
+                "Stage 1 / Exploration",
                 "Problem solution-step graph planning",
                 "Problem-solving workflow target",
                 targetDescription,

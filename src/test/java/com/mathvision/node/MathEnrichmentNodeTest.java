@@ -73,7 +73,7 @@ class MathEnrichmentNodeTest {
         assertFalse(currentPrompt.contains("Target problem:"));
         assertFalse(currentPrompt.contains("- Node type:"));
         assertFalse(currentPrompt.contains("- Depth:"));
-        assertFalse(currentPrompt.contains("- Reason from Stage 0:"));
+        assertFalse(currentPrompt.contains("- Reason from Stage 1:"));
         assertFalse(currentPrompt.contains("solution-step chain"));
 
         assertNotNull(aiClient.lastSystemPrompt);

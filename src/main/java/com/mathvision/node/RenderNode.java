@@ -37,7 +37,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Stage 4: Code Rendering - renders Manim code to video and routes code fixes
+ * Stage 7: Code Rendering - renders Manim code to video and routes code fixes
  * through the shared CodeFixNode when needed.
  */
 public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderResult, String> {
@@ -134,7 +134,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         retryState.pendingFocusedError = null;
         retryState.pendingStaticAuditIssues = new ArrayList<>();
 
-        log.info("=== Stage 4: Code Rendering ===");
+        log.info("=== Stage 7: Code Rendering ===");
 
         CodeResult codeResult = input.codeResult();
         WorkflowConfig config = input.config();
@@ -676,7 +676,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
             return;
         }
         try {
-            Files.deleteIfExists(outputDir.resolve("6_scene_evaluation.json"));
+            Files.deleteIfExists(outputDir.resolve(FileOutputService.SCENE_EVALUATION_FILE));
         } catch (IOException e) {
             log.debug("Could not clear stale scene evaluation artifact: {}", e.getMessage());
         }

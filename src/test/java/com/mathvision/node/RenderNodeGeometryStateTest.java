@@ -49,7 +49,7 @@ class RenderNodeGeometryStateTest {
                 "Demo concept",
                 "Demo description");
 
-        Path expectedGeometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Path expectedGeometryPath = tempDir.resolve(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE);
         ManimRendererService renderer = new ManimRendererService() {
             private int attempts = 0;
 

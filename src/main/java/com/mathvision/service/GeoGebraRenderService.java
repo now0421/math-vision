@@ -40,9 +40,9 @@ import java.util.regex.Pattern;
 public class GeoGebraRenderService {
 
     private static final Logger log = LoggerFactory.getLogger(GeoGebraRenderService.class);
-    private static final String PREVIEW_FILE = "5_geogebra_preview.html";
-    private static final String VALIDATION_FILE = "5_geogebra_validation.json";
-    private static final String GEOMETRY_FILE = "5_geogebra_geometry.json";
+    public static final String PREVIEW_FILE = "07_geogebra_preview.html";
+    public static final String VALIDATION_FILE = "07_geogebra_validation.json";
+    public static final String GEOMETRY_FILE = "07_geogebra_geometry.json";
     private static final String DEPLOY_GGB_URL = "https://www.geogebra.org/apps/deployggb.js";
     private static final String LOCAL_DEPLOY_GGB_PATH = "/deployggb.js";
     private static final String GEOGEBRA_APPS_URL_PREFIX = "https://www.geogebra.org/apps/";

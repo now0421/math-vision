@@ -3,7 +3,7 @@ package com.mathvision.model;
 import com.mathvision.config.WorkflowConfig;
 
 /**
- * Result from the render stage (Stage 3).
+ * Result from the render stage (Stage 7).
  * Captures render success/failure, video output path, retry attempts,
  * and the final (possibly AI-fixed) code.
  */

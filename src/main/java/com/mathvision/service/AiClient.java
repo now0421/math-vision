@@ -1,9 +1,11 @@
 package com.mathvision.service;
 
+import com.mathvision.model.AiMessage;
 import com.mathvision.util.ConcurrencyUtils;
 import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
@@ -16,6 +18,25 @@ public interface AiClient {
 
     CompletableFuture<JsonNode> chatWithToolsRawAsync(
             java.util.List<NodeConversationContext.Message> snapshot, String toolsJson);
+
+    /**
+     * Multimodal chat: sends messages containing text and image parts.
+     * Default implementation throws UnsupportedOperationException.
+     */
+    default CompletableFuture<String> chatMultimodalAsync(List<AiMessage> messages) {
+        return CompletableFuture.failedFuture(
+                new UnsupportedOperationException("Multimodal not supported by " + providerName()));
+    }
+
+    /**
+     * Multimodal chat with tool calling support.
+     * Default implementation throws UnsupportedOperationException.
+     */
+    default CompletableFuture<JsonNode> chatMultimodalWithToolsRawAsync(
+            List<AiMessage> messages, String toolsJson) {
+        return CompletableFuture.failedFuture(
+                new UnsupportedOperationException("Multimodal not supported by " + providerName()));
+    }
 
     default JsonNode chatWithToolsRaw(
             java.util.List<NodeConversationContext.Message> snapshot, String toolsJson) {

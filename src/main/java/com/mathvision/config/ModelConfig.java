@@ -24,6 +24,7 @@ public class ModelConfig {
     private int maxInputTokens = DEFAULT_MAX_INPUT_TOKENS;
     private boolean adaptiveThinking;
     private String effort;
+    private String thinking;
     private boolean supportsVision;
 
     public ModelConfig copyWithModel(String modelName) {
@@ -39,6 +40,7 @@ public class ModelConfig {
         copy.maxInputTokens = maxInputTokens;
         copy.adaptiveThinking = adaptiveThinking;
         copy.effort = effort;
+        copy.thinking = thinking;
         copy.supportsVision = supportsVision;
         return copy;
     }
@@ -201,6 +203,14 @@ public class ModelConfig {
 
     public void setEffort(String effort) {
         this.effort = effort;
+    }
+
+    public String getThinking() {
+        return thinking;
+    }
+
+    public void setThinking(String thinking) {
+        this.thinking = thinking;
     }
 
     public boolean isSupportsVision() {

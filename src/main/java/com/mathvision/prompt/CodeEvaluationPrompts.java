@@ -1,7 +1,7 @@
 package com.mathvision.prompt;
 
 /**
- * Prompts for Stage 3: code evaluation and revision.
+ * Prompts for Stage 6: code evaluation and revision.
  */
 public final class CodeEvaluationPrompts {
 
@@ -154,7 +154,7 @@ public final class CodeEvaluationPrompts {
                                                        String targetDescription,
                                                        String outputTarget) {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
-                "Stage 3 / Code Evaluation",
+                "Stage 6 / Code Evaluation",
                 "Review " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra code" : "code")
                         + " for render readiness, layout, continuity, pacing, and clutter risk",
                 targetConcept,
@@ -214,7 +214,7 @@ public final class CodeEvaluationPrompts {
                                                          String targetDescription,
                                                          String outputTarget) {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
-                "Stage 3 / Code Evaluation",
+                "Stage 6 / Code Evaluation",
                 "Revise " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra code" : "Manim code")
                         + " after code evaluation before render",
                 targetConcept,

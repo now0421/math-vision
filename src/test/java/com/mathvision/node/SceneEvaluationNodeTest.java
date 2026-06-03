@@ -9,6 +9,9 @@ import com.mathvision.model.RenderResult;
 import com.mathvision.model.SceneEvaluationResult;
 import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
+import com.mathvision.service.FileOutputService;
+import com.mathvision.service.GeoGebraRenderService;
+import com.mathvision.service.ManimRendererService;
 import com.mathvision.util.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
@@ -34,7 +37,7 @@ class SceneEvaluationNodeTest {
 
     @Test
     void approvesWhenAllSamplesAreWithinFrameAndNonOverlapping() throws IOException {
-        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Path geometryPath = tempDir.resolve(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE);
         Files.writeString(geometryPath, cleanGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath);
@@ -48,12 +51,12 @@ class SceneEvaluationNodeTest {
         assertTrue(result.isApproved());
         assertEquals(0, result.getTotalIssueCount());
         assertNull(action);
-        assertTrue(Files.exists(tempDir.resolve("6_scene_evaluation.json")));
+        assertTrue(Files.exists(tempDir.resolve(FileOutputService.SCENE_EVALUATION_FILE)));
     }
 
     @Test
     void requestsCodeFixWhenGeometryContainsOverlapOrOffscreenIssues() throws IOException {
-        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Path geometryPath = tempDir.resolve(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE);
         Files.writeString(geometryPath, problematicGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath);
@@ -79,7 +82,7 @@ class SceneEvaluationNodeTest {
 
     @Test
     void firstSceneEvaluationFixRequestDoesNotIncludeCurrentIssueInFixHistory() throws IOException {
-        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Path geometryPath = tempDir.resolve(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE);
         Files.writeString(geometryPath, problematicGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath);
@@ -107,7 +110,7 @@ class SceneEvaluationNodeTest {
 
     @Test
     void readsGeoGebraEvaluationShapeWithoutRectangleOnlyOverlap() throws IOException {
-        Path geometryPath = tempDir.resolve("5_geogebra_geometry.json");
+        Path geometryPath = tempDir.resolve(GeoGebraRenderService.GEOMETRY_FILE);
         Files.writeString(geometryPath, geoGebraStructuredGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath);
@@ -130,7 +133,7 @@ class SceneEvaluationNodeTest {
 
     @Test
     void clipsGeoGebraInfiniteLineBucketsToFrameBounds() throws IOException {
-        Path geometryPath = tempDir.resolve("5_geogebra_geometry.json");
+        Path geometryPath = tempDir.resolve(GeoGebraRenderService.GEOMETRY_FILE);
         Files.writeString(geometryPath, geoGebraInfiniteLineGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath);
@@ -153,7 +156,7 @@ class SceneEvaluationNodeTest {
 
     @Test
     void sceneEvaluationFixRequestUsesDetailedStoryboardJson() throws IOException {
-        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Path geometryPath = tempDir.resolve(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE);
         Files.writeString(geometryPath, problematicGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath, buildSceneFixNarrative());
@@ -182,7 +185,7 @@ class SceneEvaluationNodeTest {
 
     @Test
     void sceneEvaluationFixReportIncludesStoryboardDependencyChain() throws IOException {
-        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Path geometryPath = tempDir.resolve(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE);
         Files.writeString(geometryPath, derivedOffscreenGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath, buildSceneFixNarrative());
@@ -206,7 +209,7 @@ class SceneEvaluationNodeTest {
 
     @Test
     void ignoresNonTextOnlyOverlapPairs() throws IOException {
-        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Path geometryPath = tempDir.resolve(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE);
         Files.writeString(geometryPath, nonTextOverlapGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath);
@@ -224,7 +227,7 @@ class SceneEvaluationNodeTest {
 
     @Test
     void ignoresArcBBoxOverlapWhenSampledPathMissesText() throws IOException {
-        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Path geometryPath = tempDir.resolve(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE);
         Files.writeString(geometryPath, arcBBoxFalsePositiveGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath);
@@ -242,7 +245,7 @@ class SceneEvaluationNodeTest {
 
     @Test
     void ignoresLineSegmentIntersectionsForBothBackends() throws IOException {
-        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Path geometryPath = tempDir.resolve(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE);
         Files.writeString(geometryPath, intersectingSegmentsGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath);
@@ -260,7 +263,7 @@ class SceneEvaluationNodeTest {
 
     @Test
     void ignoresInvisibleElementsDuringOverlapEvaluation() throws IOException {
-        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Path geometryPath = tempDir.resolve(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE);
         Files.writeString(geometryPath, invisibleOverlapGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath);
@@ -278,7 +281,7 @@ class SceneEvaluationNodeTest {
 
     @Test
     void prefersProjectedScreenBoundsWhenPresent() throws IOException {
-        Path geometryPath = tempDir.resolve("5_mobject_geometry.json");
+        Path geometryPath = tempDir.resolve(ManimRendererService.GEOMETRY_EXPORT_OUTPUT_FILE);
         Files.writeString(geometryPath, projectedGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath);

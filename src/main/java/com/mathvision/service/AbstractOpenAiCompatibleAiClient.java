@@ -1,6 +1,8 @@
 package com.mathvision.service;
 
 import com.mathvision.config.ModelConfig;
+import com.mathvision.model.AiContentPart;
+import com.mathvision.model.AiMessage;
 import com.mathvision.util.ConcurrencyUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
@@ -16,6 +18,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
@@ -113,10 +116,9 @@ public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
         body.put("model", modelConfig.getModel());
         body.put("temperature", modelConfig.getTemperature());
         body.put("max_tokens", modelConfig.getMaxOutputTokens());
+        addThinking(body);
         body.set("messages", NodeConversationContext.buildOpenAiMessages(snapshot));
-        if (tools != null && !tools.isEmpty()) {
-            body.set("tools", tools);
-        }
+        addTools(body, tools);
         return body;
     }
 
@@ -305,6 +307,103 @@ public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
 
     private void logResponse(HttpResponse<String> response) {
         AiTraceLogger.logResponse(clientName, response);
+    }
+
+    @Override
+    public CompletableFuture<String> chatMultimodalAsync(List<AiMessage> messages) {
+        try {
+            ObjectNode body = buildMultimodalRequestBody(messages, null);
+            return sendRequestWithRetryAsync(body);
+        } catch (Exception e) {
+            return CompletableFuture.failedFuture(new RuntimeException(
+                    "AI multimodal chat failed: " + e.getMessage(), e));
+        }
+    }
+
+    @Override
+    public CompletableFuture<JsonNode> chatMultimodalWithToolsRawAsync(
+            List<AiMessage> messages, String toolsJson) {
+        try {
+            ArrayNode tools = toolsJson != null
+                    ? (ArrayNode) MAPPER.readTree(toolsJson) : null;
+            ObjectNode body = buildMultimodalRequestBody(messages, tools);
+            return sendRawRequestAsync(body);
+        } catch (Exception e) {
+            return CompletableFuture.failedFuture(new RuntimeException(
+                    "AI multimodal chat with tools failed: " + e.getMessage(), e));
+        }
+    }
+
+    private ObjectNode buildMultimodalRequestBody(List<AiMessage> messages, ArrayNode tools) {
+        ObjectNode body = MAPPER.createObjectNode();
+        body.put("model", modelConfig.getModel());
+        body.put("temperature", modelConfig.getTemperature());
+        body.put("max_tokens", modelConfig.getMaxOutputTokens());
+        addThinking(body);
+
+        ArrayNode messagesArray = body.putArray("messages");
+        for (AiMessage msg : messages) {
+            ObjectNode msgNode = messagesArray.addObject();
+            msgNode.put("role", msg.getRole());
+            ArrayNode content = msgNode.putArray("content");
+            for (AiContentPart part : msg.getParts()) {
+                if ("text".equals(part.getType())) {
+                    content.addObject().put("type", "text").put("text", part.getText());
+                } else if ("image".equals(part.getType())) {
+                    ObjectNode imgPart = content.addObject();
+                    imgPart.put("type", "image_url");
+                    imgPart.putObject("image_url")
+                            .put("url", "data:" + part.getMimeType()
+                                    + ";base64," + part.getDataBase64());
+                }
+            }
+        }
+        addTools(body, tools);
+        return body;
+    }
+
+    private void addThinking(ObjectNode body) {
+        String thinking = modelConfig.getThinking();
+        if (thinking == null || thinking.isBlank()) {
+            return;
+        }
+        body.putObject("thinking").put("type", thinking.trim().toLowerCase());
+    }
+
+    private void addTools(ObjectNode body, ArrayNode tools) {
+        if (tools == null || tools.isEmpty()) {
+            return;
+        }
+        body.set("tools", tools);
+        addSingleToolChoice(body, tools);
+    }
+
+    private void addSingleToolChoice(ObjectNode body, ArrayNode tools) {
+        if (tools.size() != 1) {
+            return;
+        }
+        if (!canForceSingleToolChoice()) {
+            return;
+        }
+        JsonNode function = tools.get(0).path("function");
+        String name = function.path("name").asText("");
+        if (name.isBlank()) {
+            return;
+        }
+        ObjectNode toolChoice = body.putObject("tool_choice");
+        toolChoice.put("type", "function");
+        toolChoice.putObject("function").put("name", name);
+    }
+
+    private boolean canForceSingleToolChoice() {
+        String thinking = modelConfig.getThinking();
+        String model = modelConfig.getModel() != null
+                ? modelConfig.getModel().trim().toLowerCase()
+                : "";
+        if (model.startsWith("kimi-k2.") && !"disabled".equalsIgnoreCase(thinking)) {
+            return false;
+        }
+        return true;
     }
 
 }

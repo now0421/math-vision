@@ -42,7 +42,34 @@ public class FileOutputService {
     private static final ObjectMapper mapper = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT)
             .setSerializationInclusion(JsonInclude.Include.NON_NULL);
-    private static final String CODE_METADATA_FILE = "4_code_result.json";
+    public static final String PROBLEM_SOURCE_FILE = "00_problem_source.json";
+    public static final String PROBLEM_BUNDLE_FILE = "00_problem_bundle.json";
+    public static final String KNOWLEDGE_GRAPH_FILE = "01_knowledge_graph.json";
+    public static final String KNOWLEDGE_GRAPH_PRETTY_FILE = "01_knowledge_graph_pretty.txt";
+    public static final String MATH_ENRICHED_GRAPH_FILE = "02_math_enriched_graph.json";
+    public static final String VISUAL_NARRATIVE_FILE = "03_visual_narrative.json";
+    public static final String VALIDATED_STORYBOARD_FILE = "04_storyboard_validated.json";
+    public static final String STORYBOARD_VALIDATION_REPORT_FILE = "04_storyboard_validation_report.json";
+    public static final String CODE_RESULT_FILE = "05_code_result.json";
+    public static final String MANIM_CODE_FILE = "05_manim_code.py";
+    public static final String GEOGEBRA_COMMANDS_FILE = "05_geogebra_commands.txt";
+    public static final String CODE_EVALUATION_FILE = "06_code_evaluation.json";
+    public static final String MANIM_REVIEWED_CODE_FILE = "06_manim_code_reviewed.py";
+    public static final String GEOGEBRA_REVIEWED_COMMANDS_FILE = "06_geogebra_commands_reviewed.txt";
+    public static final String RENDER_RESULT_FILE = "07_render_result.json";
+    public static final String MANIM_FINAL_CODE_FILE = "07_manim_code_final.py";
+    public static final String GEOGEBRA_FINAL_COMMANDS_FILE = "07_geogebra_commands_final.txt";
+    public static final String SCENE_EVALUATION_FILE = "08_scene_evaluation.json";
+    public static final String WORKFLOW_SUMMARY_FILE = "09_workflow_summary.json";
+    public static final String CODE_FIX_TRACE_FILE = "09_code_fix_trace.json";
+
+    public static final String LEGACY_KNOWLEDGE_GRAPH_FILE = "1_knowledge_graph.json";
+    public static final String LEGACY_MANIM_CODE_FILE = "4_manim_code.py";
+    public static final String LEGACY_GEOGEBRA_COMMANDS_FILE = "4_geogebra_commands.txt";
+    public static final String LEGACY_MANIM_FINAL_CODE_FILE = "5_manim_code_final.py";
+    public static final String LEGACY_GEOGEBRA_FINAL_COMMANDS_FILE = "5_geogebra_commands_final.txt";
+
+    private static final String LEGACY_CODE_RESULT_FILE = "4_code_result.json";
     private static final Pattern SCENE_CLASS_PATTERN =
             Pattern.compile("class\\s+(\\w+)\\s*\\(.*?Scene.*?\\)");
 
@@ -71,9 +98,17 @@ public class FileOutputService {
         return dir;
     }
 
+    public static void saveProblemBundle(Path outputDir, Object bundle) {
+        writeJson(outputDir.resolve(PROBLEM_BUNDLE_FILE), bundle, "problem bundle");
+    }
+
+    public static void saveProblemSource(Path outputDir, Object source) {
+        writeJson(outputDir.resolve(PROBLEM_SOURCE_FILE), source, "problem source");
+    }
+
     public static void saveKnowledgeGraph(Path outputDir, KnowledgeGraph graph) {
-        writeJson(outputDir.resolve("1_knowledge_graph.json"), graph, "knowledge graph");
-        writeText(outputDir.resolve("1_knowledge_graph_pretty.txt"), graph.printGraph(), "knowledge graph (pretty)");
+        writeJson(outputDir.resolve(KNOWLEDGE_GRAPH_FILE), graph, "knowledge graph");
+        writeText(outputDir.resolve(KNOWLEDGE_GRAPH_PRETTY_FILE), graph.printGraph(), "knowledge graph (pretty)");
     }
 
     public static KnowledgeGraph loadKnowledgeGraph(Path path) {
@@ -91,8 +126,7 @@ public class FileOutputService {
             String generatedCode = Files.readString(path, StandardCharsets.UTF_8);
 
             Path metadataPath = path.toAbsolutePath().normalize().getParent();
-            JsonNode metadata = loadOptionalMetadata(
-                    metadataPath != null ? metadataPath.resolve(CODE_METADATA_FILE) : null);
+            JsonNode metadata = loadFirstExistingMetadata(metadataPath, CODE_RESULT_FILE, LEGACY_CODE_RESULT_FILE);
 
             String outputTarget = inferOutputTarget(path, metadata);
 
@@ -126,20 +160,20 @@ public class FileOutputService {
     }
 
     public static void saveEnrichedGraph(Path outputDir, KnowledgeGraph graph) {
-        writeJson(outputDir.resolve("2_enriched_graph.json"), graph, "enriched graph");
+        writeJson(outputDir.resolve(MATH_ENRICHED_GRAPH_FILE), graph, "enriched graph");
     }
 
     public static void saveNarrative(Path outputDir, Narrative narrative) {
-        writeJson(outputDir.resolve("3_narrative.json"), narrative, "narrative (JSON)");
+        writeJson(outputDir.resolve(VISUAL_NARRATIVE_FILE), narrative, "narrative (JSON)");
     }
 
     public static void saveValidatedStoryboard(Path outputDir, Narrative.Storyboard storyboard) {
-        writeJson(outputDir.resolve("3_storyboard_validated.json"), storyboard, "validated storyboard");
+        writeJson(outputDir.resolve(VALIDATED_STORYBOARD_FILE), storyboard, "validated storyboard");
     }
 
     public static void saveStoryboardValidation(Path outputDir,
                                                 StoryboardValidationReport storyboardValidationReport) {
-        writeJson(outputDir.resolve("3_storyboard_validation.json"),
+        writeJson(outputDir.resolve(STORYBOARD_VALIDATION_REPORT_FILE),
                 storyboardValidationReport, "storyboard validation");
     }
 
@@ -159,13 +193,13 @@ public class FileOutputService {
         meta.put("code_lines", codeResult.codeLineCount());
         meta.put("tool_calls", codeResult.getToolCalls());
         meta.put("execution_time_seconds", codeResult.getExecutionTimeSeconds());
-        writeJson(outputDir.resolve("4_code_result.json"), meta, "code metadata");
+        writeJson(outputDir.resolve(CODE_RESULT_FILE), meta, "code metadata");
     }
 
     public static void saveCodeEvaluation(Path outputDir,
                                           CodeEvaluationResult codeEvaluationResult,
                                             CodeResult codeResult) {
-        writeJson(outputDir.resolve("4_code_evaluation.json"),
+        writeJson(outputDir.resolve(CODE_EVALUATION_FILE),
                 codeEvaluationResult, "code evaluation");
 
         if (codeEvaluationResult != null
@@ -190,7 +224,7 @@ public class FileOutputService {
         meta.put("last_error", renderResult.getLastError());
         meta.put("tool_calls", renderResult.getToolCalls());
         meta.put("execution_time_seconds", renderResult.getExecutionTimeSeconds());
-        writeJson(outputDir.resolve("5_render_result.json"), meta, "render result");
+        writeJson(outputDir.resolve(RENDER_RESULT_FILE), meta, "render result");
 
         if (renderResult.getFinalGeneratedCode() != null) {
             writeText(outputDir.resolve(resolveFinalCodeFilename(renderResult)),
@@ -200,17 +234,17 @@ public class FileOutputService {
     }
 
     public static void saveSceneEvaluation(Path outputDir, SceneEvaluationResult sceneEvaluationResult) {
-        writeJson(outputDir.resolve("6_scene_evaluation.json"),
+        writeJson(outputDir.resolve(SCENE_EVALUATION_FILE),
                 sceneEvaluationResult, "scene evaluation");
     }
 
     public static void saveCodeFixTrace(Path outputDir, CodeFixTraceReport codeFixTraceReport) {
-        writeJson(outputDir.resolve("8_code_fix_trace.json"),
+        writeJson(outputDir.resolve(CODE_FIX_TRACE_FILE),
                 codeFixTraceReport, "code fix trace");
     }
 
     public static void saveWorkflowSummary(Path outputDir, Map<String, Object> summary) {
-        writeJson(outputDir.resolve("7_workflow_summary.json"),
+        writeJson(outputDir.resolve(WORKFLOW_SUMMARY_FILE),
                 sanitizeForJson(summary), "workflow summary");
     }
 
@@ -292,6 +326,22 @@ public class FileOutputService {
         }
     }
 
+    private static JsonNode loadFirstExistingMetadata(Path parentDir, String... fileNames) {
+        if (parentDir == null || fileNames == null) {
+            return null;
+        }
+        for (String fileName : fileNames) {
+            if (fileName == null || fileName.isBlank()) {
+                continue;
+            }
+            Path metadataPath = parentDir.resolve(fileName);
+            if (Files.exists(metadataPath)) {
+                return loadOptionalMetadata(metadataPath);
+            }
+        }
+        return null;
+    }
+
     private static String readTextField(JsonNode node, String fieldName) {
         if (node == null || fieldName == null || fieldName.isBlank()) {
             return "";
@@ -323,20 +373,20 @@ public class FileOutputService {
 
     private static String resolveCodeFilename(CodeResult codeResult) {
         return codeResult != null && codeResult.isGeoGebraTarget()
-                ? "4_geogebra_commands.txt"
-                : "4_manim_code.py";
+                ? GEOGEBRA_COMMANDS_FILE
+                : MANIM_CODE_FILE;
     }
 
     private static String resolveReviewedCodeFilename(CodeResult codeResult) {
         return codeResult != null && codeResult.isGeoGebraTarget()
-                ? "4_geogebra_commands_reviewed.txt"
-                : "4_manim_code_reviewed.py";
+                ? GEOGEBRA_REVIEWED_COMMANDS_FILE
+                : MANIM_REVIEWED_CODE_FILE;
     }
 
     private static String resolveFinalCodeFilename(RenderResult renderResult) {
         return renderResult != null && renderResult.isGeoGebraTarget()
-                ? "5_geogebra_commands_final.txt"
-                : "5_manim_code_final.py";
+                ? GEOGEBRA_FINAL_COMMANDS_FILE
+                : MANIM_FINAL_CODE_FILE;
     }
 
     private static String describeCodeArtifact(CodeResult codeResult) {

@@ -284,9 +284,9 @@ class RenderNodeCodeGateTest {
         assertNotNull(renderResult);
         assertTrue(renderResult.isSuccess());
         assertEquals(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA, renderResult.getOutputTarget());
-        assertTrue(renderResult.getArtifactPath().endsWith("5_geogebra_preview.html"));
+        assertTrue(renderResult.getArtifactPath().endsWith(GeoGebraRenderService.PREVIEW_FILE));
         assertTrue(Files.exists(Path.of(renderResult.getArtifactPath())));
-        assertTrue(Files.exists(tempDir.resolve("5_geogebra_validation.json")));
+        assertTrue(Files.exists(tempDir.resolve(GeoGebraRenderService.VALIDATION_FILE)));
     }
 
     @Test
@@ -318,11 +318,11 @@ class RenderNodeCodeGateTest {
             @Override
             public RenderAttemptResult render(String commandScript, String figureName, Path outputDir) {
                 if (commandScript.contains("mid = Midpoint(A, B)")) {
-                    return new RenderAttemptResult(true, outputDir.resolve("5_geogebra_preview.html").toString(), null, null);
+                    return new RenderAttemptResult(true, outputDir.resolve(GeoGebraRenderService.PREVIEW_FILE).toString(), null, null);
                 }
                 return new RenderAttemptResult(
                         false,
-                        outputDir.resolve("5_geogebra_preview.html").toString(),
+                        outputDir.resolve(GeoGebraRenderService.PREVIEW_FILE).toString(),
                         null,
                         "Command 3 returned false: mid = Midpoint(lineAB)"
                 );
@@ -375,11 +375,11 @@ class RenderNodeCodeGateTest {
             @Override
             public RenderAttemptResult render(String commandScript, String figureName, Path outputDir) {
                 if (commandScript.contains("mid = Midpoint(A, B)")) {
-                    return new RenderAttemptResult(true, outputDir.resolve("5_geogebra_preview.html").toString(), null, null);
+                    return new RenderAttemptResult(true, outputDir.resolve(GeoGebraRenderService.PREVIEW_FILE).toString(), null, null);
                 }
                 return new RenderAttemptResult(
                         false,
-                        outputDir.resolve("5_geogebra_preview.html").toString(),
+                        outputDir.resolve(GeoGebraRenderService.PREVIEW_FILE).toString(),
                         null,
                         "GeoGebra Playwright validation failed: Timeout 30000ms exceeded."
                 );

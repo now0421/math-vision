@@ -6,7 +6,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Prompts for Stage 4 Code Rendering: render-failure fixes.
+ * Prompts for Stage 7 Code Rendering: render-failure fixes.
  */
 public final class RenderFixPrompts {
 
@@ -74,7 +74,7 @@ public final class RenderFixPrompts {
                                                  String targetDescription,
                                                  String outputTarget) {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
-                "Stage 4 / Code Rendering",
+                "Stage 7 / Code Rendering",
                 "Repair " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra commands" : "Manim code") + " after render failure",
                 targetConcept,
                 targetDescription,

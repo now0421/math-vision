@@ -1,6 +1,8 @@
 package com.mathvision.service;
 
 import com.mathvision.config.ModelConfig;
+import com.mathvision.model.AiContentPart;
+import com.mathvision.model.AiMessage;
 import com.mathvision.util.ConcurrencyUtils;
 import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -15,6 +17,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
@@ -143,5 +146,60 @@ public class GeminiAiClient implements AiClient {
         ObjectNode message = choice.putObject("message");
         message.put("content", text);
         return fake;
+    }
+
+    @Override
+    public CompletableFuture<String> chatMultimodalAsync(List<AiMessage> messages) {
+        try {
+            ObjectNode body = buildMultimodalBody(messages);
+            return sendGenerateContentAsync(body);
+        } catch (Exception e) {
+            return CompletableFuture.failedFuture(new RuntimeException(
+                    "Gemini multimodal chat failed: " + e.getMessage(), e));
+        }
+    }
+
+    @Override
+    public CompletableFuture<JsonNode> chatMultimodalWithToolsRawAsync(
+            List<AiMessage> messages, String toolsJson) {
+        return chatMultimodalAsync(messages).thenApply(this::wrapTextResponse);
+    }
+
+    private ObjectNode buildMultimodalBody(List<AiMessage> messages) {
+        ObjectNode body = mapper.createObjectNode();
+
+        for (AiMessage msg : messages) {
+            if ("system".equals(msg.getRole())) {
+                ObjectNode sysInstruction = body.putObject("system_instruction");
+                ArrayNode parts = sysInstruction.putArray("parts");
+                for (AiContentPart part : msg.getParts()) {
+                    if ("text".equals(part.getType())) {
+                        parts.addObject().put("text", part.getText());
+                    }
+                }
+                break;
+            }
+        }
+
+        ArrayNode contents = body.putArray("contents");
+        for (AiMessage msg : messages) {
+            if ("system".equals(msg.getRole())) {
+                continue;
+            }
+            ObjectNode entry = contents.addObject();
+            entry.put("role", "assistant".equals(msg.getRole()) ? "model" : msg.getRole());
+            ArrayNode parts = entry.putArray("parts");
+            for (AiContentPart part : msg.getParts()) {
+                if ("text".equals(part.getType())) {
+                    parts.addObject().put("text", part.getText());
+                } else if ("image".equals(part.getType())) {
+                    ObjectNode inlineData = parts.addObject().putObject("inline_data");
+                    inlineData.put("mime_type", part.getMimeType());
+                    inlineData.put("data", part.getDataBase64());
+                }
+            }
+        }
+
+        return body;
     }
 }

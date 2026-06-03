@@ -5,6 +5,7 @@ import com.mathvision.node.CodeGenerationNode;
 import com.mathvision.node.CodeFixNode;
 import com.mathvision.node.ExplorationNode;
 import com.mathvision.node.MathEnrichmentNode;
+import com.mathvision.node.ProblemNormalizationNode;
 import com.mathvision.node.StoryboardValidationNode;
 import com.mathvision.node.RenderNode;
 import com.mathvision.node.SceneEvaluationNode;
@@ -41,6 +42,7 @@ public class WorkflowFlow {
      * Creates the full workflow with all stages wired together.
      */
     public static PocketFlow.Flow<?> create(WorkflowConfig config) {
+        ProblemNormalizationNode normalization = new ProblemNormalizationNode();
         ExplorationNode exploration = new ExplorationNode();
         MathEnrichmentNode mathEnrich = new MathEnrichmentNode();
         VisualDesignNode visualDesign = new VisualDesignNode();
@@ -51,6 +53,7 @@ public class WorkflowFlow {
         RenderNode render = new RenderNode();
         SceneEvaluationNode sceneEvaluation = new SceneEvaluationNode();
 
+        normalization.next(exploration);
         exploration.next(mathEnrich);
         mathEnrich.next(visualDesign);
         visualDesign.next(storyboardValidation);
@@ -67,9 +70,9 @@ public class WorkflowFlow {
         codeFix.next(codeEvaluation, WorkflowActions.RETRY_CODE_EVALUATION);
         codeFix.next(render, WorkflowActions.RETRY_RENDER);
 
-        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(exploration);
+        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(normalization);
 
-        log.info("Workflow assembled: Exploration -> MathEnrichment -> VisualDesign -> StoryboardValidation -> CodeGeneration -> CodeEvaluation -> Render -> SceneEvaluation with routed CodeFixNode");
+        log.info("Workflow assembled: ProblemNormalization -> Exploration -> MathEnrichment -> VisualDesign -> StoryboardValidation -> CodeGeneration -> CodeEvaluation -> Render -> SceneEvaluation with routed CodeFixNode");
         return flow;
     }
 
@@ -84,6 +87,7 @@ public class WorkflowFlow {
      * Creates a workflow that skips rendering but still runs code evaluation.
      */
     public static PocketFlow.Flow<?> createWithoutRender(WorkflowConfig config) {
+        ProblemNormalizationNode normalization = new ProblemNormalizationNode();
         ExplorationNode exploration = new ExplorationNode();
         MathEnrichmentNode mathEnrich = new MathEnrichmentNode();
         VisualDesignNode visualDesign = new VisualDesignNode();
@@ -92,6 +96,7 @@ public class WorkflowFlow {
         CodeEvaluationNode codeEvaluation = new CodeEvaluationNode();
         CodeFixNode codeFix = new CodeFixNode();
 
+        normalization.next(exploration);
         exploration.next(mathEnrich);
         mathEnrich.next(visualDesign);
         visualDesign.next(storyboardValidation);
@@ -103,14 +108,14 @@ public class WorkflowFlow {
         codeFix.next(codeGen, WorkflowActions.RETRY_CODE_GENERATION);
         codeFix.next(codeEvaluation, WorkflowActions.RETRY_CODE_EVALUATION);
 
-        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(exploration);
+        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(normalization);
 
-        log.info("Workflow assembled (no render): Exploration -> MathEnrichment -> VisualDesign -> StoryboardValidation -> CodeGeneration -> CodeEvaluation with routed CodeFixNode");
+        log.info("Workflow assembled (no render): ProblemNormalization -> Exploration -> MathEnrichment -> VisualDesign -> StoryboardValidation -> CodeGeneration -> CodeEvaluation with routed CodeFixNode");
         return flow;
     }
 
     /**
-     * Creates a workflow starting from stage 1 (skips stage 0 exploration).
+     * Creates a workflow starting from stage 2 (skips stages 0-1).
      * Use when the knowledge graph has been loaded manually via --from-graph.
      */
     public static PocketFlow.Flow<?> createFromGraph() {
@@ -118,7 +123,7 @@ public class WorkflowFlow {
     }
 
     /**
-     * Creates a workflow starting from stage 1 (skips stage 0 exploration).
+     * Creates a workflow starting from stage 2 (skips stages 0-1).
      * Use when the knowledge graph has been loaded manually via --from-graph.
      */
     public static PocketFlow.Flow<?> createFromGraph(WorkflowConfig config) {
@@ -153,7 +158,7 @@ public class WorkflowFlow {
     }
 
     /**
-     * Creates a workflow starting from stage 1, without rendering.
+     * Creates a workflow starting from stage 2, without rendering.
      * Use when the knowledge graph has been loaded manually via --from-graph.
      */
     public static PocketFlow.Flow<?> createFromGraphWithoutRender() {
@@ -161,7 +166,7 @@ public class WorkflowFlow {
     }
 
     /**
-     * Creates a workflow starting from stage 1, without rendering.
+     * Creates a workflow starting from stage 2, without rendering.
      * Use when the knowledge graph has been loaded manually via --from-graph.
      */
     public static PocketFlow.Flow<?> createFromGraphWithoutRender(WorkflowConfig config) {
@@ -189,7 +194,7 @@ public class WorkflowFlow {
     }
 
     /**
-     * Creates a workflow starting from stage 3 (skips exploration through code generation).
+     * Creates a workflow starting from stage 6 (skips stages 0-5).
      * Use when Manim code has been loaded manually via --from-code.
      */
     public static PocketFlow.Flow<?> createFromCode() {
@@ -214,7 +219,7 @@ public class WorkflowFlow {
     }
 
     /**
-     * Creates a workflow starting from stage 3, without rendering.
+     * Creates a workflow starting from stage 6, without rendering.
      * Use when Manim code has been loaded manually via --from-code.
      */
     public static PocketFlow.Flow<?> createFromCodeWithoutRender() {
@@ -231,13 +236,25 @@ public class WorkflowFlow {
     }
 
     /**
-     * Creates a workflow that only runs the Exploration stage (Stage 0).
+     * Creates a workflow that only runs the ProblemNormalization stage (Stage 0).
+     */
+    public static PocketFlow.Flow<?> createProblemNormalizationOnly() {
+        ProblemNormalizationNode normalization = new ProblemNormalizationNode();
+        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(normalization);
+        log.info("Workflow assembled (normalization only): ProblemNormalization stage only");
+        return flow;
+    }
+
+    /**
+     * Creates a workflow that runs through the Exploration stage (Stage 1).
      * Stops after generating the knowledge graph.
      */
     public static PocketFlow.Flow<?> createExplorationOnly() {
+        ProblemNormalizationNode normalization = new ProblemNormalizationNode();
         ExplorationNode exploration = new ExplorationNode();
-        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(exploration);
-        log.info("Workflow assembled (exploration only): Exploration stage only");
+        normalization.next(exploration);
+        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(normalization);
+        log.info("Workflow assembled (exploration only): ProblemNormalization -> Exploration stage only");
         return flow;
     }
 
@@ -246,17 +263,19 @@ public class WorkflowFlow {
      * Stops after storyboard validation.
      */
     public static PocketFlow.Flow<?> createToStoryboardValidation() {
+        ProblemNormalizationNode normalization = new ProblemNormalizationNode();
         ExplorationNode exploration = new ExplorationNode();
         MathEnrichmentNode mathEnrich = new MathEnrichmentNode();
         VisualDesignNode visualDesign = new VisualDesignNode();
         StoryboardValidationNode storyboardValidation = new StoryboardValidationNode();
 
+        normalization.next(exploration);
         exploration.next(mathEnrich);
         mathEnrich.next(visualDesign);
         visualDesign.next(storyboardValidation);
 
-        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(exploration);
-        log.info("Workflow assembled (to storyboard validation): Exploration -> MathEnrichment -> VisualDesign -> StoryboardValidation");
+        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(normalization);
+        log.info("Workflow assembled (to storyboard validation): ProblemNormalization -> Exploration -> MathEnrichment -> VisualDesign -> StoryboardValidation");
         return flow;
     }
 
@@ -265,15 +284,17 @@ public class WorkflowFlow {
      * Stops after visual design.
      */
     public static PocketFlow.Flow<?> createToVisualDesign() {
+        ProblemNormalizationNode normalization = new ProblemNormalizationNode();
         ExplorationNode exploration = new ExplorationNode();
         MathEnrichmentNode mathEnrich = new MathEnrichmentNode();
         VisualDesignNode visualDesign = new VisualDesignNode();
 
+        normalization.next(exploration);
         exploration.next(mathEnrich);
         mathEnrich.next(visualDesign);
 
-        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(exploration);
-        log.info("Workflow assembled (to visual design): Exploration -> MathEnrichment -> VisualDesign");
+        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(normalization);
+        log.info("Workflow assembled (to visual design): ProblemNormalization -> Exploration -> MathEnrichment -> VisualDesign");
         return flow;
     }
 

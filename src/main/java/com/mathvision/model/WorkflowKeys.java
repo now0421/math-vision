@@ -17,17 +17,22 @@ public final class WorkflowKeys {
     public static final String OUTPUT_DIR = "outputDir";
     public static final String TARGET_INPUT = "targetInput";
 
-    // ---- Stage 0: Exploration output ----
+    // ---- Stage 0: Problem normalization ----
+    public static final String PROBLEM_SOURCE = "problemSource";
+    public static final String PROBLEM_BUNDLE = "problemBundle";
+    public static final String PROBLEM_NORMALIZATION_API_CALLS = "problemNormalizationApiCalls";
+
+    // ---- Stage 1: Exploration output ----
     public static final String KNOWLEDGE_GRAPH = "knowledgeGraph";
     public static final String EXPLORATION_API_CALLS = "explorationApiCalls";
     public static final String RESOLVED_INPUT_MODE = "resolvedInputMode";
 
-    // ---- Stage 1: Enrichment output ----
+    // ---- Stage 2: Enrichment and visual-design output ----
     public static final String ENRICHED_TREE = "enrichedTree";
     public static final String NARRATIVE = "narrative";
     public static final String ENRICHMENT_TOOL_CALLS = "enrichmentToolCalls";
 
-    // ---- Stage 2: Code generation output ----
+    // ---- Stage 5: Code generation output ----
     public static final String CODE_RESULT = "codeResult";
 
     // ---- Shared code-fix routing state ----
@@ -40,13 +45,13 @@ public final class WorkflowKeys {
     public static final String RENDER_RETRY_STATE = "renderRetryState";
     public static final String SCENE_EVALUATION_RETRY_STATE = "sceneEvaluationRetryState";
 
-    // ---- Stage 3: Code evaluation output ----
+    // ---- Stage 6: Code evaluation output ----
     public static final String CODE_EVALUATION_RESULT = "codeEvaluationResult";
 
-    // ---- Stage 4: Render output ----
+    // ---- Stage 7: Render output ----
     public static final String RENDER_RESULT = "renderResult";
 
-    // ---- Stage 5: Scene evaluation output ----
+    // ---- Stage 8: Scene evaluation output ----
     public static final String SCENE_EVALUATION_RESULT = "sceneEvaluationResult";
 
     // ---- Metrics ----

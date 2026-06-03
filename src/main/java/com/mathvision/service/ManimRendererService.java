@@ -34,7 +34,7 @@ public class ManimRendererService {
     private static final String MANIM_PYTHON_ENV = "MATHVISION_MANIM_PYTHON";
     private static final String GENERATED_SCENE_FILE = "scene_render.py";
     private static final String GEOMETRY_EXPORT_HELPER_FILE = "mathvision_geometry_export.py";
-    private static final String GEOMETRY_EXPORT_OUTPUT_FILE = "5_mobject_geometry.json";
+    public static final String GEOMETRY_EXPORT_OUTPUT_FILE = "07_manim_geometry.json";
     private static final String GEOMETRY_EXPORT_HELPER_RESOURCE = "/render/mathvision_geometry_export.py";
     private static final String GEOMETRY_EXPORT_ENV = "MATHVISION_GEOMETRY_PATH";
     private static final String FATAL_STDERR_MESSAGE = "Fatal Manim traceback detected in stderr";

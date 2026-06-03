@@ -9,9 +9,9 @@ It takes a math concept or problem, plans a forward teaching graph with AI, enri
 PocketFlow workflow pipeline:
 
 ```text
-ExplorationNode -> MathEnrichmentNode -> VisualDesignNode
-    -> NarrativeNode -> CodeGenerationNode -> CodeEvaluationNode
-    -> RenderNode -> SceneEvaluationNode
+ProblemNormalizationNode -> ExplorationNode -> MathEnrichmentNode
+    -> VisualDesignNode -> StoryboardValidationNode -> CodeGenerationNode
+    -> CodeEvaluationNode -> RenderNode -> SceneEvaluationNode
 ```
 
 Each node follows the PocketFlow `prep -> exec -> post` pattern:
@@ -75,12 +75,20 @@ Each run creates timestamped output files such as:
 
 ```text
 output/fourier_transform_20250101_120000/
-|- 1_knowledge_graph.json    # Forward teaching graph
-|- 2_enriched_graph.json     # With equations and visual specs
-|- 3_narrative.json          # Storyboard and prompt package
-|- 4_manim_code.py           # Generated Manim code
-|- 5_render_result.json      # Render outcome and metadata
-|- 7_workflow_summary.json   # Timing and workflow stats
+|- 00_problem_source.json                 # Raw text/assets supplied to normalization
+|- 00_problem_bundle.json                 # Normalized problem/concept bundle
+|- 01_knowledge_graph.json                # Forward teaching graph
+|- 02_math_enriched_graph.json            # Graph with equations and definitions
+|- 03_visual_narrative.json               # Visual storyboard package
+|- 04_storyboard_validated.json           # Validated storyboard
+|- 04_storyboard_validation_report.json   # Storyboard validation report
+|- 05_manim_code.py                       # Generated Manim code
+|- 05_code_result.json                    # Code-generation metadata
+|- 06_code_evaluation.json                # Code review and static evaluation
+|- 07_render_result.json                  # Render outcome and artifact metadata
+|- 08_scene_evaluation.json               # Rendered-geometry scene evaluation
+|- 09_workflow_summary.json               # Timing and workflow stats
+|- 09_code_fix_trace.json                 # Shared code-fix event trace
 ```
 
 ## Project Structure
@@ -98,14 +106,15 @@ src/main/java/com/mathvision/
 |  |- CodeEvaluationResult.java
 |  |- WorkflowKeys.java
 |- node/
-|  |- ExplorationNode.java     # Stage 0: forward teaching-graph planning
-|  |- MathEnrichmentNode.java  # Stage 1a: equations and definitions
-|  |- VisualDesignNode.java    # Stage 1b: visual specifications
-|  |- NarrativeNode.java       # Stage 1c: storyboard composition
-|  |- CodeGenerationNode.java
-|  |- CodeEvaluationNode.java
-|  |- RenderNode.java
-|  |- SceneEvaluationNode.java
+|  |- ProblemNormalizationNode.java  # Stage 0: normalize text/image problem input
+|  |- ExplorationNode.java           # Stage 1: forward teaching-graph planning
+|  |- MathEnrichmentNode.java        # Stage 2: equations and definitions
+|  |- VisualDesignNode.java          # Stage 3: visual specifications
+|  |- StoryboardValidationNode.java  # Stage 4: storyboard validation
+|  |- CodeGenerationNode.java        # Stage 5: backend code generation
+|  |- CodeEvaluationNode.java        # Stage 6: static code review
+|  |- RenderNode.java                # Stage 7: render/validate artifact
+|  |- SceneEvaluationNode.java       # Stage 8: geometry scene evaluation
 |  |- CodeFixNode.java
 |- service/
 |- util/

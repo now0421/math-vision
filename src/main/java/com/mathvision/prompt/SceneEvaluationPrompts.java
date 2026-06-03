@@ -3,7 +3,7 @@ package com.mathvision.prompt;
 import java.util.List;
 
 /**
- * Prompts for Stage 5: geometry-based scene-evaluation fixes.
+ * Prompts for Stage 8: geometry-based scene-evaluation fixes.
  */
 public final class SceneEvaluationPrompts {
 
@@ -72,7 +72,7 @@ public final class SceneEvaluationPrompts {
                                                           String targetDescription,
                                                           String outputTarget) {
         String fixedContext = SystemPrompts.buildWorkflowPrefix(
-                "Stage 5 / Scene Evaluation Fix",
+                "Stage 8 / Scene Evaluation Fix",
                 "Revise " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra commands" : "Manim code")
                         + " after geometry-based scene evaluation",
                 targetConcept,

@@ -47,7 +47,7 @@ import java.util.Set;
 import java.util.concurrent.CompletionException;
 
 /**
- * Stage 1c: Storyboard Validation - static checks on the assembled storyboard
+ * Stage 4: Storyboard Validation - static checks on the assembled storyboard
  * followed by an optional LLM cleanup/fix pass.
  *
  * Replaces NarrativeNode in the pipeline. Receives the Narrative already
@@ -105,7 +105,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
 
     @Override
     public Narrative exec(Narrative narrative) {
-        log.info("=== Stage 1c: Storyboard Validation ===");
+        log.info("=== Stage 4: Storyboard Validation ===");
 
         if (narrative == null || narrative.getStoryboard() == null) {
             log.warn("No narrative/storyboard to validate");

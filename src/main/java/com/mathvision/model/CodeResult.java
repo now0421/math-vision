@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Result from the code generation stage (Stage 2).
+ * Result from the code generation stage (Stage 5).
  * Carries the generated backend code/artifact text and metadata.
  */
 public class CodeResult {

@@ -47,7 +47,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Stage 3: Code evaluation - checks generated code for static validity,
+ * Stage 6: Code evaluation - checks generated code for static validity,
  * storyboard/code alignment, semantic continuity, and Manim-specific 3D
  * readability issues before render.
  */
@@ -148,7 +148,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     @Override
     public CodeEvaluationResult exec(CodeEvaluationInput input) {
         Instant start = Instant.now();
-        log.info("=== Stage 3: Code Evaluation ===");
+        log.info("=== Stage 6: Code Evaluation ===");
 
         CodeResult codeResult = input.codeResult();
         Narrative narrative = input.narrative();
@@ -898,7 +898,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         review.setRuleChecks(ruleChecks);
         review.setBlockingIssues(blockingIssues);
         review.setRevisionDirectives(directives);
-        review.setSummary("Fallback Stage 3 rule-compliance review synthesized from static validation and 3D-readability heuristics.");
+        review.setSummary("Fallback Stage 6 rule-compliance review synthesized from static validation and 3D-readability heuristics.");
         review.setApprovedForRender(blockingIssues.isEmpty());
         return review;
     }

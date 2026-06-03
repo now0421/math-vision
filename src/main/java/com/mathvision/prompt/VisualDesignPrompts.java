@@ -1,7 +1,7 @@
 package com.mathvision.prompt;
 
 /**
- * Prompts for Stage 1b: visual design (scene-level output).
+ * Prompts for Stage 3: visual design (scene-level output).
  *
  * Split into two parts:
  * - buildRulesPrompt(): hard rules (visual design rules, output schema, backend rules)
@@ -202,7 +202,7 @@ public final class VisualDesignPrompts {
                                                   String solutionChain) {
         StringBuilder sb = new StringBuilder();
         sb.append(SystemPrompts.buildWorkflowPrefix(
-                "Stage 1b / Visual Design",
+                "Stage 3 / Visual Design",
                 "Scene visual design",
                 targetConcept,
                 targetDescription,

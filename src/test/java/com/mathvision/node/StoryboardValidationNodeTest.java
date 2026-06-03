@@ -10,6 +10,7 @@ import com.mathvision.model.Narrative.StoryboardPlacementAxis;
 import com.mathvision.model.Narrative.StoryboardScene;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.service.AiClient;
+import com.mathvision.service.FileOutputService;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -535,7 +536,7 @@ class StoryboardValidationNodeTest {
         assertEquals(3, aiClient.lastSnapshotSize);
         assertEquals("Cleaned ids remain stable.", resultNarrative.getStoryboard().getContinuityPlan());
 
-        JsonNode report = JsonUtils.mapper().readTree(tempDir.resolve("3_storyboard_validation.json").toFile());
+        JsonNode report = JsonUtils.mapper().readTree(tempDir.resolve(FileOutputService.STORYBOARD_VALIDATION_REPORT_FILE).toFile());
         assertEquals(2, report.get("total_validation_events").asInt());
         assertEquals("initial_validation", report.get("entries").get(0).get("phase").asText());
         assertEquals("post_cleanup_validation", report.get("entries").get(1).get("phase").asText());
@@ -564,9 +565,9 @@ class StoryboardValidationNodeTest {
         Narrative resultNarrative = node.exec(prepNarrative);
         node.post(ctx, prepNarrative, resultNarrative);
 
-        String validatedStoryboardJson = Files.readString(tempDir.resolve("3_storyboard_validated.json"));
-        String reportJson = Files.readString(tempDir.resolve("3_storyboard_validation.json"));
-        assertFalse(Files.exists(tempDir.resolve("3_narrative.json")));
+        String validatedStoryboardJson = Files.readString(tempDir.resolve(FileOutputService.VALIDATED_STORYBOARD_FILE));
+        String reportJson = Files.readString(tempDir.resolve(FileOutputService.STORYBOARD_VALIDATION_REPORT_FILE));
+        assertFalse(Files.exists(tempDir.resolve(FileOutputService.VISUAL_NARRATIVE_FILE)));
         assertTrue(validatedStoryboardJson.contains("\"scenes\""));
         assertTrue(validatedStoryboardJson.contains("Layout validation"));
         assertFalse(validatedStoryboardJson.contains("\"dependency_objects\""));
@@ -602,7 +603,7 @@ class StoryboardValidationNodeTest {
         assertEquals(3, aiClient.toolCalls.get());
         assertEquals(1, node.validate(resultNarrative.getStoryboard()).size());
 
-        JsonNode report = JsonUtils.mapper().readTree(tempDir.resolve("3_storyboard_validation.json").toFile());
+        JsonNode report = JsonUtils.mapper().readTree(tempDir.resolve(FileOutputService.STORYBOARD_VALIDATION_REPORT_FILE).toFile());
         assertEquals(4, report.get("total_validation_events").asInt());
         assertEquals(4, report.get("entries").size());
         assertEquals("initial_validation", report.get("entries").get(0).get("phase").asText());

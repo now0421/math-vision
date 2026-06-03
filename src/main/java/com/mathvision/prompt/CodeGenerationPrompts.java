@@ -3,7 +3,7 @@ package com.mathvision.prompt;
 import java.util.List;
 
 /**
- * Prompts for Stage 2: code generation and validation fixes.
+ * Prompts for Stage 5: code generation and validation fixes.
  */
 public final class CodeGenerationPrompts {
 
@@ -184,7 +184,7 @@ public final class CodeGenerationPrompts {
                     + objectRegistryJson + "\n```";
         }
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
-                "Stage 2 / Code Generation",
+                "Stage 5 / Code Generation",
                 "Generate executable " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra code" : "Manim code"),
                 targetConcept,
                 targetDescription,
@@ -199,7 +199,7 @@ public final class CodeGenerationPrompts {
 
     public static String buildManimValidationFixFixedContextPrompt(String targetConcept, String targetDescription) {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
-                "Stage 2 / Code Fix",
+                "Stage 5 / Code Fix",
                 "Repair generated code after validation findings",
                 targetConcept,
                 targetDescription,
@@ -214,7 +214,7 @@ public final class CodeGenerationPrompts {
 
     public static String buildGeoGebraValidationFixFixedContextPrompt(String targetConcept, String targetDescription) {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
-                "Stage 2 / Code Fix",
+                "Stage 5 / Code Fix",
                 "Repair generated GeoGebra commands after validation findings",
                 targetConcept,
                 targetDescription,

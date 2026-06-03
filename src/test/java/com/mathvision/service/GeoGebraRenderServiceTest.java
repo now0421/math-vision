@@ -58,11 +58,11 @@ class GeoGebraRenderServiceTest {
         );
 
         assertTrue(result.success());
-        assertTrue(Files.exists(tempDir.resolve("5_geogebra_preview.html")));
-        assertTrue(Files.exists(tempDir.resolve("5_geogebra_validation.json")));
+        assertTrue(Files.exists(tempDir.resolve(GeoGebraRenderService.PREVIEW_FILE)));
+        assertTrue(Files.exists(tempDir.resolve(GeoGebraRenderService.VALIDATION_FILE)));
 
-        String previewHtml = Files.readString(tempDir.resolve("5_geogebra_preview.html"));
-        String validationJson = Files.readString(tempDir.resolve("5_geogebra_validation.json"));
+        String previewHtml = Files.readString(tempDir.resolve(GeoGebraRenderService.PREVIEW_FILE));
+        String validationJson = Files.readString(tempDir.resolve(GeoGebraRenderService.VALIDATION_FILE));
 
         assertTrue(previewHtml.contains("Runtime validation is executed separately by Playwright"));
         assertTrue(validationJson.contains("\"validationEngine\""));
@@ -164,7 +164,7 @@ class GeoGebraRenderServiceTest {
         assertTrue(result.error().contains("Command 3 returned false: SetConditionToShowObject(floorLine, inSegment)"));
         assertTrue(result.error().contains("Boolean condition expected"));
 
-        String validationJson = Files.readString(tempDir.resolve("5_geogebra_validation.json"));
+        String validationJson = Files.readString(tempDir.resolve(GeoGebraRenderService.VALIDATION_FILE));
         assertTrue(validationJson.contains("2 failing commands out of 3"));
         assertTrue(validationJson.contains("SetFixed(A, true)"));
         assertTrue(validationJson.contains("SetConditionToShowObject(floorLine, inSegment)"));
@@ -196,7 +196,7 @@ class GeoGebraRenderServiceTest {
         assertTrue(result.success());
         assertNotNull(result.previewPath());
 
-        String previewHtml = Files.readString(tempDir.resolve("5_geogebra_preview.html"));
+        String previewHtml = Files.readString(tempDir.resolve(GeoGebraRenderService.PREVIEW_FILE));
         assertTrue(previewHtml.contains("commands-data"));
         assertTrue(previewHtml.contains("scene-controls"));
         assertTrue(previewHtml.contains("scene-data"));

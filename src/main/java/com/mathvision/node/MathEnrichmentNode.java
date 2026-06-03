@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Stage 1a: Mathematical Enrichment - adds equations and definitions to each
+ * Stage 2: Mathematical Enrichment - adds equations and definitions to each
  * node in the knowledge graph.
  */
 public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeGraph, String> {
@@ -66,7 +66,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
     @Override
     public KnowledgeGraph exec(KnowledgeGraph graph) {
         int concurrency = parallelEnabled ? maxConcurrent : 1;
-        log.info("=== Stage 1a: Mathematical Enrichment (output_target={}, parallel={}, concurrency={}) ===",
+        log.info("=== Stage 2: Mathematical Enrichment (output_target={}, parallel={}, concurrency={}) ===",
                 outputTarget, parallelEnabled, concurrency);
         toolCalls.set(0);
         cache.clear();

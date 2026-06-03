@@ -408,8 +408,8 @@ class PromptModulesTest {
 
         assertTrue(manimFixedContext.contains("Manim syntax reference manual:"));
         assertTrue(geogebraFixedContext.contains("GeoGebra syntax reference manual:"));
-        assertTrue(manimFixedContext.contains("Current workflow stage: Stage 5 / Scene Evaluation Fix"));
-        assertTrue(geogebraFixedContext.contains("Current workflow stage: Stage 5 / Scene Evaluation Fix"));
+        assertTrue(manimFixedContext.contains("Current workflow stage: Stage 8 / Scene Evaluation Fix"));
+        assertTrue(geogebraFixedContext.contains("Current workflow stage: Stage 8 / Scene Evaluation Fix"));
         assertFalse(manimRules.contains("Manim syntax reference manual:"));
         assertFalse(geogebraRules.contains("GeoGebra syntax reference manual:"));
         assertTrue(manimRules.contains("storyboard `safe_area_plan` and `layout_goal` are useful hints"));

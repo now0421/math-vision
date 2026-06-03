@@ -1,7 +1,7 @@
 package com.mathvision.prompt;
 
 /**
- * Prompts for Stage 1a: math enrichment.
+ * Prompts for Stage 2: math enrichment.
  *
  * Split into two parts:
  * - buildRulesPrompt(): hard rules (role, output format, LaTeX, schema, operation rules)
@@ -65,7 +65,7 @@ public final class EnrichmentPrompts {
                                                   String solutionChain) {
         StringBuilder sb = new StringBuilder();
         sb.append(SystemPrompts.buildWorkflowPrefix(
-                "Stage 1a / Mathematical Enrichment",
+                "Stage 2 / Mathematical Enrichment",
                 "Mathematical content enrichment",
                 targetConcept,
                 targetDescription,

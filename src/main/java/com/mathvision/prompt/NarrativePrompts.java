@@ -5,7 +5,7 @@ import com.mathvision.model.Narrative.Storyboard;
 
 /**
  * Prompts for storyboard validation and codegen-prompt assembly.
- * Used by StoryboardValidationNode (Stage 1c) and CodeGenerationNode (Stage 2).
+ * Used by StoryboardValidationNode (Stage 4) and CodeGenerationNode (Stage 5).
  * Scene-level design rules live in {@link VisualDesignPrompts}.
  */
 public final class NarrativePrompts {
@@ -274,7 +274,7 @@ public final class NarrativePrompts {
                                                  String solutionChainSummary) {
         StringBuilder sb = new StringBuilder();
         sb.append(SystemPrompts.buildWorkflowPrefix(
-                "Stage 1c / Storyboard Validation",
+                "Stage 4 / Storyboard Validation",
                 "Storyboard composition and validation",
                 targetConcept,
                 targetDescription,
