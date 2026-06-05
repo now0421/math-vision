@@ -34,6 +34,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
 /**
  * Official Anthropic Messages API client.
@@ -61,7 +63,8 @@ public class AnthropicAiClient implements AiClient {
     public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
         try {
             MessageCreateParams params = buildMessageCreateParams(snapshot, null, null);
-            return CompletableFuture.supplyAsync(() -> client.messages().create(params))
+            return createMessageWithRetry(params, false,
+                            AiRetryPolicy.initialTimeoutSeconds(modelConfig), 0, 0)
                     .thenApply(AnthropicAiClient::extractTextContent)
                     .handle((result, error) -> {
                         if (error == null) {
@@ -88,7 +91,8 @@ public class AnthropicAiClient implements AiClient {
                     ? ToolChoiceTool.builder().name(tools.get(0).name()).build()
                     : null;
             MessageCreateParams params = buildMessageCreateParams(snapshot, tools, toolChoice);
-            return CompletableFuture.supplyAsync(() -> client.messages().create(params))
+            return createMessageWithRetry(params, true,
+                            AiRetryPolicy.initialTimeoutSeconds(modelConfig), 0, 0)
                     .thenApply(AnthropicAiClient::wrapResponseAsOpenAiShape)
                     .handle((result, error) -> {
                         if (error == null) {
@@ -109,6 +113,69 @@ public class AnthropicAiClient implements AiClient {
     @Override
     public String providerName() {
         return clientName;
+    }
+
+    private CompletableFuture<Message> createMessageWithRetry(MessageCreateParams params,
+                                                              boolean withTools,
+                                                              int timeoutSeconds,
+                                                              int transientAttempt,
+                                                              int timeoutAttempt) {
+        AnthropicClient requestClient = timeoutSeconds == AiRetryPolicy.initialTimeoutSeconds(modelConfig)
+                ? client
+                : buildClient(modelConfig, timeoutSeconds);
+        return CompletableFuture.supplyAsync(() -> requestClient.messages().create(params))
+                .handle((message, error) -> {
+                    if (error == null) {
+                        return CompletableFuture.completedFuture(message);
+                    }
+                    Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
+                    if (AiRetryPolicy.isTimeoutFailure(cause)) {
+                        if (timeoutAttempt < AiRetryPolicy.timeoutRetryAttempts(modelConfig)) {
+                            int nextTimeoutSeconds = AiRetryPolicy.nextTimeoutSeconds(modelConfig, timeoutSeconds);
+                            AiRetryPolicy.logTimeoutRetry(log, clientName, timeoutSeconds,
+                                    timeoutAttempt, AiRetryPolicy.timeoutRetryAttempts(modelConfig), nextTimeoutSeconds);
+                            return createMessageWithRetry(params, withTools, nextTimeoutSeconds,
+                                    transientAttempt, timeoutAttempt + 1);
+                        }
+                        AiRetryPolicy.logTimeoutExhausted(log, clientName, timeoutSeconds);
+                        return CompletableFuture.<Message>failedFuture(cause);
+                    }
+                    if (transientAttempt < AiRetryPolicy.transientFailureRetries(modelConfig)
+                            && isRetryableAnthropicFailure(cause)) {
+                        return scheduleMessageRetry(params, withTools, timeoutSeconds,
+                                transientAttempt, timeoutAttempt, cause);
+                    }
+                    return CompletableFuture.<Message>failedFuture(cause);
+                })
+                .thenCompose(Function.identity());
+    }
+
+    private CompletableFuture<Message> scheduleMessageRetry(MessageCreateParams params,
+                                                            boolean withTools,
+                                                            int timeoutSeconds,
+                                                            int transientAttempt,
+                                                            int timeoutAttempt,
+                                                            Throwable cause) {
+        long delayMillis = AiRetryPolicy.retryDelayMillis(transientAttempt);
+        log.warn("Transient failure from {}{} (attempt {}/{}), retrying in {} ms: {}",
+                clientName,
+                withTools ? " with tools" : "",
+                transientAttempt + 1,
+                AiRetryPolicy.transientFailureRetries(modelConfig) + 1,
+                delayMillis,
+                describeError(cause));
+        return CompletableFuture.runAsync(
+                        () -> { },
+                        CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS))
+                .thenCompose(ignored -> createMessageWithRetry(params, withTools, timeoutSeconds,
+                        transientAttempt + 1, timeoutAttempt));
+    }
+
+    private static boolean isRetryableAnthropicFailure(Throwable error) {
+        if (error instanceof AnthropicServiceException) {
+            return AiRetryPolicy.isRetryableStatusCode(((AnthropicServiceException) error).statusCode());
+        }
+        return AiRetryPolicy.isRetryableTransportFailure(error);
     }
 
     MessageCreateParams buildMessageCreateParams(
@@ -334,9 +401,13 @@ public class AnthropicAiClient implements AiClient {
     }
 
     private static AnthropicClient buildClient(ModelConfig modelConfig) {
+        return buildClient(modelConfig, AiRetryPolicy.initialTimeoutSeconds(modelConfig));
+    }
+
+    private static AnthropicClient buildClient(ModelConfig modelConfig, int timeoutSeconds) {
         AnthropicOkHttpClient.Builder builder = AnthropicOkHttpClient.builder()
                 .apiKey(requireEnv(modelConfig.getApiKeyEnv()))
-                .timeout(Duration.ofMinutes(10));
+                .timeout(Duration.ofSeconds(timeoutSeconds));
         String baseUrl = modelConfig.resolveBaseUrl();
         if (baseUrl != null && !baseUrl.isBlank() && !DEFAULT_BASE_URL.equals(baseUrl.trim())) {
             builder.baseUrl(baseUrl.trim());

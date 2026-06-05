@@ -120,6 +120,75 @@ class AbstractOpenAiCompatibleAiClientTest {
         }
     }
 
+    @Test
+    void timeoutRetryUsesIncreasedTimeoutAndEventuallySucceeds() throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+        HttpServer server = startServer(exchange -> {
+            int attempt = attempts.incrementAndGet();
+            exchange.getRequestBody().readAllBytes();
+            if (attempt == 1) {
+                sleepMillis(1_500);
+            }
+            respond(exchange, 200, "{\"choices\":[{\"message\":{\"content\":\"ok after timeout retry\"}}]}");
+        });
+
+        try {
+            ModelConfig config = testModelConfig(server);
+            config.setRequestTimeoutSeconds(1);
+            config.setTimeoutRetryAttempts(1);
+            config.setTimeoutRetryMultiplier(2.0);
+            config.setMaxRequestTimeoutSeconds(3);
+            AbstractOpenAiCompatibleAiClient client = new TestOpenAiCompatibleAiClient(config);
+
+            assertEquals("ok after timeout retry", client.chatAsync(List.of(
+                    new NodeConversationContext.Message("system", "system"),
+                    new NodeConversationContext.Message("user", "hello")
+            )).join());
+            assertEquals(2, attempts.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void timeoutRetryFailsAfterConfiguredAttempts() throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+        HttpServer server = startServer(exchange -> {
+            attempts.incrementAndGet();
+            exchange.getRequestBody().readAllBytes();
+            sleepMillis(1_500);
+            respond(exchange, 200, "{\"choices\":[{\"message\":{\"content\":\"too late\"}}]}");
+        });
+
+        try {
+            ModelConfig config = testModelConfig(server);
+            config.setRequestTimeoutSeconds(1);
+            config.setTimeoutRetryAttempts(0);
+            AbstractOpenAiCompatibleAiClient client = new TestOpenAiCompatibleAiClient(config);
+
+            RuntimeException error = assertThrows(RuntimeException.class,
+                    () -> client.chatAsync(List.of(
+                            new NodeConversationContext.Message("system", "system"),
+                            new NodeConversationContext.Message("user", "hello")
+                    )).join());
+
+            assertTrue(error.getMessage().contains("request timed out")
+                    || error.getCause().getMessage().contains("request timed out"));
+            assertEquals(1, attempts.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static void sleepMillis(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        }
+    }
+
     private static HttpServer startServer(com.sun.net.httpserver.HttpHandler handler)
             throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);

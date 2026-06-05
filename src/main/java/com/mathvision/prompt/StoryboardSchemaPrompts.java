@@ -1,5 +1,6 @@
 package com.mathvision.prompt;
 
+import com.mathvision.util.SceneModeUtils;
 import com.mathvision.util.StoryboardConstraintCatalog;
 
 /**
@@ -29,7 +30,7 @@ public final class StoryboardSchemaPrompts {
     /** Lexical contract reinforcing quote discipline and forbidding bare identifiers. */
     public static final String JSON_LEXICAL_CONTRACT =
             "JSON lexical contract:\n"
-                    + "- Use double quotes for all JSON keys and all string values, including categorical fields such as kind, scene_mode, action type, line_style, hex colors, and label content.\n"
+                    + "- Use double quotes for all JSON keys and all string values, including categorical fields such as kind, action type, line_style, hex colors, and label content.\n"
                     + "- Do not output markdown fences, comments, trailing commas, or single-quoted strings.\n"
                     + "- Do not output bare identifiers as JSON values. Invalid: \"type\": create. Valid: \"type\": \"create\".\n";
 
@@ -48,12 +49,23 @@ public final class StoryboardSchemaPrompts {
 
     /** The placement object schema used in entering_objects and persistent_objects patches. */
     public static final String PLACEMENT_SCHEMA =
-            "          \"placement\": {\n"
-                    + "            \"coordinate_space\": \"string, one of world|screen|anchor\",\n"
+            placementSchema(SceneModeUtils.MODE_2D);
+
+    public static String placementSchema(String sceneMode) {
+        if (SceneModeUtils.isThreeD(sceneMode)) {
+            return "          \"placement\": {\n"
+                    + "            \"positioning\": \"string, one of absolute|relative; absolute uses storyboard world coordinates, relative uses x/y/z as offsets from an anchor object\",\n"
                     + "            \"x\": { \"value\": \"number or null\", \"min\": \"number or null\", \"max\": \"number or null\" },\n"
                     + "            \"y\": { \"value\": \"number or null\", \"min\": \"number or null\", \"max\": \"number or null\" },\n"
                     + "            \"z\": { \"value\": \"number or null\", \"min\": \"number or null\", \"max\": \"number or null\" }\n"
                     + "          }";
+        }
+        return "          \"placement\": {\n"
+                + "            \"positioning\": \"string, one of absolute|relative; absolute uses storyboard world coordinates, relative uses x/y as offsets from an anchor object\",\n"
+                + "            \"x\": { \"value\": \"number or null\", \"min\": \"number or null\", \"max\": \"number or null\" },\n"
+                + "            \"y\": { \"value\": \"number or null\", \"min\": \"number or null\", \"max\": \"number or null\" }\n"
+                + "          }";
+    }
 
     /** The typed style object schema used in entering_objects and persistent_objects patches. */
     public static final String STYLE_SCHEMA =
@@ -82,13 +94,57 @@ public final class StoryboardSchemaPrompts {
                     + "            \"label_visible\": \"boolean (GeoGebra only: ShowLabel)\"\n"
                     + "          }";
 
+    /** Top-level mathematical coordinate bounds for the full storyboard. */
+    public static final String COORDINATE_BOUNDS_SCHEMA =
+            coordinateBoundsSchema(SceneModeUtils.MODE_2D);
+
+    public static String coordinateBoundsSchema(String sceneMode) {
+        if (SceneModeUtils.isThreeD(sceneMode)) {
+            return "  \"coordinate_bounds\": {\n"
+                    + "    \"x\": { \"min\": \"number\", \"max\": \"number\" },\n"
+                    + "    \"y\": { \"min\": \"number\", \"max\": \"number\" },\n"
+                    + "    \"z\": { \"min\": \"number\", \"max\": \"number\" },\n"
+                    + "    \"padding\": \"number, normally 1; final min/max must be at least padding beyond every resolved storyboard placement\"\n"
+                    + "  }";
+        }
+        return "  \"coordinate_bounds\": {\n"
+                + "    \"x\": { \"min\": \"number\", \"max\": \"number\" },\n"
+                + "    \"y\": { \"min\": \"number\", \"max\": \"number\" },\n"
+                + "    \"padding\": \"number, normally 1; final min/max must be at least padding beyond every resolved storyboard placement\"\n"
+                + "  }";
+    }
+
+    /** Scene-level coordinate bounds contribution returned by VisualDesignNode. */
+    public static final String COORDINATE_BOUNDS_UPDATE_SCHEMA =
+            coordinateBoundsUpdateSchema(SceneModeUtils.MODE_2D);
+
+    public static String coordinateBoundsUpdateSchema(String sceneMode) {
+        if (SceneModeUtils.isThreeD(sceneMode)) {
+            return "  \"coordinate_bounds_update\": {\n"
+                    + "    \"x\": { \"min\": \"number\", \"max\": \"number\" },\n"
+                    + "    \"y\": { \"min\": \"number\", \"max\": \"number\" },\n"
+                    + "    \"z\": { \"min\": \"number\", \"max\": \"number\" },\n"
+                    + "    \"reason\": \"string, which scene storyboard coordinates require this range; report raw extrema only, padding is added later\"\n"
+                    + "  }";
+        }
+        return "  \"coordinate_bounds_update\": {\n"
+                + "    \"x\": { \"min\": \"number\", \"max\": \"number\" },\n"
+                + "    \"y\": { \"min\": \"number\", \"max\": \"number\" },\n"
+                + "    \"reason\": \"string, which scene storyboard coordinates require this range; report raw extrema only, padding is added later\"\n"
+                + "  }";
+    }
+
     /** Schema for an entering_objects entry: id + optional placement + optional style. */
     public static final String ENTERING_OBJECT_SCHEMA =
-            "        {\n"
+            enteringObjectSchema(SceneModeUtils.MODE_2D);
+
+    public static String enteringObjectSchema(String sceneMode) {
+        return "        {\n"
                     + "          \"id\": \"string, stable visual identity that must match a registry entry; keep ids concise and non-redundant since `kind` carries the type; follow only the active backend's naming rules\",\n"
-                    + PLACEMENT_SCHEMA + ",\n"
+                    + placementSchema(sceneMode) + ",\n"
                     + STYLE_SCHEMA + "\n"
                     + "        }";
+    }
 
     /** Schema for a persistent_objects entry: id + optional placement/style overrides. */
     public static final String PERSISTENT_OBJECT_SCHEMA =
@@ -129,20 +185,23 @@ public final class StoryboardSchemaPrompts {
     public static final String SCENE_FIELDS_SCHEMA = sceneFieldsSchema("geogebra");
 
     public static String sceneFieldsSchema(String outputTarget) {
+        return sceneFieldsSchema(outputTarget, SceneModeUtils.MODE_2D);
+    }
+
+    public static String sceneFieldsSchema(String outputTarget, String sceneMode) {
         return "    \"scene_id\": \"string, stable unique scene id\",\n"
                 + "    \"title\": \"string, short production label for the scene\",\n"
                 + "    \"goal\": \"string, what the learner should understand or what solving progress should be achieved by the end of the scene\",\n"
                 + "    \"narration\": \"string, concise learner-facing narration text for this scene only; its sentences should align with visible beats\",\n"
                 + "    \"duration_seconds\": \"integer, approximate runtime for pacing\",\n"
-                + "    \"scene_mode\": \"string, 2d by default or 3d only when depth is essential\",\n"
                 + "    \"camera_anchor\": \"string, main camera focus region or anchor object\",\n"
                 + "    \"camera_plan\": \"string, how the camera behaves in this scene\",\n"
                 + "    \"layout_goal\": \"string, intended screen composition and relative placement of major elements, including where the main visual focus and empty breathing room should be\",\n"
-                + "    \"safe_area_plan\": \"string, how important content stays readable and inside the safe frame\",\n"
+                + "    \"safe_area_plan\": \"string, how resolved storyboard placements stay inside coordinate_bounds and relative labels stay readable around anchors\",\n"
                 + "    \"screen_overlay_plan\": \"string, what text or formulas stay fixed relative to the viewport rather than the main geometry, and where the safe overlay zone is\",\n"
                 + "    \"constraints\": [\"object, machine-readable scene-level invariant with domain, relation, refs, optional parameters, strength, and reason\"],\n"
                 + "    \"entering_objects\": [\n"
-                + ENTERING_OBJECT_SCHEMA + "\n"
+                + enteringObjectSchema(sceneMode) + "\n"
                 + "    ],\n"
                 + "    \"persistent_objects\": [\n"
                 + PERSISTENT_OBJECT_SCHEMA + "\n"
@@ -260,7 +319,7 @@ public final class StoryboardSchemaPrompts {
                     + "          \"domain\": \"attachment\",\n"
                     + "          \"relation\": \"fixed_overlay\",\n"
                     + "          \"refs\": {\"object\": \"formulaCard\"},\n"
-                    + "          \"parameters\": {\"coordinate_space\": \"screen\"},\n"
+                    + "          \"parameters\": {\"position\": \"top_right\"},\n"
                     + "          \"strength\": \"hard\",\n"
                     + "          \"reason\": \"formulaCard remains a screen overlay\"\n"
                     + "        }\n"
@@ -298,7 +357,7 @@ public final class StoryboardSchemaPrompts {
                     + "      {\n"
                     + "        \"id\": \"numberLine\",\n"
                     + "        \"placement\": {\n"
-                    + "          \"coordinate_space\": \"world\",\n"
+                    + "          \"positioning\": \"absolute\",\n"
                     + "          \"x\": { \"min\": -3, \"max\": 3 },\n"
                     + "          \"y\": { \"value\": 0 }\n"
                     + "        }\n"
@@ -306,7 +365,7 @@ public final class StoryboardSchemaPrompts {
                     + "      {\n"
                     + "        \"id\": \"P\",\n"
                     + "        \"placement\": {\n"
-                    + "          \"coordinate_space\": \"world\",\n"
+                    + "          \"positioning\": \"absolute\",\n"
                     + "          \"x\": { \"value\": 2 },\n"
                     + "          \"y\": { \"value\": 0 }\n"
                     + "        }\n"
@@ -314,7 +373,7 @@ public final class StoryboardSchemaPrompts {
                     + "      {\n"
                     + "        \"id\": \"formulaCard\",\n"
                     + "        \"placement\": {\n"
-                    + "          \"coordinate_space\": \"world\",\n"
+                    + "          \"positioning\": \"absolute\",\n"
                     + "          \"x\": { \"value\": 0 },\n"
                     + "          \"y\": { \"value\": 2 }\n"
                     + "        },\n"
@@ -339,11 +398,10 @@ public final class StoryboardSchemaPrompts {
                     + "    \"goal\": \"Establish the givens and what must be found.\",\n"
                     + "    \"narration\": \"We first place the diagram and identify the target quantity.\",\n"
                     + "    \"duration_seconds\": 8,\n"
-                    + "    \"scene_mode\": \"2d\",\n"
                     + "    \"camera_anchor\": \"center\",\n"
                     + "    \"camera_plan\": \"Static 2D camera.\",\n"
                     + "    \"layout_goal\": \"Keep the main diagram centered and reserve edge space for supporting labels.\",\n"
-                    + "    \"safe_area_plan\": \"Keep all important content inside x[-7,7] and y[-4,4] with margin.\",\n"
+                    + "    \"safe_area_plan\": \"Keep resolved storyboard placements strictly inside coordinate_bounds with margin.\",\n"
                     + "    \"screen_overlay_plan\": \"No fixed screen overlay needed.\",\n"
                     + "    \"constraints\": [\n"
                     + "      {\n"
@@ -377,7 +435,7 @@ public final class StoryboardSchemaPrompts {
                     + "      {\n"
                     + "        \"id\": \"minMarker\",\n"
                     + "        \"placement\": {\n"
-                    + "          \"coordinate_space\": \"world\",\n"
+                    + "          \"positioning\": \"absolute\",\n"
                     + "          \"x\": { \"value\": 1 },\n"
                     + "          \"y\": { \"value\": 2 }\n"
                     + "        },\n"
@@ -392,11 +450,10 @@ public final class StoryboardSchemaPrompts {
                     + "    \"goal\": \"Show the minimum value and its location.\",\n"
                     + "    \"narration\": \"The minimum value is 2, occurring at x equals 1.\",\n"
                     + "    \"duration_seconds\": 10,\n"
-                    + "    \"scene_mode\": \"2d\",\n"
                     + "    \"camera_anchor\": \"center\",\n"
                     + "    \"camera_plan\": \"Static 2D camera.\",\n"
                     + "    \"layout_goal\": \"Keep the diagram centered; highlight the minimum point.\",\n"
-                    + "    \"safe_area_plan\": \"Keep all important content inside x[-7,7] and y[-4,4] with margin.\",\n"
+                    + "    \"safe_area_plan\": \"Keep resolved storyboard placements strictly inside coordinate_bounds with margin.\",\n"
                     + "    \"screen_overlay_plan\": \"No fixed screen overlay needed.\",\n"
                     + "    \"constraints\": [],\n"
                     + EXAMPLE_SCENE2_ENTERING_OBJECTS + ",\n"

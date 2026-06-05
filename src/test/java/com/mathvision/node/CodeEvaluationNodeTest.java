@@ -4,6 +4,7 @@ import com.mathvision.config.WorkflowConfig;
 import com.mathvision.model.CodeResult;
 import com.mathvision.model.Narrative;
 import com.mathvision.model.CodeEvaluationResult;
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.prompt.CodeEvaluationPrompts;
@@ -116,6 +117,7 @@ class CodeEvaluationNodeTest {
                         "        self.add(axes, label)"),
                 buildThreeDNarrative()
         );
+        ctx.put(WorkflowKeys.PROBLEM_BUNDLE, threeDProblemBundle());
 
         CodeEvaluationNode node = new CodeEvaluationNode();
         CodeEvaluationNode.CodeEvaluationInput input = node.prep(ctx);
@@ -142,6 +144,7 @@ class CodeEvaluationNodeTest {
                         "        self.add(axes, title)"),
                 buildThreeDNarrative()
         );
+        ctx.put(WorkflowKeys.PROBLEM_BUNDLE, threeDProblemBundle());
 
         CodeEvaluationNode node = new CodeEvaluationNode();
         CodeEvaluationNode.CodeEvaluationInput input = node.prep(ctx);
@@ -443,6 +446,12 @@ class CodeEvaluationNodeTest {
         return new PocketFlow.Flow<>(codeEvaluation);
     }
 
+    private static ProblemBundle threeDProblemBundle() {
+        ProblemBundle bundle = new ProblemBundle();
+        bundle.setSceneMode("3d");
+        return bundle;
+    }
+
     private static WorkflowConfig createWorkflowConfig() {
         WorkflowConfig config = new WorkflowConfig();
         config.setRenderEnabled(true);
@@ -524,7 +533,6 @@ class CodeEvaluationNodeTest {
         scene.setGoal("Show the spatial setup.");
         scene.setNarration("Orbit around the 3D axes while keeping the title readable.");
         scene.setDurationSeconds(8);
-        scene.setSceneMode("3d");
         scene.setCameraAnchor("center");
         scene.setCameraPlan("Set an oblique view, then orbit slowly.");
         scene.setLayoutGoal("Keep the 3D object centered in projected screen space.");
@@ -593,7 +601,7 @@ class CodeEvaluationNodeTest {
 
     private static Narrative.StoryboardPlacement placement(double x, double y) {
         Narrative.StoryboardPlacement placement = new Narrative.StoryboardPlacement();
-        placement.setCoordinateSpace("world");
+        placement.setPositioning(Narrative.StoryboardPlacement.POSITIONING_ABSOLUTE);
         Narrative.StoryboardPlacementAxis xAxis = new Narrative.StoryboardPlacementAxis();
         xAxis.setValue(x);
         Narrative.StoryboardPlacementAxis yAxis = new Narrative.StoryboardPlacementAxis();

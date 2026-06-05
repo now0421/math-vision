@@ -82,6 +82,18 @@ class StoryboardConstraintCatalogTest {
         assertTrue(onSideOf.enumParameters().get("side").contains("below"));
     }
 
+    @Test
+    void positioningParameterReplacesCoordinateSpaceInConstraintCatalog() {
+        for (StoryboardConstraintCatalog.RelationSpec spec : StoryboardConstraintCatalog.relations()) {
+            assertFalse(spec.allowedParameters().contains("coordinate_space"),
+                    spec.relation() + " should not allow the old coordinate_space parameter");
+            if (spec.allowedParameters().contains("positioning")) {
+                assertTrue(spec.enumParameters().get("positioning").contains("absolute"), spec.relation());
+                assertTrue(spec.enumParameters().get("positioning").contains("relative"), spec.relation());
+            }
+        }
+    }
+
     private static void assertNotCoordinateDerived(String relation) {
         assertFalse(StoryboardConstraintCatalog.isCoordinateDerivedRelation(relation));
     }

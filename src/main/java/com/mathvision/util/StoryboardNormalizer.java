@@ -39,10 +39,11 @@ public final class StoryboardNormalizer {
             storyboard.setContinuityPlan(
                     "Maintain one stable layout and update existing objects instead of redrawing the whole scene.");
         }
+        storyboard.setCoordinateBounds(CoordinateBoundsUtils.normalize(storyboard.getCoordinateBounds()));
 
         List<String> globalRules = new ArrayList<>(storyboard.getGlobalVisualRules());
         if (globalRules.isEmpty()) {
-            globalRules.add("Keep major objects inside the safe frame.");
+            globalRules.add("Keep absolute storyboard placements strictly inside coordinate_bounds.");
             globalRules.add("Reuse stable anchors for persistent objects.");
         }
         storyboard.setGlobalVisualRules(globalRules);
@@ -85,26 +86,21 @@ public final class StoryboardNormalizer {
         if (scene.getDurationSeconds() <= 0) {
             scene.setDurationSeconds(8);
         }
-        scene.setSceneMode(normalizeSceneMode(scene.getSceneMode()));
         if (scene.getCameraAnchor() == null || scene.getCameraAnchor().isBlank()) {
             scene.setCameraAnchor("center");
         }
         if (scene.getCameraPlan() == null || scene.getCameraPlan().isBlank()) {
-            scene.setCameraPlan(isThreeDSceneMode(scene)
-                    ? "Set a readable 3D view before the main reveal."
-                    : "Static 2D view.");
+            scene.setCameraPlan("Static 2D view.");
         }
         if (scene.getLayoutGoal() == null || scene.getLayoutGoal().isBlank()) {
             scene.setLayoutGoal("Keep the layout stable and uncluttered.");
         }
         if (scene.getSafeAreaPlan() == null || scene.getSafeAreaPlan().isBlank()) {
             scene.setSafeAreaPlan(
-                    "Keep important screen-space content inside x in [-7, 7] and y in [-4, 4] with edge margin.");
+                    "Keep absolute storyboard placements strictly inside coordinate_bounds and keep relative labels readable around their anchors.");
         }
         if (scene.getScreenOverlayPlan() == null || scene.getScreenOverlayPlan().isBlank()) {
-            scene.setScreenOverlayPlan(isThreeDSceneMode(scene)
-                    ? "Keep titles and formulas visually separate if they must stay readable during viewpoint changes."
-                    : "No separate overlay needed.");
+            scene.setScreenOverlayPlan("No separate overlay needed.");
         }
         if (scene.getConstraints() == null) {
             scene.setConstraints(new ArrayList<>());
@@ -299,8 +295,8 @@ public final class StoryboardNormalizer {
             return null;
         }
 
-        if (placement.getCoordinateSpace() != null && placement.getCoordinateSpace().isBlank()) {
-            placement.setCoordinateSpace(null);
+        if (placement.getPositioning() != null && placement.getPositioning().isBlank()) {
+            placement.setPositioning(null);
         }
         placement.setX(normalizePlacementAxis(placement.getX()));
         placement.setY(normalizePlacementAxis(placement.getY()));
@@ -313,17 +309,6 @@ public final class StoryboardNormalizer {
             return null;
         }
         return axis;
-    }
-
-    public static String normalizeSceneMode(String sceneMode) {
-        if (sceneMode == null || sceneMode.isBlank()) {
-            return "2d";
-        }
-        return sceneMode.trim().equalsIgnoreCase("3d") ? "3d" : "2d";
-    }
-
-    public static boolean isThreeDSceneMode(StoryboardScene scene) {
-        return scene != null && "3d".equalsIgnoreCase(scene.getSceneMode());
     }
 
     public static int calculateStoryboardDuration(Storyboard storyboard, int fallbackDuration) {

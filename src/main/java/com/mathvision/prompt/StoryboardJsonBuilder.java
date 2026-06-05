@@ -1,6 +1,8 @@
 package com.mathvision.prompt;
 
 import com.mathvision.model.Narrative.Storyboard;
+import com.mathvision.model.Narrative.StoryboardCoordinateBounds;
+import com.mathvision.model.Narrative.StoryboardCoordinateBoundsAxis;
 import com.mathvision.model.Narrative.StoryboardScene;
 import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.Narrative.StoryboardAction;
@@ -80,6 +82,7 @@ public final class StoryboardJsonBuilder {
         }
 
         putNonBlank(root, "continuity_plan", storyboard.getContinuityPlan());
+        addCoordinateBounds(root, storyboard.getCoordinateBounds());
         putTrimmedStringArray(root, "global_visual_rules", storyboard.getGlobalVisualRules());
 
         ArrayNode scenesArray = root.putArray("scenes");
@@ -99,6 +102,36 @@ public final class StoryboardJsonBuilder {
         return JsonUtils.toPrettyJson(root);
     }
 
+    private static void addCoordinateBounds(ObjectNode root, StoryboardCoordinateBounds bounds) {
+        if (bounds == null || !bounds.hasData()) {
+            return;
+        }
+        ObjectNode boundsNode = root.putObject("coordinate_bounds");
+        addCoordinateBoundsAxis(boundsNode, "x", bounds.getX());
+        addCoordinateBoundsAxis(boundsNode, "y", bounds.getY());
+        addCoordinateBoundsAxis(boundsNode, "z", bounds.getZ());
+        if (bounds.getPadding() != null && bounds.getPadding() > 0.0) {
+            boundsNode.put("padding", bounds.getPadding());
+        }
+        removeIfEmpty(root, boundsNode, "coordinate_bounds");
+    }
+
+    private static void addCoordinateBoundsAxis(ObjectNode parentNode,
+                                                String fieldName,
+                                                StoryboardCoordinateBoundsAxis axis) {
+        if (axis == null || !axis.hasData()) {
+            return;
+        }
+        ObjectNode axisNode = parentNode.putObject(fieldName);
+        if (axis.getMin() != null) {
+            axisNode.put("min", axis.getMin());
+        }
+        if (axis.getMax() != null) {
+            axisNode.put("max", axis.getMax());
+        }
+        removeIfEmpty(parentNode, axisNode, fieldName);
+    }
+
     private static void addSceneNode(ArrayNode scenesArray,
                                      StoryboardScene scene,
                                      BuildOptions options) {
@@ -116,7 +149,6 @@ public final class StoryboardJsonBuilder {
             sceneNode.put("duration_seconds", scene.getDurationSeconds());
         }
 
-        putNonBlank(sceneNode, "scene_mode", scene.getSceneMode());
         putNonBlank(sceneNode, "camera_anchor", scene.getCameraAnchor());
         putNonBlank(sceneNode, "camera_plan", scene.getCameraPlan());
         putNonBlank(sceneNode, "safe_area_plan", scene.getSafeAreaPlan());
@@ -215,7 +247,7 @@ public final class StoryboardJsonBuilder {
         }
 
         ObjectNode placementNode = objectNode.putObject("placement");
-        putNonBlank(placementNode, "coordinate_space", placement.getCoordinateSpace());
+        putNonBlank(placementNode, "positioning", placement.getPositioning());
         addPlacementAxis(placementNode, "x", placement.getX());
         addPlacementAxis(placementNode, "y", placement.getY());
         addPlacementAxis(placementNode, "z", placement.getZ());

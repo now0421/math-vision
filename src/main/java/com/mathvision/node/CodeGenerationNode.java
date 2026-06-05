@@ -9,6 +9,7 @@ import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.Narrative.StoryboardPlacement;
 import com.mathvision.model.Narrative.StoryboardPlacementAxis;
 import com.mathvision.model.Narrative.StoryboardStyle;
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.SceneCodeEntry;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.node.support.NodeSupport;
@@ -21,11 +22,13 @@ import com.mathvision.service.AiClient;
 import com.mathvision.service.FileOutputService;
 import com.mathvision.util.AiRequestUtils;
 import com.mathvision.util.ConcurrencyUtils;
+import com.mathvision.util.CoordinateBoundsUtils;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.TimeUtils;
 import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.SceneModeUtils;
 import com.mathvision.util.StoryboardConstraintCatalog;
 import com.mathvision.util.StoryboardConstraintUtils;
 import com.mathvision.util.StoryboardPatchResolver;
@@ -57,6 +60,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
+    private ProblemBundle problemBundle;
     private NodeConversationContext conversationContext;
     private int toolCalls = 0;
 
@@ -96,6 +100,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     public CodeGenerationInput prep(Map<String, Object> ctx) {
         this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
         this.workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
+        this.problemBundle = (ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE);
 
         return new CodeGenerationInput(
                 (Narrative) ctx.get(WorkflowKeys.NARRATIVE),
@@ -142,11 +147,14 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         }
 
         this.conversationContext.setSystemMessage(
-                CodeGenerationPrompts.buildRulesPrompt(NodeSupport.resolveOutputTarget(workflowConfig)));
+                CodeGenerationPrompts.buildRulesPrompt(
+                        NodeSupport.resolveOutputTarget(workflowConfig),
+                        SceneModeUtils.normalize(problemBundle != null ? problemBundle.getSceneMode() : null)));
         this.conversationContext.setFixedContextMessage(
                 CodeGenerationPrompts.buildFixedContextPrompt(
                         targetConcept, targetDescription,
-                        NodeSupport.resolveOutputTarget(workflowConfig), objectRegistryJson));
+                        NodeSupport.resolveOutputTarget(workflowConfig), objectRegistryJson,
+                        SceneModeUtils.normalize(problemBundle != null ? problemBundle.getSceneMode() : null)));
 
         String generatedCode;
         String artifactName = defaultArtifactName();
@@ -264,9 +272,11 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         Map<String, StoryboardObject> enrichedRegistry = buildBaseEnrichedRegistry(storyboard);
         Map<String, StoryboardObject> createdRuntimeObjects = new LinkedHashMap<>();
         Map<String, StoryboardObject> visibleRuntimeObjects = new LinkedHashMap<>();
+        String coordinateBoundsBlock = coordinateBoundsImplementationBlock(storyboard, isGeoGebra);
         String skeletonPrompt = isGeoGebra
                 ? CodeGenerationPrompts.geoGebraSkeletonUserPrompt(storyboardJson, sceneNames)
                 : CodeGenerationPrompts.manimSkeletonUserPrompt(storyboardJson, sceneNames);
+        skeletonPrompt += coordinateBoundsBlock;
         AiRequestUtils.ExtractedTextResult skeletonResult = AiRequestUtils.requestExtractedTextResultAsync(
                 aiClient, log, "skeleton", conversationContext,
                 skeletonPrompt, ToolSchemas.CODE_SKELETON, () -> toolCalls++,
@@ -302,6 +312,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             String scenePrompt = (isGeoGebra
                     ? CodeGenerationPrompts.geoGebraSceneCodeUserPrompt(sceneJson, sceneName, i, scenes.size())
                     : CodeGenerationPrompts.manimSceneCodeUserPrompt(sceneJson, sceneName, i, scenes.size()))
+                    + coordinateBoundsBlock
                     + sceneRegistryBlock
                     + runtimeStateBlock
                     + constraintSummaryBlock;
@@ -526,14 +537,18 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
 
         String registrySummary = buildEnrichedRegistrySummary(narrative.getStoryboard(), Integer.MAX_VALUE);
         String registryBlock = registrySummary.isBlank() ? "" : "\n\n" + registrySummary;
+        boolean isGeoGebra = workflowConfig != null && workflowConfig.isGeoGebraTarget();
+        String coordinateBoundsBlock = coordinateBoundsImplementationBlock(narrative.getStoryboard(), isGeoGebra);
 
-        if (workflowConfig != null && workflowConfig.isGeoGebraTarget()) {
+        if (isGeoGebra) {
             return SystemPrompts.buildCurrentRequestSection((basePrompt + registryBlock
+                    + coordinateBoundsBlock
                     + "\n\nFigure name: " + expectedSceneName
                     + "\nUse this as the primary GeoGebra figure name when naming the construction.").replaceFirst("^\\[CURRENT_REQUEST\\]\\n", ""));
         }
 
         return SystemPrompts.buildCurrentRequestSection((basePrompt + registryBlock
+                + coordinateBoundsBlock
                 + "\n\nScene class name: " + expectedSceneName
                 + "\nUse this exact scene class name verbatim in the generated code.").replaceFirst("^\\[CURRENT_REQUEST\\]\\n", ""));
     }
@@ -552,6 +567,27 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
 
     private static String toConstraintBlock(String constraintSummary) {
         return constraintSummary.isBlank() ? "" : "\n\n" + constraintSummary;
+    }
+
+    private static String coordinateBoundsImplementationBlock(Storyboard storyboard, boolean isGeoGebra) {
+        if (storyboard == null || storyboard.getCoordinateBounds() == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n\nCoordinate bounds implementation contract:\n");
+        sb.append("- ").append(CoordinateBoundsUtils.format(storyboard.getCoordinateBounds())).append("\n");
+        sb.append("- These are storyboard world-coordinate bounds. Preserve storyboard coordinates; do not rewrite them merely to fit a render frame.\n");
+        sb.append("- Absolutely positioned storyboard objects must be strictly inside these bounds; an object exactly on a min/max boundary is out of bounds.\n");
+        if (isGeoGebra) {
+            sb.append("- Use `")
+                    .append(CoordinateBoundsUtils.toGeoGebraSetCoordSystem(storyboard.getCoordinateBounds()))
+                    .append("` as the exact initial GeoGebra view command; it must appear in the generated script before scene-specific construction commands.\n");
+        } else {
+            sb.append("- For Manim, this is the required coordinate-system boundary: define a shared `Axes`, `NumberPlane`, or for 3D `ThreeDAxes`/equivalent from these ranges. Map storyboard world geometry with `axes.c2p(...)` or a clearly named helper wrapping `c2p`; raw Manim frame coordinates are allowed only for fixed overlays, titles, camera/UI placement, and other non-storyboard-geometry elements.\n");
+            sb.append("- Do not place storyboard world-coordinate objects with raw scene coordinates such as `Dot([x, y, 0])`, `Line([x1, y1, 0], [x2, y2, 0])`, or `.move_to([x, y, 0])`.\n");
+            sb.append("- Choose render-frame placement for titles, callouts, and fixed overlays at this stage; storyboard placement itself remains world/relative positioning.\n");
+        }
+        return sb.toString();
     }
 
     /**
@@ -1073,8 +1109,8 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
 
     private static String formatPlacementSummary(StoryboardPlacement placement) {
         StringBuilder sb = new StringBuilder();
-        if (placement.getCoordinateSpace() != null) {
-            sb.append(placement.getCoordinateSpace());
+        if (placement.getPositioning() != null) {
+            sb.append(placement.getPositioning());
         }
         appendAxisSummary(sb, "x", placement.getX());
         appendAxisSummary(sb, "y", placement.getY());

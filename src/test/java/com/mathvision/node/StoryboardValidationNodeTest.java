@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StoryboardValidationNodeTest {
@@ -57,7 +58,10 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
-    void reportsOffscreenLayoutWhenBoundsExceedFrame() {
+    void doesNotJudgeScreenOverlayAgainstMathBounds() {
+        // Fixed overlays are ultimately laid out in render-frame space; this test keeps a
+        // large absolute storyboard placement and verifies validation expands bounds instead
+        // of treating it as a canvas-fit failure.
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(
                 List.of(registryObject("title", "text", "主标题", null)),
@@ -65,9 +69,7 @@ class StoryboardValidationNodeTest {
 
         List<String> issues = node.validate(storyboard);
 
-        assertEquals(1, issues.size());
-        assertTrue(issues.get(0).contains("title"));
-        assertTrue(issues.get(0).contains("extends outside the frame bounds"));
+        assertTrue(issues.isEmpty(), () -> String.join("\n", issues));
     }
 
     @Test
@@ -91,6 +93,22 @@ class StoryboardValidationNodeTest {
 
         assertTrue(issues.contains("objects 'A' and 'B' overlap"), () -> issues);
         assertFalse(issues.contains("text objects 'A' and 'B' overlap"), () -> issues);
+    }
+
+    @Test
+    void rejectsInvalidPlacementPositioningValue() {
+        StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        StoryboardPlacement placement = new StoryboardPlacement();
+        placement.setPositioning("screen");
+        placement.setX(valueAxis(0.0));
+        placement.setY(valueAxis(0.0));
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(registryObject("title", "text", "Title", null)),
+                List.of(scenePatch("title", placement)));
+
+        String issues = String.join("\n", node.validate(storyboard));
+
+        assertTrue(issues.contains("placement.positioning must be absolute or relative"), () -> issues);
     }
 
     @Test
@@ -341,7 +359,8 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
-    void reportsOffscreenChecksForGeoGebraStoryboardValidation() {
+    void doesNotJudgeScreenOverlayAgainstMathBoundsForGeoGebra() {
+        // Same math/render-space separation applies to the GeoGebra target.
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
         Storyboard storyboard = buildSingleSceneStoryboard(
                 List.of(registryObject("title", "text", "主标题", null)),
@@ -349,9 +368,7 @@ class StoryboardValidationNodeTest {
 
         List<String> issues = node.validate(storyboard);
 
-        assertEquals(1, issues.size(), () -> String.join("\n", issues));
-        assertTrue(issues.get(0).contains("title"));
-        assertTrue(issues.get(0).contains("extends outside the frame bounds"));
+        assertTrue(issues.isEmpty(), () -> String.join("\n", issues));
     }
 
     @Test
@@ -462,7 +479,10 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
-    void formatsOffscreenDependencyChainWithPlacementRelationAndConstraint() {
+    void autoExpandsCoordinateBoundsToContainOffscreenMathElement() {
+        // A derived/world point far outside the default frame must not be moved; instead the
+        // world-coordinate window deterministically grows to contain it (with padding), so no
+        // offscreen issue is raised here (canvas fit is judged later in SceneEvaluationNode).
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         StoryboardObject pointB = registryObject("B", "point", "Point B", null);
         StoryboardObject river = registryObject("river", "line", "River", null);
@@ -484,15 +504,13 @@ class StoryboardValidationNodeTest {
 
         List<String> issues = node.validate(storyboard);
 
-        assertEquals(1, issues.size(), () -> String.join("\n", issues));
-        String issue = issues.get(0);
-        assertTrue(issue.startsWith("Issue: scene 1 (scene_1): object 'Bprime' extends outside the frame bounds"));
-        assertTrue(issue.contains("\nDependency chain:\n"));
-        assertTrue(issue.contains("- Bprime depends on [B, river]"));
-        assertTrue(issue.contains("- B: world placement x=3.0, y=1.5"));
-        assertTrue(issue.contains("- river: world placement y=-1.5"));
-        assertTrue(issue.contains("reflection_across"));
-        assertFalse(issue.contains("repair_rule"));
+        assertTrue(issues.stream().noneMatch(issue -> issue.contains("extends outside the frame bounds")),
+                () -> String.join("\n", issues));
+        Narrative.StoryboardCoordinateBounds bounds = storyboard.getCoordinateBounds();
+        assertNotNull(bounds);
+        assertNotNull(bounds.getY());
+        assertTrue(bounds.getY().getMin() <= -5.5,
+                () -> "expected coordinate_bounds y.min <= -5.5 but was " + bounds.getY().getMin());
     }
 
     @Test
@@ -552,8 +570,12 @@ class StoryboardValidationNodeTest {
         config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_MANIM);
 
         Storyboard storyboard = buildSingleSceneStoryboard(
-                List.of(registryObject("title", "text", "主标题", null)),
-                List.of(scenePatch("title", boxPlacement("screen", 6.9, 7.5, 2.0, 2.7))));
+                List.of(
+                        registryObject("point_a", "point", "A", null),
+                        registryObject("label_a", "label", "A", null)),
+                List.of(
+                        scenePatch("point_a", boxPlacement("world", -0.1, 0.1, -0.1, 0.1)),
+                        scenePatch("label_a", boxPlacement("world", -0.15, 0.15, -0.05, 0.15))));
         Narrative narrative = new Narrative("Demo concept", "Demo description", storyboard);
 
         Map<String, Object> ctx = new LinkedHashMap<>();
@@ -577,7 +599,7 @@ class StoryboardValidationNodeTest {
         assertTrue(reportJson.contains("\"total_validation_events\""));
         assertTrue(reportJson.contains("\"entries\""));
         assertTrue(reportJson.contains("\"phase\" : \"initial_validation\""));
-        assertTrue(reportJson.contains("extends outside the frame bounds"));
+        assertTrue(reportJson.contains("overlaps object"));
     }
 
     @Test
@@ -586,8 +608,12 @@ class StoryboardValidationNodeTest {
         WorkflowConfig config = new WorkflowConfig();
         config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(
-                List.of(registryObject("title", "text", "主标题", null)),
-                List.of(scenePatch("title", boxPlacement("screen", 6.9, 7.5, 2.0, 2.7))));
+                List.of(
+                        registryObject("point_a", "point", "A", null),
+                        registryObject("label_a", "label", "A", null)),
+                List.of(
+                        scenePatch("point_a", boxPlacement("world", -0.1, 0.1, -0.1, 0.1)),
+                        scenePatch("label_a", boxPlacement("world", -0.15, 0.15, -0.05, 0.15))));
         RepeatingStoryboardAiClient aiClient = new RepeatingStoryboardAiClient(storyboard);
 
         Map<String, Object> ctx = new LinkedHashMap<>();
@@ -689,6 +715,12 @@ class StoryboardValidationNodeTest {
         Storyboard storyboard = buildSingleSceneStoryboard(
                 List.of(registryObject("title", "text", "主标题", null)),
                 List.of(scenePatch("title", boxPlacement("screen", 6.9, 7.5, 2.0, 2.7))));
+        storyboard.setObjectRegistry(List.of(
+                registryObject("point_a", "point", "A", null),
+                registryObject("label_a", "label", "A", null)));
+        storyboard.getScenes().get(0).setEnteringObjects(List.of(
+                scenePatch("point_a", boxPlacement("world", -0.1, 0.1, -0.1, 0.1)),
+                scenePatch("label_a", boxPlacement("world", -0.15, 0.15, -0.05, 0.15))));
         RepeatingStoryboardAiClient aiClient = new RepeatingStoryboardAiClient(storyboard);
 
         Map<String, Object> ctx = new LinkedHashMap<>();
@@ -978,9 +1010,18 @@ class StoryboardValidationNodeTest {
                                             List<StoryboardScene> scenes) {
         Storyboard storyboard = new Storyboard();
         storyboard.setContinuityPlan("Keep object ids stable.");
+        storyboard.setCoordinateBounds(defaultCoordinateBounds());
         storyboard.setObjectRegistry(new ArrayList<>(registryObjects));
         storyboard.setScenes(new ArrayList<>(scenes));
         return storyboard;
+    }
+
+    private Narrative.StoryboardCoordinateBounds defaultCoordinateBounds() {
+        Narrative.StoryboardCoordinateBounds bounds = new Narrative.StoryboardCoordinateBounds();
+        bounds.setX(new Narrative.StoryboardCoordinateBoundsAxis(-8.0, 8.0));
+        bounds.setY(new Narrative.StoryboardCoordinateBoundsAxis(-5.0, 5.0));
+        bounds.setPadding(1.0);
+        return bounds;
     }
 
     private StoryboardScene baseScene(String sceneId) {
@@ -1060,7 +1101,7 @@ class StoryboardValidationNodeTest {
                                              double minY,
                                              double maxY) {
         StoryboardPlacement placement = new StoryboardPlacement();
-        placement.setCoordinateSpace(coordinateSpace);
+        placement.setPositioning(testPositioning(coordinateSpace));
         placement.setX(axis(minX, maxX));
         placement.setY(axis(minY, maxY));
         return placement;
@@ -1068,17 +1109,27 @@ class StoryboardValidationNodeTest {
 
     private StoryboardPlacement yOnlyPlacement(String coordinateSpace, double y) {
         StoryboardPlacement placement = new StoryboardPlacement();
-        placement.setCoordinateSpace(coordinateSpace);
+        placement.setPositioning(testPositioning(coordinateSpace));
         placement.setY(axis(y, y));
         return placement;
     }
 
     private StoryboardPlacement valuePlacement(String coordinateSpace, double x, double y) {
         StoryboardPlacement placement = new StoryboardPlacement();
-        placement.setCoordinateSpace(coordinateSpace);
+        placement.setPositioning(testPositioning(coordinateSpace));
         placement.setX(valueAxis(x));
         placement.setY(valueAxis(y));
         return placement;
+    }
+
+    private String testPositioning(String positioning) {
+        if ("anchor".equals(positioning)) {
+            return StoryboardPlacement.POSITIONING_RELATIVE;
+        }
+        if ("world".equals(positioning) || "screen".equals(positioning)) {
+            return StoryboardPlacement.POSITIONING_ABSOLUTE;
+        }
+        return positioning;
     }
 
     private StoryboardPlacementAxis valueAxis(double value) {

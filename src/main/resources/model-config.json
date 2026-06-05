@@ -37,6 +37,11 @@
       "reasoning_content_fallback": false,
       "max_output_tokens": 64000,
       "max_input_tokens": 1000000,
+      "request_timeout_seconds": 300,
+      "timeout_retry_attempts": 1,
+      "timeout_retry_multiplier": 2.0,
+      "max_request_timeout_seconds": 900,
+      "transient_failure_retries": 2,
       "adaptive_thinking": true,
       "effort": "high",
       "supports_vision": true
@@ -47,6 +52,11 @@
       "reasoning_content_fallback": false,
       "max_output_tokens": 64000,
       "max_input_tokens": 1000000,
+      "request_timeout_seconds": 300,
+      "timeout_retry_attempts": 1,
+      "timeout_retry_multiplier": 2.0,
+      "max_request_timeout_seconds": 900,
+      "transient_failure_retries": 2,
       "adaptive_thinking": true,
       "effort": "high",
       "supports_vision": true
@@ -57,7 +67,12 @@
       "reasoning_content_fallback": true,
       "temperature": 1,
       "max_output_tokens": 32768,
-      "max_input_tokens": 262144
+      "max_input_tokens": 262144,
+      "request_timeout_seconds": 300,
+      "timeout_retry_attempts": 3,
+      "timeout_retry_multiplier": 2.0,
+      "max_request_timeout_seconds": 900,
+      "transient_failure_retries": 2
     },
     "kimi-k2.6": {
       "model": "kimi-k2.6",
@@ -66,6 +81,11 @@
       "temperature": 0.6,
       "max_output_tokens": 32768,
       "max_input_tokens": 262144,
+      "request_timeout_seconds": 300,
+      "timeout_retry_attempts": 3,
+      "timeout_retry_multiplier": 2.0,
+      "max_request_timeout_seconds": 900,
+      "transient_failure_retries": 2,
       "thinking": "disabled",
       "supports_vision": true
     },
@@ -75,14 +95,24 @@
       "reasoning_content_fallback": true,
       "temperature": 0.4,
       "max_output_tokens": 65536,
-      "max_input_tokens": 200000
+      "max_input_tokens": 200000,
+      "request_timeout_seconds": 300,
+      "timeout_retry_attempts": 1,
+      "timeout_retry_multiplier": 2.0,
+      "max_request_timeout_seconds": 900,
+      "transient_failure_retries": 2
     },
     "deepseek-reasoner": {
       "model": "deepseek-reasoner",
       "reasoning_content_fallback": true,
       "temperature": 0.4,
       "max_output_tokens": 65536,
-      "max_input_tokens": 131072
+      "max_input_tokens": 131072,
+      "request_timeout_seconds": 300,
+      "timeout_retry_attempts": 1,
+      "timeout_retry_multiplier": 2.0,
+      "max_request_timeout_seconds": 900,
+      "transient_failure_retries": 2
     },
     "gemini-2.0-flash": {
       "model": "gemini-2.0-flash",
@@ -90,7 +120,12 @@
       "reasoning_content_fallback": false,
       "temperature": 0.6,
       "max_output_tokens": 8192,
-      "max_input_tokens": 131072
+      "max_input_tokens": 131072,
+      "request_timeout_seconds": 300,
+      "timeout_retry_attempts": 1,
+      "timeout_retry_multiplier": 2.0,
+      "max_request_timeout_seconds": 900,
+      "transient_failure_retries": 2
     },
     "qwen3.6-plus": {
       "model": "qwen3.6-plus",
@@ -98,7 +133,12 @@
       "reasoning_content_fallback": true,
       "temperature": 0.6,
       "max_output_tokens": 65536,
-      "max_input_tokens": 991000
+      "max_input_tokens": 991000,
+      "request_timeout_seconds": 300,
+      "timeout_retry_attempts": 1,
+      "timeout_retry_multiplier": 2.0,
+      "max_request_timeout_seconds": 900,
+      "transient_failure_retries": 2
     },
     "qwen3.6-flash": {
       "model": "qwen3.6-flash",
@@ -106,7 +146,12 @@
       "reasoning_content_fallback": false,
       "temperature": 0.6,
       "max_output_tokens": 8192,
-      "max_input_tokens": 131072
+      "max_input_tokens": 131072,
+      "request_timeout_seconds": 300,
+      "timeout_retry_attempts": 1,
+      "timeout_retry_multiplier": 2.0,
+      "max_request_timeout_seconds": 900,
+      "transient_failure_retries": 2
     }
   }
 }

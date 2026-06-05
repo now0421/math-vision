@@ -20,6 +20,9 @@ public class ProblemBundle {
     @JsonProperty("output_target")
     private String outputTarget;
 
+    @JsonProperty("scene_mode")
+    private String sceneMode;
+
     @JsonProperty("source")
     private ProblemSource source;
 
@@ -42,6 +45,9 @@ public class ProblemBundle {
 
     public String getOutputTarget() { return outputTarget; }
     public void setOutputTarget(String outputTarget) { this.outputTarget = outputTarget; }
+
+    public String getSceneMode() { return sceneMode; }
+    public void setSceneMode(String sceneMode) { this.sceneMode = sceneMode; }
 
     public ProblemSource getSource() { return source; }
     public void setSource(ProblemSource source) { this.source = source; }

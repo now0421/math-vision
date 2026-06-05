@@ -59,6 +59,9 @@ public class Narrative {
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public static class Storyboard {
 
+        @JsonProperty("coordinate_bounds")
+        private StoryboardCoordinateBounds coordinateBounds;
+
         @JsonProperty("continuity_plan")
         private String continuityPlan;
 
@@ -72,6 +75,11 @@ public class Narrative {
         private List<StoryboardScene> scenes = new ArrayList<>();
 
         public Storyboard() {}
+
+        public StoryboardCoordinateBounds getCoordinateBounds() { return coordinateBounds; }
+        public void setCoordinateBounds(StoryboardCoordinateBounds coordinateBounds) {
+            this.coordinateBounds = coordinateBounds;
+        }
 
         public List<StoryboardObject> getObjectRegistry() { return objectRegistry; }
         public void setObjectRegistry(List<StoryboardObject> objectRegistry) {
@@ -92,6 +100,73 @@ public class Narrative {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public static class StoryboardCoordinateBounds {
+
+        public static final double DEFAULT_PADDING = 1.0;
+
+        @JsonProperty("x")
+        private StoryboardCoordinateBoundsAxis x;
+
+        @JsonProperty("y")
+        private StoryboardCoordinateBoundsAxis y;
+
+        @JsonProperty("z")
+        private StoryboardCoordinateBoundsAxis z;
+
+        @JsonProperty("padding")
+        private Double padding = DEFAULT_PADDING;
+
+        public StoryboardCoordinateBounds() {}
+
+        public StoryboardCoordinateBoundsAxis getX() { return x; }
+        public void setX(StoryboardCoordinateBoundsAxis x) { this.x = x; }
+
+        public StoryboardCoordinateBoundsAxis getY() { return y; }
+        public void setY(StoryboardCoordinateBoundsAxis y) { this.y = y; }
+
+        public StoryboardCoordinateBoundsAxis getZ() { return z; }
+        public void setZ(StoryboardCoordinateBoundsAxis z) { this.z = z; }
+
+        public Double getPadding() { return padding; }
+        public void setPadding(Double padding) { this.padding = padding; }
+
+        public boolean hasData() {
+            return (x != null && x.hasData())
+                    || (y != null && y.hasData())
+                    || (z != null && z.hasData());
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class StoryboardCoordinateBoundsAxis {
+
+        @JsonProperty("min")
+        private Double min;
+
+        @JsonProperty("max")
+        private Double max;
+
+        public StoryboardCoordinateBoundsAxis() {}
+
+        public StoryboardCoordinateBoundsAxis(Double min, Double max) {
+            this.min = min;
+            this.max = max;
+        }
+
+        public Double getMin() { return min; }
+        public void setMin(Double min) { this.min = min; }
+
+        public Double getMax() { return max; }
+        public void setMax(Double max) { this.max = max; }
+
+        public boolean hasData() {
+            return min != null || max != null;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     public static class StoryboardScene {
 
         @JsonProperty("scene_id")
@@ -108,9 +183,6 @@ public class Narrative {
 
         @JsonProperty("duration_seconds")
         private int durationSeconds;
-
-        @JsonProperty("scene_mode")
-        private String sceneMode;
 
         @JsonProperty("camera_anchor")
         private String cameraAnchor;
@@ -164,9 +236,6 @@ public class Narrative {
 
         public int getDurationSeconds() { return durationSeconds; }
         public void setDurationSeconds(int durationSeconds) { this.durationSeconds = durationSeconds; }
-
-        public String getSceneMode() { return sceneMode; }
-        public void setSceneMode(String sceneMode) { this.sceneMode = sceneMode; }
 
         public String getCameraAnchor() { return cameraAnchor; }
         public void setCameraAnchor(String cameraAnchor) { this.cameraAnchor = cameraAnchor; }
@@ -328,12 +397,11 @@ public class Narrative {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class StoryboardPlacement {
 
-        public static final String COORDINATE_SPACE_WORLD = "world";
-        public static final String COORDINATE_SPACE_SCREEN = "screen";
-        public static final String COORDINATE_SPACE_ANCHOR = "anchor";
+        public static final String POSITIONING_ABSOLUTE = "absolute";
+        public static final String POSITIONING_RELATIVE = "relative";
 
-        @JsonProperty("coordinate_space")
-        private String coordinateSpace;
+        @JsonProperty("positioning")
+        private String positioning;
 
         @JsonProperty("x")
         private StoryboardPlacementAxis x;
@@ -346,8 +414,8 @@ public class Narrative {
 
         public StoryboardPlacement() {}
 
-        public String getCoordinateSpace() { return coordinateSpace; }
-        public void setCoordinateSpace(String coordinateSpace) { this.coordinateSpace = coordinateSpace; }
+        public String getPositioning() { return positioning; }
+        public void setPositioning(String positioning) { this.positioning = positioning; }
 
         public StoryboardPlacementAxis getX() { return x; }
         public void setX(StoryboardPlacementAxis x) { this.x = x; }
@@ -359,7 +427,7 @@ public class Narrative {
         public void setZ(StoryboardPlacementAxis z) { this.z = z; }
 
         public boolean hasData() {
-            return (coordinateSpace != null && !coordinateSpace.isBlank())
+            return (positioning != null && !positioning.isBlank())
                     || (x != null && x.hasData())
                     || (y != null && y.hasData())
                     || (z != null && z.hasData());

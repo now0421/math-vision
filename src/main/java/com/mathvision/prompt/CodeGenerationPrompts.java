@@ -1,11 +1,20 @@
 package com.mathvision.prompt;
 
+import com.mathvision.util.SceneModeUtils;
+
 import java.util.List;
 
 /**
  * Prompts for Stage 5: code generation and validation fixes.
  */
 public final class CodeGenerationPrompts {
+
+    private static final String STORYBOARD_STYLE_AUTHORITY_RULES =
+            "Storyboard style authority rules:\n"
+                    + "- Do not infer opacity, color, stroke width, visibility, emphasis, or visual hierarchy from general visual principles during code generation.\n"
+                    + "- Apply style only when it appears explicitly in storyboard object style, scene patch style, concrete action intent, or concrete `notes_for_codegen` wording.\n"
+                    + "- If a backend-only helper object is created for coordinate mapping, calculation, grouping, or API support, it must not receive learner-facing visual style unless explicitly declared in the storyboard.\n"
+                    + "- Put storyboard style properties only in documented backend API locations; do not copy generic storyboard style keys into constructor/config dictionaries unless the active syntax manual documents those keys there.\n";
 
     private static final String MANIM_CODE_GENERATION_SYSTEM =
             "You are an expert Manim Community engineer and Python programmer.\n"
@@ -30,6 +39,7 @@ public final class CodeGenerationPrompts {
                     + "- If structured constraints define attachment, motion, or derived geometry, implement that relationship continuously with the appropriate Manim mechanism.\n"
                     + "- If an object's actual coordinates are derived from other objects, recompute its coordinates from those source objects or use native backend/API construction helpers. Use scene placement as the preferred initial visual state for independent coordinates and non-derived constrained objects; adjust it only when needed for safe layout, readability, or consistency.\n\n"
                     + "- Apply every `notes_for_codegen` item as a mandatory scene-level implementation constraint. If a note gives a concrete range, endpoint, duration, visibility, lifecycle, transform, color, or layout instruction, encode that exact constraint in code rather than replacing it with a similar-looking free movement or ad hoc placement.\n\n"
+                    + STORYBOARD_STYLE_AUTHORITY_RULES
                     + "Continuity and object-management rules:\n"
                     + "- Maintain a stable id-to-mobject dictionary on the scene, for example `self.objects = {}` in `construct()` or the first scene method, and store each storyboard id as `self.objects[\"id\"] = mobject` when it is first created.\n"
                     + "- Reuse existing objects only by storyboard id, e.g. `P = self.objects[\"P\"]`; never infer semantic identity from `self.mobjects[index]`, `self.mobjects[-1]`, creation order, or list position.\n"
@@ -46,30 +56,30 @@ public final class CodeGenerationPrompts {
                     + "- " + SystemPrompts.MANIM_ANGLE_MARKER_RULES
                     + SystemPrompts.MINIMIZE_HELPER_OBJECTS_CODEGEN_RULES
                     + SystemPrompts.NARRATIVE_PHILOSOPHY
-                    + SystemPrompts.VISUAL_PLANNING_RULES
                     + SystemPrompts.MANIM_MOTION_AND_PACING_RULES
-                    + SystemPrompts.COMPOSITION_RULES
                     + SystemPrompts.MANIM_TEXT_AND_READABILITY_RULES
                     + SystemPrompts.MANIM_ANIMATION_SELECTION_RULES
                     + SystemPrompts.MANIM_CODE_HYGIENE_RULES
                     + SystemPrompts.MANIM_TYPOGRAPHY_SCALE
-                    + SystemPrompts.OPACITY_LEVELS
                     + SystemPrompts.MANIM_TIMING_REFERENCE
                     + SystemPrompts.MANIM_SCENE_TRANSITION_RULES
                     + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
                     + SystemPrompts.MANIM_NAMING_RULES
                     + "- Keep storyboard mobjects that persist across scene methods in `self.objects` by storyboard id; this is the required cross-scene identity store, not an optional convenience.\n"
                     + "- Do not hardcode numeric MathTex subobject indexing.\n"
-                    + "- Use `ThreeDScene` only when needed and keep overlays fixed in frame when appropriate.\n"
-                    + "- Keep content inside the readable safe frame and prefer stable anchors plus `arrange`/`next_to`.\n"
+                    + "- Use `ThreeDScene` only when problem-level `scene_mode` is `3d` and keep overlays fixed in frame when appropriate.\n"
+                    + "- Keep generated render-frame content readable and prefer stable anchors plus `arrange`/`next_to`.\n"
                     + "- " + SystemPrompts.COLOR_FORMAT_RULES
                     + "- " + SystemPrompts.MANIM_COLOR_RULES
                     + "- Do not place a free-floating angle, right-angle, or arc sweep marker by shifting/rotating it near the vertex/anchor, and do not accidentally mark a large exterior angle when the scene intends two small equal angles.\n"
                     + "Layout and camera rules:\n"
+                    + "- Treat storyboard `coordinate_bounds` as storyboard world-coordinate ranges, not raw Manim frame coordinates.\n"
+                    + "- When `coordinate_bounds` exists, the generated Manim code MUST define a shared coordinate system object (`Axes`, `NumberPlane`, or in 3D `ThreeDAxes`/equivalent) from those bounds and MUST map storyboard world geometry through `axes.c2p(...)` or a clearly named helper that wraps `c2p`.\n"
+                    + "- For absolute storyboard geometry, place points, lines, curves, polygons, markers, and geometry-attached labels through that coordinate mapping. Do not render storyboard world coordinates as raw Manim scene positions such as `Dot([x, y, 0])`, `Line([x1, y1, 0], [x2, y2, 0])`, or `.move_to([x, y, 0])`.\n"
                     + "- Convert structured `placement`, `camera_anchor`, `camera_plan`, `safe_area_plan`, and `screen_overlay_plan` into concrete Manim layout and camera code.\n"
-                    + "- Choose readable absolute coordinates that preserve continuity and keep important content inside the safe frame with at least 0.5 units of clearance from every edge.\n"
+                    + "- Choose readable render-frame coordinates for overlays while preserving storyboard coordinates through the coordinate mapping.\n"
                     + "- Prefer `Group`/`VGroup`, `arrange`, `next_to`, alignment helpers, and anchored groups over brittle hardcoded coordinates everywhere.\n"
-                    + "- If a scene is marked `3d`, use `ThreeDScene`, apply the camera plan explicitly, and keep fixed overlays readable in screen space.\n\n"
+                    + "- If problem-level `scene_mode` is `3d`, use `ThreeDScene`, apply the camera plan explicitly, and keep fixed overlays readable in screen space.\n\n"
                     + "Code quality rules:\n"
                     + "- Return one full runnable file with helper methods when they improve clarity.\n"
                     + "- Use descriptive ASCII variable names derived from storyboard ids or roles.\n"
@@ -141,6 +151,7 @@ public final class CodeGenerationPrompts {
                     + "- `Point(path, slider)` is slider-driven, not direct point dragging; use it only when the storyboard explicitly intends slider interaction and the slider is visible/usable.\n"
                     + "- Apply every `notes_for_codegen` item as a mandatory scene-level implementation constraint. If a note gives a concrete range, endpoint, visibility, lifecycle, style, or layout instruction, encode that exact constraint in the command script.\n"
                     + "- If an object's actual coordinates are derived from other objects, recompute its coordinates from those source objects or use native GeoGebra construction commands. Use scene placement as the preferred initial visual state for independent coordinates and non-derived constrained objects; adjust it only when needed for safe layout, readability, or consistency.\n"
+                    + STORYBOARD_STYLE_AUTHORITY_RULES
                     + "- Do not invent unsupported convenience syntax such as `Point(line, x, y)` or similar guessed overloads.\n"
                     + "- When initial structured placement is requested for a constrained point, choose a dependency-safe construction that starts near that location or inside the requested range; never break the constraint just to match the coordinates.\n"
                     + SystemPrompts.GEOGEBRA_VIEWPORT_RULES
@@ -157,27 +168,39 @@ public final class CodeGenerationPrompts {
                     + "- If a requested visual effect would require a command not documented in the manual, re-express it with documented commands or omit that unsupported decoration.\n\n"
                     + "- Do not add specific GeoGebra command names from storyboard notes unless they are documented in the active syntax manual; implement unsupported effects generically with documented commands instead.\n"
                     + SystemPrompts.NARRATIVE_PHILOSOPHY
-                    + SystemPrompts.VISUAL_PLANNING_RULES
-                    + SystemPrompts.COMPOSITION_RULES
-                    + SystemPrompts.OPACITY_LEVELS
                     + SystemPrompts.GEOGEBRA_NAMING_RULES
                     + SystemPrompts.GEOGEBRA_CODE_OUTPUT_FORMAT.replace("corrected command script", "GeoGebra command script");
 
     private CodeGenerationPrompts() {}
 
     public static String buildRulesPrompt(String outputTarget) {
+        return buildRulesPrompt(outputTarget, SceneModeUtils.MODE_2D);
+    }
+
+    public static String buildRulesPrompt(String outputTarget, String sceneMode) {
+        String sceneModeRule = "\nProblem-level scene_mode: `" + SceneModeUtils.normalize(sceneMode)
+                + "`. This field comes from ProblemBundle, not from individual storyboard scenes.\n";
         if ("geogebra".equalsIgnoreCase(outputTarget)) {
             return SystemPrompts.buildRulesSection(
-                    SystemPrompts.ensureGeoGebraSyntaxManual(GEOGEBRA_CODE_GENERATION_SYSTEM));
+                    SystemPrompts.ensureGeoGebraSyntaxManual(GEOGEBRA_CODE_GENERATION_SYSTEM + sceneModeRule));
         }
         return SystemPrompts.buildRulesSection(
-                SystemPrompts.ensureManimSyntaxManual(MANIM_CODE_GENERATION_SYSTEM));
+                SystemPrompts.ensureManimSyntaxManual(MANIM_CODE_GENERATION_SYSTEM + sceneModeRule));
     }
 
     public static String buildFixedContextPrompt(String targetConcept,
                                                  String targetDescription,
                                                  String outputTarget,
                                                  String objectRegistryJson) {
+        return buildFixedContextPrompt(targetConcept, targetDescription, outputTarget, objectRegistryJson,
+                SceneModeUtils.MODE_2D);
+    }
+
+    public static String buildFixedContextPrompt(String targetConcept,
+                                                 String targetDescription,
+                                                 String outputTarget,
+                                                 String objectRegistryJson,
+                                                 String sceneMode) {
         String registrySection = "";
         if (objectRegistryJson != null && !objectRegistryJson.isBlank()) {
             registrySection = "\n\nObject registry (complete JSON - semantic authority for object identity, geometry meaning, and dependency relationships):\n```json\n"
@@ -189,7 +212,8 @@ public final class CodeGenerationPrompts {
                 targetConcept,
                 targetDescription,
                 outputTarget
-        ) + registrySection);
+        ) + "\nProblem-level scene_mode: `" + SceneModeUtils.normalize(sceneMode)
+                + "`. This is fixed for the whole generated program.\n" + registrySection);
     }
 
     public static String buildManimValidationFixRulesPrompt() {
@@ -356,7 +380,7 @@ public final class CodeGenerationPrompts {
         return SystemPrompts.buildCurrentRequestSection(String.format(
                 "Compact storyboard JSON:\n```json\n%s\n```\n\n"
                         + "Generate ONLY the GeoGebra code skeleton (setup section):\n"
-                        + "- Global coordinate and view settings, including `SetCoordSystem(-7, 7, -4, 4)` unless already provided downstream\n"
+                        + "- Global coordinate and view settings, including `SetCoordSystem(x_min, x_max, y_min, y_max)` using storyboard `coordinate_bounds`\n"
                         + "- Shared base objects that persist across multiple scenes\n"
                         + "- A section comment header for each scene: %s\n\n"
                         + "Do NOT implement the scene-specific objects yet - just provide the global setup.\n"

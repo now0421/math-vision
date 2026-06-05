@@ -9,6 +9,7 @@ import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.Narrative.StoryboardPlacement;
 import com.mathvision.model.Narrative.StoryboardPlacementAxis;
 import com.mathvision.model.Narrative.StoryboardScene;
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.StoryboardValidationReport;
 import com.mathvision.model.StoryboardValidationTraceEntry;
 import com.mathvision.model.WorkflowKeys;
@@ -18,8 +19,10 @@ import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
 import com.mathvision.service.FileOutputService;
 import com.mathvision.util.AiRequestUtils;
+import com.mathvision.util.CoordinateBoundsUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.SceneModeUtils;
 import com.mathvision.util.StoryboardConstraintCatalog;
 import com.mathvision.util.StoryboardConstraintUtils;
 import com.mathvision.util.StoryboardConstraintCatalog.RelationSpec;
@@ -67,10 +70,10 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
     }
     private static final double NON_TEXT_CONTRAST_THRESHOLD = 3.0;
     private static final double TEXT_CONTRAST_THRESHOLD = 4.5;
-    private static final double FRAME_MIN_X = -7.111111;
-    private static final double FRAME_MAX_X = 7.111111;
-    private static final double FRAME_MIN_Y = -4.0;
-    private static final double FRAME_MAX_Y = 4.0;
+    private static final double FALLBACK_FRAME_MIN_X = -7.111111;
+    private static final double FALLBACK_FRAME_MAX_X = 7.111111;
+    private static final double FALLBACK_FRAME_MIN_Y = -4.0;
+    private static final double FALLBACK_FRAME_MAX_Y = 4.0;
     private static final double OFFSCREEN_TOLERANCE = 0.03;
     private static final double MIN_OVERLAP_AREA = 0.015;
     private static final double MIN_OVERLAP_RATIO = 0.08;
@@ -80,7 +83,9 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
     private KnowledgeGraph knowledgeGraph;
+    private ProblemBundle problemBundle;
     private String outputTarget = WorkflowConfig.OUTPUT_TARGET_MANIM;
+    private String sceneMode = SceneModeUtils.MODE_2D;
     private int toolCalls = 0;
     private StoryboardValidationReport storyboardValidationReport;
     private NodeConversationContext fixConversationContext;
@@ -94,6 +99,8 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
         this.workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
         this.knowledgeGraph = (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
+        this.problemBundle = (ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE);
+        this.sceneMode = SceneModeUtils.normalize(problemBundle != null ? problemBundle.getSceneMode() : null);
         if (workflowConfig != null) {
             this.outputTarget = workflowConfig.getOutputTarget();
         }
@@ -369,6 +376,8 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             issues.add("Storyboard has no scenes");
             return issues;
         }
+        issues.addAll(validateProblemSceneModeContract(storyboard));
+        issues.addAll(validateCoordinateBoundsContract(storyboard));
 
         // Enrich placements via LLM for layout validation only.
         // Objects without placement (derived objects) are otherwise invisible
@@ -379,12 +388,18 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         List<StoryboardScene> layoutScenes = buildValidationLayoutScenes(
                 placementEnrichedStoryboard != null ? placementEnrichedStoryboard : storyboard);
 
+        // Deterministically grow coordinate_bounds so the storyboard world-coordinate window
+        // contains every resolved placement. Coordinates are not rewritten to fit a frame; the
+        // window expands instead.
+        expandCoordinateBoundsToFitPlacements(storyboard, placementEnrichedStoryboard, layoutScenes);
+
         for (int i = 0; i < storyboard.getScenes().size(); i++) {
             StoryboardScene scene = storyboard.getScenes().get(i);
             String label = "scene " + (i + 1) + " (" + scene.getSceneId() + ")";
 
             StoryboardScene layoutScene = i < layoutScenes.size() ? layoutScenes.get(i) : null;
-            validateSceneLayout(label, layoutScene, issues);
+            Storyboard layoutStoryboard = placementEnrichedStoryboard != null ? placementEnrichedStoryboard : storyboard;
+            validateSceneLayout(label, layoutStoryboard, layoutScene, issues);
 
             // Check required fields (using original storyboard)
             if (scene.getTitle() == null || scene.getTitle().isBlank()) {
@@ -403,6 +418,75 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         issues.addAll(validateGeometricMarkerDefinitions(storyboard));
 
         return issues;
+    }
+
+    private List<String> validateCoordinateBoundsContract(Storyboard storyboard) {
+        List<String> issues = new ArrayList<>();
+        if (storyboard == null) {
+            return issues;
+        }
+        boolean threeD = SceneModeUtils.isThreeD(sceneMode);
+        Narrative.StoryboardCoordinateBounds bounds = CoordinateBoundsUtils.normalize(storyboard.getCoordinateBounds());
+        if (bounds == null) {
+            issues.add("Storyboard is missing required top-level coordinate_bounds");
+            return issues;
+        }
+        collectRequiredBoundsAxisIssues("storyboard.coordinate_bounds.x", bounds.getX(), issues);
+        collectRequiredBoundsAxisIssues("storyboard.coordinate_bounds.y", bounds.getY(), issues);
+        if (threeD) {
+            collectRequiredBoundsAxisIssues("storyboard.coordinate_bounds.z", bounds.getZ(), issues);
+        }
+        return issues;
+    }
+
+    private void collectRequiredBoundsAxisIssues(String label,
+                                                  Narrative.StoryboardCoordinateBoundsAxis axis,
+                                                  List<String> issues) {
+        Narrative.StoryboardCoordinateBoundsAxis normalized = CoordinateBoundsUtils.normalizeAxis(axis);
+        if (normalized == null || normalized.getMin() == null || normalized.getMax() == null) {
+            issues.add(label + " must include numeric min and max");
+        }
+    }
+
+    private List<String> validateProblemSceneModeContract(Storyboard storyboard) {
+        List<String> issues = new ArrayList<>();
+        if (storyboard == null) {
+            return issues;
+        }
+        boolean threeD = SceneModeUtils.isThreeD(sceneMode);
+        if (!threeD && storyboard.getCoordinateBounds() != null && storyboard.getCoordinateBounds().getZ() != null) {
+            issues.add("2D ProblemBundle scene_mode forbids storyboard.coordinate_bounds.z; use x/y bounds only");
+        }
+        if (storyboard.getScenes() == null) {
+            return issues;
+        }
+        for (int i = 0; i < storyboard.getScenes().size(); i++) {
+            StoryboardScene scene = storyboard.getScenes().get(i);
+            if (scene == null) {
+                continue;
+            }
+            String label = "scene " + (i + 1) + " (" + scene.getSceneId() + ")";
+            if (!threeD) {
+                collectForbiddenZPlacementIssues(label + ".entering_objects", scene.getEnteringObjects(), issues);
+                collectForbiddenZPlacementIssues(label + ".persistent_objects", scene.getPersistentObjects(), issues);
+            }
+        }
+        return issues;
+    }
+
+    private void collectForbiddenZPlacementIssues(String label,
+                                                  List<StoryboardObject> objects,
+                                                  List<String> issues) {
+        if (objects == null) {
+            return;
+        }
+        for (StoryboardObject object : objects) {
+            if (object == null || object.getPlacement() == null || object.getPlacement().getZ() == null) {
+                continue;
+            }
+            issues.add(label + " object '" + object.getId()
+                    + "': 2D ProblemBundle scene_mode forbids placement.z; use x/y placement and style.z_index for layers");
+        }
     }
 
     private List<StoryboardScene> buildValidationLayoutScenes(Storyboard storyboard) {
@@ -549,6 +633,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                 if (object.getKind() == null || object.getKind().isBlank()) {
                     issues.add("object_registry object '" + id + "': missing kind");
                 }
+                validatePlacementPositioning("object_registry object '" + id + "'", object.getPlacement(), issues);
             }
         }
         for (String id : duplicateRegistryIds) {
@@ -594,6 +679,20 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             if (!registryIds.contains(id)) {
                 issues.add(itemLabel + ": references unknown object_registry id '" + id + "'");
             }
+            validatePlacementPositioning(itemLabel, object.getPlacement(), issues);
+        }
+    }
+
+    private void validatePlacementPositioning(String label,
+                                             StoryboardPlacement placement,
+                                             List<String> issues) {
+        if (placement == null || placement.getPositioning() == null || placement.getPositioning().isBlank()) {
+            return;
+        }
+        String positioning = placement.getPositioning().trim();
+        if (!Narrative.StoryboardPlacement.POSITIONING_ABSOLUTE.equalsIgnoreCase(positioning)
+                && !Narrative.StoryboardPlacement.POSITIONING_RELATIVE.equalsIgnoreCase(positioning)) {
+            issues.add(label + ": placement.positioning must be absolute or relative");
         }
     }
 
@@ -1454,6 +1553,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
     }
 
     private void validateSceneLayout(String sceneLabel,
+                                     Storyboard storyboard,
                                      StoryboardScene mergedScene,
                                      List<String> issues) {
         if (mergedScene == null) {
@@ -1465,8 +1565,9 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             return;
         }
 
+        ValidationFrameBounds frameBounds = validationFrameBounds(storyboard);
         for (StoryboardLayoutElement element : elements) {
-            String overflowSummary = summarizeOverflow(element.bounds);
+            String overflowSummary = summarizeOverflow(element.bounds, frameBounds);
             if (overflowSummary != null) {
                 issues.add(formatOffscreenIssue(sceneLabel, element, overflowSummary, elements));
             }
@@ -1560,14 +1661,14 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         }
 
         StoryboardPlacement placement = object.getPlacement();
-        String coordinateSpace = placement.getCoordinateSpace();
-        if (isBlank(coordinateSpace)) {
-            return null;
+        String positioning = placement.getPositioning();
+        if (isBlank(positioning)) {
+            positioning = Narrative.StoryboardPlacement.POSITIONING_ABSOLUTE;
         }
 
         AxisBounds xBounds;
         AxisBounds yBounds;
-        if (Narrative.StoryboardPlacement.COORDINATE_SPACE_ANCHOR.equalsIgnoreCase(coordinateSpace)) {
+        if (Narrative.StoryboardPlacement.POSITIONING_RELATIVE.equalsIgnoreCase(positioning)) {
             String rawAnchorId = resolveAttachmentAnchorId(object);
             String anchorId = StoryboardPatchResolver.objectId(visibleObjects.get(rawAnchorId));
             if (anchorId == null) {
@@ -1585,8 +1686,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             }
             xBounds = resolveAxisBounds(placement.getX(), anchorElement.bounds.centerX(), true);
             yBounds = resolveAxisBounds(placement.getY(), anchorElement.bounds.centerY(), true);
-        } else if (Narrative.StoryboardPlacement.COORDINATE_SPACE_WORLD.equalsIgnoreCase(coordinateSpace)
-                || Narrative.StoryboardPlacement.COORDINATE_SPACE_SCREEN.equalsIgnoreCase(coordinateSpace)) {
+        } else if (Narrative.StoryboardPlacement.POSITIONING_ABSOLUTE.equalsIgnoreCase(positioning)) {
             if (placement.getX() == null && placement.getY() == null) {
                 return null;
             }
@@ -1729,29 +1829,146 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                 round(Math.max(resolvedMin, resolvedMax)));
     }
 
-    private String summarizeOverflow(StoryboardLayoutBounds bounds) {
-        double left = Math.max(FRAME_MIN_X - bounds.minX, 0.0);
-        double right = Math.max(bounds.maxX - FRAME_MAX_X, 0.0);
-        double bottom = Math.max(FRAME_MIN_Y - bounds.minY, 0.0);
-        double top = Math.max(bounds.maxY - FRAME_MAX_Y, 0.0);
-        if (Math.max(Math.max(left, right), Math.max(bottom, top)) <= OFFSCREEN_TOLERANCE) {
+    private ValidationFrameBounds validationFrameBounds(Storyboard storyboard) {
+        double[] fallbackMin = new double[] {FALLBACK_FRAME_MIN_X, FALLBACK_FRAME_MIN_Y, 0.0};
+        double[] fallbackMax = new double[] {FALLBACK_FRAME_MAX_X, FALLBACK_FRAME_MAX_Y, 0.0};
+        double[] min = CoordinateBoundsUtils.frameMin(storyboard, fallbackMin);
+        double[] max = CoordinateBoundsUtils.frameMax(storyboard, fallbackMax);
+        return new ValidationFrameBounds(min[0], max[0], min[1], max[1]);
+    }
+
+    /**
+     * Deterministically grows storyboard coordinate_bounds so the world-coordinate window strictly
+     * contains every resolved placement with the configured padding. The window only grows (union
+     * with any author/LLM-provided bounds). Bounds are written to both the propagating storyboard
+     * and the placement-enriched copy used by the per-scene layout checks so both read the same
+     * window.
+     */
+    private void expandCoordinateBoundsToFitPlacements(Storyboard storyboard,
+                                                       Storyboard placementEnrichedStoryboard,
+                                                       List<StoryboardScene> layoutScenes) {
+        if (storyboard == null || layoutScenes == null || layoutScenes.isEmpty()) {
+            return;
+        }
+
+        Double minX = null;
+        Double maxX = null;
+        Double minY = null;
+        Double maxY = null;
+        boolean threeD = SceneModeUtils.isThreeD(sceneMode);
+        double[] zExtents = new double[] {Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY};
+        List<String> ignoredIssues = new ArrayList<>();
+        for (StoryboardScene layoutScene : layoutScenes) {
+            if (layoutScene == null) {
+                continue;
+            }
+            for (StoryboardLayoutElement element
+                    : resolveSceneLayoutElements("coordinate-bounds-extent", layoutScene, ignoredIssues)) {
+                if (element == null) {
+                    continue;
+                }
+                StoryboardLayoutBounds b = element.bounds;
+                minX = minX == null ? b.minX : Math.min(minX, b.minX);
+                maxX = maxX == null ? b.maxX : Math.max(maxX, b.maxX);
+                minY = minY == null ? b.minY : Math.min(minY, b.minY);
+                maxY = maxY == null ? b.maxY : Math.max(maxY, b.maxY);
+                if (threeD && element.object != null) {
+                    collectZExtents(element.object, zExtents);
+                }
+            }
+        }
+        if (minX == null || minY == null) {
+            return;
+        }
+
+        Narrative.StoryboardCoordinateBounds current =
+                CoordinateBoundsUtils.normalize(storyboard.getCoordinateBounds());
+        double padding = CoordinateBoundsUtils.resolvePadding(current);
+
+        Narrative.StoryboardCoordinateBounds expanded = new Narrative.StoryboardCoordinateBounds();
+        expanded.setPadding(padding);
+        expanded.setX(unionAxis(current != null ? current.getX() : null, minX - padding, maxX + padding));
+        expanded.setY(unionAxis(current != null ? current.getY() : null, minY - padding, maxY + padding));
+        if (threeD) {
+            boolean hasZExtents = Double.isFinite(zExtents[0]) && Double.isFinite(zExtents[1]);
+            expanded.setZ(hasZExtents
+                    ? unionAxis(current != null ? current.getZ() : null, zExtents[0] - padding, zExtents[1] + padding)
+                    : current != null ? current.getZ() : null);
+        }
+        expanded = CoordinateBoundsUtils.normalize(expanded);
+
+        storyboard.setCoordinateBounds(expanded);
+        if (placementEnrichedStoryboard != null) {
+            placementEnrichedStoryboard.setCoordinateBounds(expanded);
+        }
+    }
+
+    private void collectZExtents(StoryboardObject object, double[] zExtents) {
+        if (object == null
+                || object.getPlacement() == null
+                || object.getPlacement().getZ() == null
+                || !object.getPlacement().getZ().hasData()
+                || zExtents == null
+                || zExtents.length < 2) {
+            return;
+        }
+        AxisBounds zBounds = resolveAxisBounds(object.getPlacement().getZ(), 0.0, false);
+        zExtents[0] = Math.min(zExtents[0], zBounds.min);
+        zExtents[1] = Math.max(zExtents[1], zBounds.max);
+    }
+
+    private Narrative.StoryboardCoordinateBoundsAxis unionAxis(Narrative.StoryboardCoordinateBoundsAxis current,
+                                                               double requiredMin,
+                                                               double requiredMax) {
+        double min = requiredMin;
+        double max = requiredMax;
+        if (current != null) {
+            if (current.getMin() != null) {
+                min = Math.min(min, current.getMin());
+            }
+            if (current.getMax() != null) {
+                max = Math.max(max, current.getMax());
+            }
+        }
+        return new Narrative.StoryboardCoordinateBoundsAxis(min, max);
+    }
+
+    private String summarizeOverflow(StoryboardLayoutBounds bounds, ValidationFrameBounds frameBounds) {
+        boolean leftIssue = isLowerBoundaryViolation(bounds.minX, frameBounds.minX);
+        boolean rightIssue = isUpperBoundaryViolation(bounds.maxX, frameBounds.maxX);
+        boolean bottomIssue = isLowerBoundaryViolation(bounds.minY, frameBounds.minY);
+        boolean topIssue = isUpperBoundaryViolation(bounds.maxY, frameBounds.maxY);
+        if (!leftIssue && !rightIssue && !bottomIssue && !topIssue) {
             return null;
         }
 
         List<String> parts = new ArrayList<>();
-        if (left > OFFSCREEN_TOLERANCE) {
-            parts.add("left=" + round(left));
+        if (leftIssue) {
+            parts.add("left=" + boundaryOverflow(frameBounds.minX - bounds.minX));
         }
-        if (right > OFFSCREEN_TOLERANCE) {
-            parts.add("right=" + round(right));
+        if (rightIssue) {
+            parts.add("right=" + boundaryOverflow(bounds.maxX - frameBounds.maxX));
         }
-        if (bottom > OFFSCREEN_TOLERANCE) {
-            parts.add("bottom=" + round(bottom));
+        if (bottomIssue) {
+            parts.add("bottom=" + boundaryOverflow(frameBounds.minY - bounds.minY));
         }
-        if (top > OFFSCREEN_TOLERANCE) {
-            parts.add("top=" + round(top));
+        if (topIssue) {
+            parts.add("top=" + boundaryOverflow(bounds.maxY - frameBounds.maxY));
         }
         return String.join(", ", parts);
+    }
+
+    private boolean isLowerBoundaryViolation(double value, double min) {
+        return value <= min || (min - value) > OFFSCREEN_TOLERANCE;
+    }
+
+    private boolean isUpperBoundaryViolation(double value, double max) {
+        return value >= max || (value - max) > OFFSCREEN_TOLERANCE;
+    }
+
+    private String boundaryOverflow(double rawOverflow) {
+        double rounded = round(Math.max(rawOverflow, 0.0));
+        return rounded == 0.0 ? "0(boundary)" : Double.toString(rounded);
     }
 
     private String formatOffscreenIssue(String sceneLabel,
@@ -1851,11 +2068,11 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         }
         StoryboardPlacement placement = object.getPlacement();
         StringBuilder sb = new StringBuilder();
-        String coordinateSpace = !isBlank(placement.getCoordinateSpace())
-                ? placement.getCoordinateSpace().trim()
-                : "unknown";
-        sb.append(coordinateSpace).append(" placement");
-        if (Narrative.StoryboardPlacement.COORDINATE_SPACE_ANCHOR.equalsIgnoreCase(coordinateSpace)) {
+        String positioning = !isBlank(placement.getPositioning())
+                ? placement.getPositioning().trim()
+                : Narrative.StoryboardPlacement.POSITIONING_ABSOLUTE;
+        sb.append(positioning).append(" placement");
+        if (Narrative.StoryboardPlacement.POSITIONING_RELATIVE.equalsIgnoreCase(positioning)) {
             String anchorId = resolveAttachmentAnchorId(object);
             if (!isBlank(anchorId)) {
                 sb.append(" anchor=").append(anchorId.trim());
@@ -2231,7 +2448,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                                 "placement-enrichment",
                                 conversationContext,
                                 SystemPrompts.buildCurrentRequestSection(userPrompt),
-                                ToolSchemas.storyboard(outputTarget),
+                                ToolSchemas.storyboard(outputTarget, sceneMode),
                                 () -> toolCalls++)
                         .join();
 
@@ -2471,7 +2688,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                             "storyboard-fix",
                             conversationContext,
                             SystemPrompts.buildCurrentRequestSection(userPrompt),
-                            ToolSchemas.storyboard(outputTarget),
+                            ToolSchemas.storyboard(outputTarget, sceneMode),
                             () -> toolCalls++)
                     .join();
 
@@ -2650,6 +2867,20 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
 
         private double area() {
             return Math.max(maxX - minX, 0.0) * Math.max(maxY - minY, 0.0);
+        }
+    }
+
+    private static final class ValidationFrameBounds {
+        private final double minX;
+        private final double maxX;
+        private final double minY;
+        private final double maxY;
+
+        private ValidationFrameBounds(double minX, double maxX, double minY, double maxY) {
+            this.minX = minX;
+            this.maxX = maxX;
+            this.minY = minY;
+            this.maxY = maxY;
         }
     }
 

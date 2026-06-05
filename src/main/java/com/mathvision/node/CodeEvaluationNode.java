@@ -9,6 +9,7 @@ import com.mathvision.model.CodeResult;
 import com.mathvision.model.Narrative;
 import com.mathvision.model.Narrative.Storyboard;
 import com.mathvision.model.Narrative.StoryboardScene;
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.CodeEvaluationResult;
 import com.mathvision.model.CodeEvaluationResult.ReviewSnapshot;
 import com.mathvision.model.CodeEvaluationResult.RuleCheck;
@@ -30,6 +31,7 @@ import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.SceneModeUtils;
 import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TimeUtils;
 import io.github.the_pocket.PocketFlow;
@@ -78,6 +80,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
+    private ProblemBundle problemBundle;
     private NodeConversationContext reviewConversationContext;
     private int toolCalls;
 
@@ -119,6 +122,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     public CodeEvaluationInput prep(Map<String, Object> ctx) {
         this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
         this.workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
+        this.problemBundle = (ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE);
         this.toolCalls = 0;
 
         EvaluationFixState fixState = (EvaluationFixState) ctx.get(WorkflowKeys.CODE_EVALUATION_FIX_STATE);
@@ -556,20 +560,12 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     }
 
     private int countThreeDStoryboardScenes(Storyboard storyboard) {
-        if (storyboard == null || storyboard.getScenes() == null) {
+        if (!SceneModeUtils.isThreeD(problemBundle != null ? problemBundle.getSceneMode() : null)
+                || storyboard == null
+                || storyboard.getScenes() == null) {
             return 0;
         }
-        int count = 0;
-        for (StoryboardScene scene : storyboard.getScenes()) {
-            if (isThreeDStoryboardScene(scene)) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private boolean isThreeDStoryboardScene(StoryboardScene scene) {
-        return scene != null && "3d".equalsIgnoreCase(scene.getSceneMode());
+        return storyboard.getScenes().size();
     }
 
     private void addFinding(StaticAnalysis analysis,

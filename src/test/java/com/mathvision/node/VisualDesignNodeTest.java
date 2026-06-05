@@ -462,7 +462,6 @@ class VisualDesignNodeTest {
         scene.put("goal", "Show the initial problem");
         scene.put("narration", "We begin with point A and line l.");
         scene.put("layout_goal", "Center layout");
-        scene.put("scene_mode", "2d");
         scene.putArray("entering_objects");
         scene.putArray("actions");
         arguments.putArray("new_objects");
@@ -515,7 +514,6 @@ class VisualDesignNodeTest {
         scene.put("goal", "Show an angle sweep");
         scene.put("narration", "Watch the angle sweep.");
         scene.put("layout_goal", "Centered rays");
-        scene.put("scene_mode", "2d");
         ArrayNode enteringObjects = scene.putArray("entering_objects");
         enteringObjects.addObject().put("id", "O");
         enteringObjects.addObject().put("id", "A");
@@ -601,7 +599,6 @@ class VisualDesignNodeTest {
         scene.put("goal", "Filter derived placements");
         scene.put("narration", "Filter placements.");
         scene.put("layout_goal", "Centered layout");
-        scene.put("scene_mode", "2d");
         ArrayNode enteringObjects = scene.putArray("entering_objects");
         enteringObjects.add(enteringObject("Bprime", "#FF0000"));
         enteringObjects.add(enteringObject("P", "#00FF00"));
@@ -641,7 +638,6 @@ class VisualDesignNodeTest {
         scene.put("goal", "Filter GeoGebra default-placeable placements");
         scene.put("narration", "Filter placements.");
         scene.put("layout_goal", "Centered layout");
-        scene.put("scene_mode", "2d");
         ArrayNode enteringObjects = scene.putArray("entering_objects");
         enteringObjects.add(enteringObject("P", "#00FF00"));
         enteringObjects.add(enteringObject("Q", "#0000FF"));
@@ -848,7 +844,6 @@ class VisualDesignNodeTest {
         scene.put("goal", "Goal " + suffix);
         scene.put("narration", "Narration " + suffix);
         scene.put("layout_goal", "Layout " + suffix);
-        scene.put("scene_mode", "2d");
         ArrayNode enteringObjects = scene.putArray("entering_objects");
         ObjectNode enteringObject = enteringObjects.addObject();
         enteringObject.put("id", objectId);
@@ -944,7 +939,6 @@ class VisualDesignNodeTest {
         scene.put("goal", "Goal " + suffix);
         scene.put("narration", "Narration " + suffix);
         scene.put("layout_goal", "Layout " + suffix);
-        scene.put("scene_mode", "2d");
         ArrayNode enteringObjects = scene.putArray("entering_objects");
         if (enteringObject != null) {
             enteringObjects.add(enteringObject);
@@ -972,7 +966,7 @@ class VisualDesignNodeTest {
         object.put("id", id);
         object.putObject("style").put("color", color);
         ObjectNode placement = object.putObject("placement");
-        placement.put("coordinate_space", "screen");
+        placement.put("positioning", "absolute");
         placement.putObject("x").put("value", 0.0);
         placement.putObject("y").put("value", 0.0);
         return object;

@@ -1,5 +1,7 @@
 package com.mathvision.prompt;
 
+import com.mathvision.util.SceneModeUtils;
+
 /**
  * Prompts for Stage 3: visual design (scene-level output).
  *
@@ -13,19 +15,25 @@ package com.mathvision.prompt;
 public final class VisualDesignPrompts {
 
     private static String sceneOutputFormat(String outputTarget) {
+        return sceneOutputFormat(outputTarget, SceneModeUtils.MODE_2D);
+    }
+
+    private static String sceneOutputFormat(String outputTarget, String sceneMode) {
         return "Output format:\n"
                 + StoryboardSchemaPrompts.JSON_SYNTAX_REQUIREMENTS
-                + "Return a JSON object with two top-level keys: `scene` and `new_objects`.\n"
+                + "Return a JSON object with top-level keys `scene`, `new_objects`, and `coordinate_bounds_update`.\n"
+                + "Also return `coordinate_bounds_update`, the storyboard world-coordinate extrema introduced or required by this scene before final padding is applied. Relative placement offsets are resolved from their anchors before they contribute to this range.\n"
                 + "`scene.entering_objects` and `scene.persistent_objects` are scene-level patches: each entry carries only `id` plus optional `placement` and `style`. Do NOT include kind, content, or constraints here - those belong in `new_objects`.\n"
                 + "`new_objects` entries represent the canonical registry definition of each object introduced in this scene. They carry identity, content, style, and structured constraints but not scene-specific placement.\n"
                 + "Only add `new_objects` that are teaching-essential, clarify the current beat, or carry distinct geometry/constraint semantics. Required Manim labels or callouts with their own attachment constraint are not duplicates. Reuse existing registry ids instead of creating repeated formulas, redundant highlights, or decorative helper objects.\n"
                 + "{\n"
                 + "  \"scene\": {\n"
-                + StoryboardSchemaPrompts.sceneFieldsSchema(outputTarget)
+                + StoryboardSchemaPrompts.sceneFieldsSchema(outputTarget, sceneMode)
                 + "\n  },\n"
                 + "  \"new_objects\": [\n"
                 + StoryboardSchemaPrompts.OBJECT_DEFINITION_SCHEMA
-                + "\n  ]\n"
+                + "\n  ],\n"
+                + StoryboardSchemaPrompts.coordinateBoundsUpdateSchema(sceneMode) + "\n"
                 + "}\n\n";
     }
 
@@ -43,7 +51,12 @@ public final class VisualDesignPrompts {
                     + StoryboardSchemaPrompts.EXAMPLE_POINT_P
                     + ",\n"
                     + StoryboardSchemaPrompts.EXAMPLE_FORMULA_CARD
-                    + "\n  ]\n"
+                    + "\n  ],\n"
+                    + "  \"coordinate_bounds_update\": {\n"
+                    + "    \"x\": { \"min\": -3, \"max\": 3 },\n"
+                    + "    \"y\": { \"min\": 0, \"max\": 2 },\n"
+                    + "    \"reason\": \"Raw resolved scene placements for numberLine, P, and formulaCard before final padding.\"\n"
+                    + "  }\n"
                     + "}\n\n"
                     + "Scene 2 example (continuation scene - persistent_objects carry ids from earlier scenes):\n"
                     + "{\n"
@@ -52,7 +65,12 @@ public final class VisualDesignPrompts {
                     + "\n  },\n"
                     + "  \"new_objects\": [\n"
                     + StoryboardSchemaPrompts.EXAMPLE_MIN_MARKER
-                    + "\n  ]\n"
+                    + "\n  ],\n"
+                    + "  \"coordinate_bounds_update\": {\n"
+                    + "    \"x\": { \"min\": 1, \"max\": 1 },\n"
+                    + "    \"y\": { \"min\": 2, \"max\": 2 },\n"
+                    + "    \"reason\": \"Raw resolved scene placement for minMarker before final padding.\"\n"
+                    + "  }\n"
                     + "}\n\n"
                     + SystemPrompts.TOOL_CALL_HINT
                     + SystemPrompts.JSON_ONLY_OUTPUT + " Do not wrap it in markdown.";
@@ -70,14 +88,14 @@ public final class VisualDesignPrompts {
     private static final String SCENE_TEACHING_RULES =
             "Scene teaching rules:\n"
                     + "- Write action descriptions as learner-facing visual beats: each action should correspond to something visible, moved, manipulated, highlighted, transformed, or deliberately held on screen.\n"
-                    + "- Add `voiceover_text` sparingly, only to key actions that carry the main teaching point, a non-obvious construction, a major reveal, a comparison, or a conclusion.\n"
-                    + "- Do not add `voiceover_text` merely because an action is visible; routine entries, exits, waits, simple moves, style changes, and obvious label/formula appearances should usually stay silent.\n"
+                    + "- Add narrated action text sparingly, only to key actions that carry the main teaching point, a non-obvious construction, a major reveal, a comparison, or a conclusion.\n"
+                    + "- Do not narrate an action merely because it is visible; routine entries, exits, waits, simple moves, style changes, and obvious label/formula appearances should usually stay silent.\n"
                     + "- A typical scene should contain 0-2 narrated actions, not narration on every action.\n"
                     + "- Leave breathing room after key reveals; do not imply nonstop motion with no time to read.\n"
                     + "- Plan scene transitions intentionally by judging each visible object's future teaching utility: persist, dim, transform, or exit it based on whether it will help the next scene's reasoning. Record lifecycle decisions in `notes_for_codegen` only when downstream code generation must preserve them as hard constraints.\n"
                     + "- When the current step merges multiple prerequisite branches, treat the scene as a convergence beat: inherit useful object names, color meanings, and continuity anchors without replaying each branch as if it were brand new.\n"
                     + "- For merge scenes, combine upstream conclusions into one coherent scene and decide which branch evidence should remain as support, which should be dimmed, and which has finished its role.\n"
-                    + "- Keep the storyboard lean through judgment, not blanket removal: prefer moving, transforming, dragging, sweeping, restyling, dimming, or exiting existing elements over adding new explanatory text or objects when they communicate the same idea.\n"
+                    + "- Keep the storyboard lean through judgment, not blanket removal: prefer moving, transforming, dragging, sweeping, or restyling existing elements over adding explanatory text; dim or exit objects when they have finished their role.\n"
                     + "- Include an object in `exiting_objects` when its role is complete, it will not support upcoming reasoning, or keeping it would distract from the next idea; keep or dim it when it remains useful as evidence, an anchor, a comparison target, or learner orientation.\n"
                     + "- Use enrichment fields only when they sharpen the explanation.\n"
                     + "- Narrative must not be constrained by a fixed word count.\n"
@@ -85,19 +103,32 @@ public final class VisualDesignPrompts {
                     + "- Keep object ids concise and non-redundant since `kind` already carries the type. Good ids: `AB`, `P`, `l`; bad ids: `segmentAB`, `LineAB`, `PointP`. Follow only the naming rules for the active backend.\n"
                     + "- Reuse the exact same concise ids consistently in `persistent_objects`, `exiting_objects`, and `actions.targets`; express geometry/attachment relationships through structured `constraints`.\n"
                     + "- When `new_objects[].content` is visible on screen, keep it terse and mathematically named. For `kind=text` labels attached to geometry, write only the label itself (e.g. `B′`, `l`, `AB`, `P_min`), not a descriptive phrase such as `反射点B′`, `直线l`, or `线段AB`.\n"
-                    + "- Put explanatory prose in `goal`, `narration`, action `description`, or selected `voiceover_text`, not in object label content.\n"
+                    + "- Put explanatory prose in `goal`, `narration`, or action `description`, not in object label content.\n"
                     + "- When `new_objects[].content` or constraint refs mention another object, refer to that object by id only. Do not restate its kind there.\n"
                     + "- For example, write registry content as `angle between AP and l at P`, not `angle between segment AP and line l at point P`.\n";
 
     private static final String SCENE_STYLE_LAYOUT_RULES =
+            sceneStyleLayoutRules(SceneModeUtils.MODE_2D);
+
+    private static String sceneStyleLayoutRules(String sceneMode) {
+        String axes = SceneModeUtils.isThreeD(sceneMode) ? "x/y/z" : "x/y";
+        String zRule = SceneModeUtils.isThreeD(sceneMode)
+                ? "- This problem is 3D: use `placement.z` and `coordinate_bounds_update.z` only for mathematical depth coordinates; keep `style.z_index` for draw/layer order.\n"
+                : "- This problem is 2D: do not output `placement.z` or `coordinate_bounds_update.z`; use only `style.z_index` for draw/layer order.\n";
+        return
             "Scene style and layout rules:\n"
                     + "- Design placement, style, color, and visual hierarchy now; downstream validation may clean up the whole storyboard, but this node must produce a strong first-pass scene layout.\n"
+                    + "- Treat placement numbers as storyboard world coordinates, not backend render-frame positions. Record each scene's resolved storyboard extrema in `coordinate_bounds_update` so later code can map them into the target backend.\n"
+                    + "- Use `placement.positioning = absolute` for direct storyboard coordinates and `relative` for offsets from an anchor object. For relative placements, " + axes + " are offsets, not a separate coordinate system.\n"
+                    + "- Make the update range cover every explicit " + axes + " value or min/max used by visible resolved placements. The final storyboard will add padding where applicable; do not rely on an element exactly touching a coordinate bound.\n"
+                    + zRule
                     + "- Use the provided object registry, used colors, and style history to preserve meaning across scenes.\n"
                     + "- Record non-obvious palette, transition, or layout decisions in `notes_for_codegen` only when downstream code generation must preserve them as hard constraints.\n"
                     + "- Plan per-scene variation: vary the dominant color, spatial layout, animation entry style, and visual density across scenes. Never use identical visual config for every scene.\n"
                     + "- Objects owned by coordinate-derived relations (e.g. intersections, midpoints, perpendicular feet, attached labels) must not carry scene `placement`; express their position through structured constraint refs and parameters instead.\n"
                     + "- Objects owned only by non-coordinate-derived relations such as `point_at`, `lies_on`, `on_side_of`, `moves_on_object`, `fixed_overlay`, or `distance_between` may still carry `placement` when they need an initial, free, or screen-fixed position.\n"
                     + "- Only include `style` when it adds meaningful rendering properties; omit it for visually plain objects.\n";
+    }
 
     private static final String MANIM_SYSTEM =
             "You are a Manim-first visual designer for math teaching visualizations.\n"
@@ -123,7 +154,6 @@ public final class VisualDesignPrompts {
                     + SystemPrompts.MANIM_COLOR_RULES_BULLETS
                     + "Manim visual-planning constraints:\n"
                     + "- " + SystemPrompts.MANIM_LAYOUT_FRAME_RULES.replace("\n", "\n- ").trim() + "\n"
-                    + "- Use `scene_mode = 3d` only when depth is genuinely needed for the teaching goal.\n"
                     + "- Prefer a stable world layout and meaningful transforms over repeatedly replacing the whole diagram.\n"
                     + "- Distinguish what should animate from what should stay static; favor motion for meaning-carrying elements and avoid decorative motion that adds load.\n"
                     + "- The visual plan must be concrete enough for documented Manim constructs, with no hidden assumptions.\n"
@@ -167,7 +197,6 @@ public final class VisualDesignPrompts {
                     + "- If a reasoning step is not naturally visible, design a faithful construction-based proxy.\n"
                     + "GeoGebra planning constraints:\n"
                     + SystemPrompts.GEOGEBRA_VIEWPORT_RULES
-                    + "- Use `scene_mode = 3d` only when depth is genuinely needed.\n"
                     + "- Keep the visual plan implementable without hidden assumptions.\n"
                     + "- Prefer readable construction layout and clear label placement over animation-like staging language.\n"
                     + SystemPrompts.NARRATIVE_PHILOSOPHY
@@ -187,9 +216,18 @@ public final class VisualDesignPrompts {
      * backend-specific rules, examples.
      */
     public static String buildRulesPrompt(String outputTarget) {
-        return SystemPrompts.buildRulesSection("geogebra".equalsIgnoreCase(outputTarget)
+        return buildRulesPrompt(outputTarget, SceneModeUtils.MODE_2D);
+    }
+
+    public static String buildRulesPrompt(String outputTarget, String sceneMode) {
+        String normalizedSceneMode = SceneModeUtils.normalize(sceneMode);
+        String system = "geogebra".equalsIgnoreCase(outputTarget)
                 ? GEOGEBRA_SYSTEM
-                : MANIM_SYSTEM);
+                : MANIM_SYSTEM;
+        system = system
+                .replace(SCENE_STYLE_LAYOUT_RULES, sceneStyleLayoutRules(normalizedSceneMode))
+                .replace(sceneOutputFormat(outputTarget), sceneOutputFormat(outputTarget, normalizedSceneMode));
+        return SystemPrompts.buildRulesSection(system);
     }
 
     /**
@@ -200,6 +238,14 @@ public final class VisualDesignPrompts {
                                                   String targetDescription,
                                                   String outputTarget,
                                                   String solutionChain) {
+        return buildFixedContextPrompt(targetConcept, targetDescription, outputTarget, solutionChain, SceneModeUtils.MODE_2D);
+    }
+
+    public static String buildFixedContextPrompt(String targetConcept,
+                                                  String targetDescription,
+                                                  String outputTarget,
+                                                  String solutionChain,
+                                                  String sceneMode) {
         StringBuilder sb = new StringBuilder();
         sb.append(SystemPrompts.buildWorkflowPrefix(
                 "Stage 3 / Visual Design",
@@ -210,6 +256,8 @@ public final class VisualDesignPrompts {
         sb.append("geogebra".equalsIgnoreCase(outputTarget)
                 ? "Design for GeoGebra as an interactive construction medium.\n\n"
                 : "Design for Manim as a teaching animation medium rather than a backend-neutral compromise.\n\n");
+        sb.append("Problem-level scene_mode: `").append(SceneModeUtils.normalize(sceneMode)).append("`. ")
+                .append("This is fixed for the whole storyboard and must not be emitted as a scene field.\n\n");
         if (solutionChain != null && !solutionChain.isBlank()) {
             sb.append("\n\n").append(solutionChain);
         }

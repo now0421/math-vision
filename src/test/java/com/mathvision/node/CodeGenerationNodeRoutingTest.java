@@ -99,6 +99,29 @@ class CodeGenerationNodeRoutingTest {
     }
 
     @Test
+    void codegenPromptIncludesCoordinateBoundsImplementationContract() {
+        QueueAiClient aiClient = new QueueAiClient();
+        aiClient.toolResponses.add(codegenResponse(String.join("\n",
+                "from manim import *",
+                "",
+                "class MainScene(Scene):",
+                "    def construct(self):",
+                "        self.wait(1)")));
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.CONFIG, new WorkflowConfig());
+        ctx.put(WorkflowKeys.NARRATIVE, buildStoryboardNarrativeWithCoordinateBounds());
+
+        new CodeGenerationNode().run(ctx);
+
+        assertNotNull(aiClient.lastUserMessage);
+        assertTrue(aiClient.lastUserMessage.contains("Coordinate bounds implementation contract"));
+        assertTrue(aiClient.lastUserMessage.contains("coordinate_bounds x=[-4, 4], y=[-2, 3]"));
+        assertTrue(aiClient.lastUserMessage.contains("axes.c2p(...)"));
+    }
+
+    @Test
     void textOnlyToolResponseStillGeneratesCode() {
         QueueAiClient aiClient = new QueueAiClient();
         aiClient.toolResponses.add(textResponse(String.join("\n",
@@ -272,7 +295,7 @@ class CodeGenerationNodeRoutingTest {
 
         String summary = CodeGenerationNode.formatRegistrySummary(registry, 4);
 
-        assertTrue(summary.contains("id=A, kind=point, content=, placement=world x=-3.0 y=1.0"));
+        assertTrue(summary.contains("id=A, kind=point, content=, placement=absolute x=-3.0 y=1.0"));
         assertTrue(summary.contains("id=Pmin"));
         assertTrue(summary.contains("\"relation\":\"intersection_of\""));
         assertTrue(summary.contains("\"object_a\":\"ABprime\""));
@@ -297,6 +320,16 @@ class CodeGenerationNodeRoutingTest {
         return narrative;
     }
 
+    private static Narrative buildStoryboardNarrativeWithCoordinateBounds() {
+        Narrative narrative = buildStoryboardNarrative();
+        Narrative.StoryboardCoordinateBounds bounds = new Narrative.StoryboardCoordinateBounds();
+        bounds.setX(new Narrative.StoryboardCoordinateBoundsAxis(-4.0, 4.0));
+        bounds.setY(new Narrative.StoryboardCoordinateBoundsAxis(-2.0, 3.0));
+        bounds.setPadding(1.0);
+        narrative.getStoryboard().setCoordinateBounds(bounds);
+        return narrative;
+    }
+
     private static Storyboard buildStoryboard() {
         Storyboard storyboard = new Storyboard();
         storyboard.setContinuityPlan("Keep the same title object alive.");
@@ -308,7 +341,6 @@ class CodeGenerationNodeRoutingTest {
         scene.setGoal("Introduce the main idea.");
         scene.setNarration("Write the title and pause.");
         scene.setDurationSeconds(6);
-        scene.setSceneMode("2d");
         scene.setCameraAnchor("center");
         scene.setCameraPlan("Static 2D camera.");
         scene.setLayoutGoal("Place the title near the top.");
@@ -321,7 +353,7 @@ class CodeGenerationNodeRoutingTest {
         title.setKind("text");
         title.setContent("Demo title");
         Narrative.StoryboardPlacement titlePlacement = new Narrative.StoryboardPlacement();
-        titlePlacement.setCoordinateSpace("screen");
+        titlePlacement.setPositioning(Narrative.StoryboardPlacement.POSITIONING_ABSOLUTE);
         Narrative.StoryboardPlacementAxis yAxis = new Narrative.StoryboardPlacementAxis();
         yAxis.setValue(3.0);
         titlePlacement.setY(yAxis);
@@ -350,7 +382,7 @@ class CodeGenerationNodeRoutingTest {
 
     private static StoryboardPlacement placement(double x, double y) {
         StoryboardPlacement placement = new StoryboardPlacement();
-        placement.setCoordinateSpace("world");
+        placement.setPositioning(StoryboardPlacement.POSITIONING_ABSOLUTE);
         StoryboardPlacementAxis xAxis = new StoryboardPlacementAxis();
         xAxis.setValue(x);
         StoryboardPlacementAxis yAxis = new StoryboardPlacementAxis();

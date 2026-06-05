@@ -1,5 +1,6 @@
 package com.mathvision.prompt;
 
+import com.mathvision.util.SceneModeUtils;
 import com.mathvision.util.StoryboardConstraintCatalog;
 
 /**
@@ -82,14 +83,63 @@ public final class ToolSchemas {
                     + "  }"
                     + "}";
 
+    private static final String COORDINATE_BOUNDS_AXIS_SCHEMA =
+            "{ \"type\": \"object\", "
+                    + "\"properties\": {"
+                    + "  \"min\": { \"type\": \"number\" },"
+                    + "  \"max\": { \"type\": \"number\" }"
+                    + "}, "
+                    + "\"additionalProperties\": false, "
+                    + "\"required\": [\"min\", \"max\"] }";
+
+    private static final String COORDINATE_BOUNDS_FIELD =
+            "\"coordinate_bounds\": {"
+                    + "  \"type\": \"object\","
+                    + "  \"properties\": {"
+                    + "    \"x\": " + COORDINATE_BOUNDS_AXIS_SCHEMA + ","
+                    + "    \"y\": " + COORDINATE_BOUNDS_AXIS_SCHEMA + ","
+                    + "    \"z\": " + COORDINATE_BOUNDS_AXIS_SCHEMA + ","
+                    + "    \"padding\": { \"type\": \"number\" },"
+                    + "    \"reason\": { \"type\": \"string\" }"
+                    + "  },"
+                    + "  \"additionalProperties\": false,"
+                    + "  \"required\": [\"x\", \"y\", \"z\"]"
+                    + "}";
+
     public static String storyboard(String outputTarget) {
+        return storyboard(outputTarget, SceneModeUtils.MODE_2D);
+    }
+
+    public static String storyboard(String outputTarget, String sceneMode) {
         String schema = isManim(outputTarget) ? withVoiceoverActionFields(STORYBOARD) : STORYBOARD;
+        schema = applySceneModeSchema(schema, sceneMode);
         return isManim(outputTarget) ? withoutLabelVisible(schema) : schema;
     }
 
     public static String sceneDesign(String outputTarget) {
+        return sceneDesign(outputTarget, SceneModeUtils.MODE_2D);
+    }
+
+    public static String sceneDesign(String outputTarget, String sceneMode) {
         String schema = isManim(outputTarget) ? withVoiceoverActionFields(SCENE_DESIGN) : SCENE_DESIGN;
+        schema = applySceneModeSchema(schema, sceneMode);
         return isManim(outputTarget) ? withoutLabelVisible(schema) : schema;
+    }
+
+    private static String applySceneModeSchema(String schema, String sceneMode) {
+        if (schema == null || SceneModeUtils.isThreeD(sceneMode)) {
+            return schema;
+        }
+        return schema
+                .replace("    \"z\": " + COORDINATE_BOUNDS_AXIS_SCHEMA + ",", "")
+                .replace(",\"required\": [\"x\", \"y\", \"z\"]", ",\"required\": [\"x\", \"y\"]")
+                .replace("            \"z\": " + COORDINATE_BOUNDS_AXIS_SCHEMA + ",", "")
+                .replace("                      \"y\": { \"type\": \"object\" },"
+                                + "                      \"z\": { \"type\": \"object\" }",
+                        "                      \"y\": { \"type\": \"object\" }")
+                .replace("                        \"y\": { \"type\": \"object\", \"properties\": { \"value\": { \"type\": \"number\" }, \"min\": { \"type\": \"number\" }, \"max\": { \"type\": \"number\" } }, \"additionalProperties\": false },"
+                                + "                        \"z\": { \"type\": \"object\", \"properties\": { \"value\": { \"type\": \"number\" }, \"min\": { \"type\": \"number\" }, \"max\": { \"type\": \"number\" } }, \"additionalProperties\": false }",
+                        "                        \"y\": { \"type\": \"object\", \"properties\": { \"value\": { \"type\": \"number\" }, \"min\": { \"type\": \"number\" }, \"max\": { \"type\": \"number\" } }, \"additionalProperties\": false }");
     }
 
     private static boolean isManim(String outputTarget) {
@@ -136,6 +186,7 @@ public final class ToolSchemas {
             + "        \"id\": { \"type\": \"string\" },"
             + "        \"title\": { \"type\": \"string\" },"
             + "        \"input_mode\": { \"type\": \"string\", \"enum\": [\"concept\", \"problem\"] },"
+            + "        \"scene_mode\": { \"type\": \"string\", \"enum\": [\"2d\", \"3d\"] },"
             + "        \"statement\": { \"type\": \"string\" },"
             + "        \"diagram\": {"
             + "          \"type\": \"object\","
@@ -166,7 +217,7 @@ public final class ToolSchemas {
             + "          \"additionalProperties\": false"
             + "        }"
             + "      },"
-            + "      \"required\": [\"id\", \"title\", \"input_mode\", \"statement\", \"diagram\"]"
+            + "      \"required\": [\"id\", \"title\", \"input_mode\", \"scene_mode\", \"statement\", \"diagram\"]"
             + "    }"
             + "  }"
             + "}"
@@ -322,6 +373,7 @@ public final class ToolSchemas {
             + "      \"type\": \"object\","
             + "      \"properties\": {"
             + "        \"continuity_plan\": { \"type\": \"string\" },"
+            + "        " + COORDINATE_BOUNDS_FIELD + ","
             + "        \"global_visual_rules\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },"
             + "        \"object_registry\": {"
             + "          \"type\": \"array\","
@@ -348,7 +400,6 @@ public final class ToolSchemas {
             + "              \"goal\": { \"type\": \"string\" },"
             + "              \"narration\": { \"type\": \"string\" },"
             + "              \"duration_seconds\": { \"type\": \"integer\" },"
-            + "              \"scene_mode\": { \"type\": \"string\", \"enum\": [\"2d\", \"3d\"] },"
             + "              \"camera_anchor\": { \"type\": \"string\" },"
             + "              \"camera_plan\": { \"type\": \"string\" },"
             + "              \"layout_goal\": { \"type\": \"string\" },"
@@ -365,7 +416,7 @@ public final class ToolSchemas {
             + "                    \"placement\": {"
             + "                      \"type\": \"object\","
             + "                      \"properties\": {"
-            + "                        \"coordinate_space\": { \"type\": \"string\", \"enum\": [\"world\", \"screen\", \"anchor\"] },"
+            + "                        \"positioning\": { \"type\": \"string\", \"enum\": [\"absolute\", \"relative\"] },"
             + "                        \"x\": { \"type\": \"object\", \"properties\": { \"value\": { \"type\": \"number\" }, \"min\": { \"type\": \"number\" }, \"max\": { \"type\": \"number\" } }, \"additionalProperties\": false },"
             + "                        \"y\": { \"type\": \"object\", \"properties\": { \"value\": { \"type\": \"number\" }, \"min\": { \"type\": \"number\" }, \"max\": { \"type\": \"number\" } }, \"additionalProperties\": false },"
             + "                        \"z\": { \"type\": \"object\", \"properties\": { \"value\": { \"type\": \"number\" }, \"min\": { \"type\": \"number\" }, \"max\": { \"type\": \"number\" } }, \"additionalProperties\": false }"
@@ -424,7 +475,7 @@ public final class ToolSchemas {
             + "        }"
             + "      },"
             + "      \"additionalProperties\": false,"
-            + "      \"required\": [\"scenes\"]"
+            + "      \"required\": [\"coordinate_bounds\", \"scenes\"]"
             + "    }"
             + "  }"
             + "}"
@@ -491,7 +542,6 @@ public final class ToolSchemas {
             + "            \"goal\": { \"type\": \"string\" },"
             + "            \"narration\": { \"type\": \"string\" },"
             + "            \"duration_seconds\": { \"type\": \"integer\" },"
-            + "            \"scene_mode\": { \"type\": \"string\", \"enum\": [\"2d\", \"3d\"] },"
             + "            \"camera_anchor\": { \"type\": \"string\" },"
             + "            \"camera_plan\": { \"type\": \"string\" },"
             + "            \"layout_goal\": { \"type\": \"string\" },"
@@ -508,7 +558,7 @@ public final class ToolSchemas {
             + "                  \"placement\": {"
             + "                    \"type\": \"object\","
             + "                    \"properties\": {"
-            + "                      \"coordinate_space\": { \"type\": \"string\", \"enum\": [\"world\", \"screen\", \"anchor\"] },"
+            + "                      \"positioning\": { \"type\": \"string\", \"enum\": [\"absolute\", \"relative\"] },"
             + "                      \"x\": { \"type\": \"object\" },"
             + "                      \"y\": { \"type\": \"object\" },"
             + "                      \"z\": { \"type\": \"object\" }"
@@ -575,6 +625,17 @@ public final class ToolSchemas {
             + "            },"
             + "            \"required\": [\"id\", \"kind\", \"content\"]"
             + "          }"
+            + "        },"
+            + "        \"coordinate_bounds_update\": {"
+            + "          \"type\": \"object\","
+            + "          \"properties\": {"
+            + "            \"x\": " + COORDINATE_BOUNDS_AXIS_SCHEMA + ","
+            + "            \"y\": " + COORDINATE_BOUNDS_AXIS_SCHEMA + ","
+            + "            \"z\": " + COORDINATE_BOUNDS_AXIS_SCHEMA + ","
+            + "            \"padding\": { \"type\": \"number\" },"
+            + "            \"reason\": { \"type\": \"string\" }"
+            + "          },"
+            + "          \"additionalProperties\": false"
             + "        }"
             + "      },"
             + "      \"required\": [\"scene\", \"new_objects\"]"
@@ -656,3 +717,4 @@ public final class ToolSchemas {
             + "}"
             + "]";
 }
+

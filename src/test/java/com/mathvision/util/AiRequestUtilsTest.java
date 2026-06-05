@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
+import java.net.http.HttpTimeoutException;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -197,6 +198,55 @@ class AiRequestUtilsTest {
         assertNull(extractedText);
     }
 
+    @Test
+    void doesNotFallBackToPlainChatWhenToolCallTimesOut() {
+        FakeAiClient aiClient = new FakeAiClient(
+                CompletableFuture.<JsonNode>failedFuture(new HttpTimeoutException("request timed out")),
+                "{\"ok\":true}"
+        );
+
+        RuntimeException error = org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class, () ->
+                AiRequestUtils.requestJsonObjectAsync(
+                        aiClient,
+                        LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                        "placement-enrichment",
+                        createContext("system"),
+                        "user",
+                        "[]",
+                        () -> { }
+                ).join());
+
+        assertTrue(error.getMessage().contains("request timed out")
+                || error.getCause().getMessage().contains("request timed out"));
+        assertEquals(0, aiClient.chatCalls.get());
+    }
+
+    @Test
+    void extractedTextDoesNotFallBackToPlainChatWhenToolCallTimesOut() {
+        FakeAiClient aiClient = new FakeAiClient(
+                CompletableFuture.<JsonNode>failedFuture(new HttpTimeoutException("request timed out")),
+                "fallback text"
+        );
+
+        RuntimeException error = org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class, () ->
+                AiRequestUtils.requestExtractedTextAsync(
+                        aiClient,
+                        LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                        "codegen",
+                        createContext("system"),
+                        "user",
+                        "[]",
+                        () -> { },
+                        List.of("manimCode"),
+                        text -> text,
+                        text -> text != null && !text.isBlank()
+                ).join());
+
+        assertTrue(error.getMessage().contains("request timed out")
+                || error.getCause().getMessage().contains("request timed out"));
+        assertEquals(0, aiClient.chatCalls.get());
+    }
+
     private static JsonNode wrapTextResponse(String text) {
         ObjectNode response = JsonUtils.mapper().createObjectNode();
         ArrayNode choices = response.putArray("choices");
@@ -224,11 +274,19 @@ class AiRequestUtilsTest {
 
     private static final class FakeAiClient implements AiClient {
         private final JsonNode rawResponse;
+        private final CompletableFuture<JsonNode> rawResponseFuture;
         private final String plainChatResponse;
         private final AtomicInteger chatCalls = new AtomicInteger(0);
 
         private FakeAiClient(JsonNode rawResponse, String plainChatResponse) {
             this.rawResponse = rawResponse;
+            this.rawResponseFuture = null;
+            this.plainChatResponse = plainChatResponse;
+        }
+
+        private FakeAiClient(CompletableFuture<JsonNode> rawResponseFuture, String plainChatResponse) {
+            this.rawResponse = null;
+            this.rawResponseFuture = rawResponseFuture;
             this.plainChatResponse = plainChatResponse;
         }
 
@@ -241,7 +299,9 @@ class AiRequestUtilsTest {
         @Override
         public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
                                                                  String toolsJson) {
-            return CompletableFuture.completedFuture(rawResponse);
+            return rawResponseFuture != null
+                    ? rawResponseFuture
+                    : CompletableFuture.completedFuture(rawResponse);
         }
 
         @Override

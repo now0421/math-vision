@@ -20,6 +20,7 @@ import com.mathvision.service.AnthropicAiClient;
 import com.mathvision.service.FileOutputService;
 import com.mathvision.service.GeminiAiClient;
 import com.mathvision.service.OpenAiCompatibleAiClient;
+import com.mathvision.util.SceneModeUtils;
 import com.mathvision.util.TextUtils;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
@@ -862,6 +863,7 @@ public class MathVisionApplication {
         bundle.setInputMode(isProblemMode
                 ? WorkflowConfig.INPUT_MODE_PROBLEM : WorkflowConfig.INPUT_MODE_CONCEPT);
         bundle.setOutputTarget(config.getOutputTarget());
+        bundle.setSceneMode(SceneModeUtils.MODE_2D);
         ProblemDiagram diagram = new ProblemDiagram();
         diagram.setPresent(false);
         bundle.setDiagram(diagram);

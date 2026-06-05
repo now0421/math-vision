@@ -78,6 +78,7 @@ class SceneEvaluationNodeTest {
         assertEquals(WorkflowActions.RETRY_RENDER, request.getReturnAction());
         assertNotNull(request.getSceneEvaluationJson());
         assertTrue(request.getSceneEvaluationJson().contains("\"issue_sample_count\""));
+        assertTrue(request.getSceneEvaluationJson().contains("expand_axes_coordinate_range_first"));
     }
 
     @Test
@@ -114,6 +115,7 @@ class SceneEvaluationNodeTest {
         Files.writeString(geometryPath, geoGebraStructuredGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath);
+        ((WorkflowConfig) ctx.get(WorkflowKeys.CONFIG)).setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
         CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
         codeResult.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
         RenderResult renderResult = (RenderResult) ctx.get(WorkflowKeys.RENDER_RESULT);
@@ -137,6 +139,7 @@ class SceneEvaluationNodeTest {
         Files.writeString(geometryPath, geoGebraInfiniteLineGeometryJson());
 
         Map<String, Object> ctx = buildContext(geometryPath);
+        ((WorkflowConfig) ctx.get(WorkflowKeys.CONFIG)).setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
         CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
         codeResult.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
         RenderResult renderResult = (RenderResult) ctx.get(WorkflowKeys.RENDER_RESULT);
@@ -152,6 +155,40 @@ class SceneEvaluationNodeTest {
         assertEquals(1, result.getOffscreenIssueCount());
         assertEquals(0, result.getOverlapIssueCount());
         assertEquals(WorkflowActions.FIX_CODE, action);
+        CodeFixRequest request = (CodeFixRequest) ctx.get(WorkflowKeys.CODE_FIX_REQUEST);
+        assertNotNull(request);
+        assertTrue(request.getSceneEvaluationJson().contains("expand_set_coord_system_range_first"));
+    }
+
+    @Test
+    void geoGebraSceneEvaluationUsesCodeSetCoordSystemInsteadOfStoryboardBounds() throws IOException {
+        Path geometryPath = tempDir.resolve(GeoGebraRenderService.GEOMETRY_FILE);
+        Files.writeString(geometryPath, geoGebraWideCodeViewportGeometryJson());
+
+        Narrative narrative = new Narrative("Demo", "Demo", new Narrative.Storyboard());
+        Narrative.StoryboardCoordinateBounds storyboardBounds = new Narrative.StoryboardCoordinateBounds();
+        storyboardBounds.setX(new Narrative.StoryboardCoordinateBoundsAxis(-7.0, 7.0));
+        storyboardBounds.setY(new Narrative.StoryboardCoordinateBoundsAxis(-4.0, 4.0));
+        narrative.getStoryboard().setCoordinateBounds(storyboardBounds);
+        Map<String, Object> ctx = buildContext(geometryPath, narrative);
+        ((WorkflowConfig) ctx.get(WorkflowKeys.CONFIG)).setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+        CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
+        codeResult.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+        codeResult.setGeneratedCode("SetCoordSystem(-20, 20, -10, 10)\nA = (8, 0)");
+        RenderResult renderResult = (RenderResult) ctx.get(WorkflowKeys.RENDER_RESULT);
+        renderResult.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_GEOGEBRA);
+        renderResult.setArtifactType("geogebra_preview_html");
+        SceneEvaluationNode node = new SceneEvaluationNode();
+
+        SceneEvaluationNode.SceneEvaluationInput input = node.prep(ctx);
+        SceneEvaluationResult result = node.exec(input);
+        String action = node.post(ctx, input, result);
+
+        assertTrue(result.isEvaluated());
+        assertTrue(result.isApproved(),
+                () -> "issues=" + result.getTotalIssueCount() + ", gate=" + result.getGateReason());
+        assertEquals(0, result.getOffscreenIssueCount());
+        assertNull(action);
     }
 
     @Test
@@ -405,7 +442,7 @@ class SceneEvaluationNodeTest {
 
     private Narrative.StoryboardPlacement placement(double x, double y) {
         Narrative.StoryboardPlacement placement = new Narrative.StoryboardPlacement();
-        placement.setCoordinateSpace("world");
+        placement.setPositioning(Narrative.StoryboardPlacement.POSITIONING_ABSOLUTE);
         Narrative.StoryboardPlacementAxis xAxis = new Narrative.StoryboardPlacementAxis();
         xAxis.setValue(x);
         Narrative.StoryboardPlacementAxis yAxis = new Narrative.StoryboardPlacementAxis();
@@ -506,6 +543,35 @@ class SceneEvaluationNodeTest {
                 "          \"semantic_class\": \"text\",",
                 "          \"visible\": true,",
                 "          \"bounds\": {\"min\": [5.0, 3.0, 0.0], \"max\": [6.0, 3.5, 0.0]}",
+                "        }",
+                "      ]",
+                "    }",
+                "  ]",
+                "}");
+    }
+
+    private String geoGebraWideCodeViewportGeometryJson() {
+        return String.join("\n",
+                "{",
+                "  \"scene_name\": \"GeoGebraFigure\",",
+                "  \"report_type\": \"geogebra_element_report\",",
+                "  \"frame_bounds\": {",
+                "    \"min\": [-7.0, -4.0, 0.0],",
+                "    \"max\": [7.0, 4.0, 0.0]",
+                "  },",
+                "  \"samples\": [",
+                "    {",
+                "      \"sample_id\": \"geogebra-initial\",",
+                "      \"sample_role\": \"geogebra_construction\",",
+                "      \"elements\": [",
+                "        {",
+                "          \"stable_id\": \"ggb-A\",",
+                "          \"semantic_name\": \"A\",",
+                "          \"class_name\": \"point\",",
+                "          \"semantic_class\": \"point\",",
+                "          \"visible\": true,",
+                "          \"geometry_type\": \"point\",",
+                "          \"bounds\": {\"min\": [8.0, 0.0, 0.0], \"max\": [8.0, 0.0, 0.0]}",
                 "        }",
                 "      ]",
                 "    }",

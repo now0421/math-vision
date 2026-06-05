@@ -7,6 +7,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GeoGebraCodeUtilsTest {
@@ -126,6 +127,44 @@ class GeoGebraCodeUtilsTest {
         List<String> violations = GeoGebraCodeUtils.validateFull(code);
 
         assertTrue(violations.isEmpty());
+    }
+
+    @Test
+    void ensureDefaultViewCommandUsesStoryboardCoordinateBounds() {
+        Narrative.Storyboard storyboard = new Narrative.Storyboard();
+        Narrative.StoryboardCoordinateBounds bounds = new Narrative.StoryboardCoordinateBounds();
+        bounds.setX(new Narrative.StoryboardCoordinateBoundsAxis(-4.0, 6.0));
+        bounds.setY(new Narrative.StoryboardCoordinateBoundsAxis(-2.0, 3.5));
+        storyboard.setCoordinateBounds(bounds);
+
+        String enriched = GeoGebraCodeUtils.ensureDefaultViewCommand("A = (0, 0)", storyboard);
+
+        assertEquals("SetCoordSystem(-4, 6, -2, 3.5)\nA = (0, 0)", enriched);
+    }
+
+    @Test
+    void ensureDefaultViewCommandReplacesExistingViewCommandWhenStoryboardBoundsExist() {
+        Narrative.Storyboard storyboard = new Narrative.Storyboard();
+        Narrative.StoryboardCoordinateBounds bounds = new Narrative.StoryboardCoordinateBounds();
+        bounds.setX(new Narrative.StoryboardCoordinateBoundsAxis(-4.0, 6.0));
+        bounds.setY(new Narrative.StoryboardCoordinateBoundsAxis(-2.0, 3.5));
+        storyboard.setCoordinateBounds(bounds);
+        String code = "SetCoordSystem(-7, 7, -4, 4)\nA = (0, 0)";
+
+        assertEquals("SetCoordSystem(-4, 6, -2, 3.5)\nA = (0, 0)",
+                GeoGebraCodeUtils.ensureDefaultViewCommand(code, storyboard));
+    }
+
+    @Test
+    void extractSetCoordSystemBoundsReadsCurrentCodeViewport() {
+        double[][] bounds = GeoGebraCodeUtils.extractSetCoordSystemBounds(
+                "SetCoordSystem(-20, 20, -10, 10)\nA = (8, 0)");
+
+        assertNotNull(bounds);
+        assertEquals(-20.0, bounds[0][0]);
+        assertEquals(-10.0, bounds[0][1]);
+        assertEquals(20.0, bounds[1][0]);
+        assertEquals(10.0, bounds[1][1]);
     }
 
     @Test

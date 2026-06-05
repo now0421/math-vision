@@ -4,6 +4,9 @@ build/
 out/
 dependency-reduced-pom.xml
 
+# Project-local Maven repository (vendored deps; downloaded at build time)
+.m2repo/
+
 # Java / Maven
 *.class
 *.jar

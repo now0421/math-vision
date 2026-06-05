@@ -16,13 +16,11 @@ public final class NarrativePrompts {
                     + "Introduce foundations before advanced content, and keep the storyboard continuity-safe.\n\n"
                     + SystemPrompts.NARRATIVE_PHILOSOPHY
                     + SystemPrompts.VISUAL_PLANNING_RULES
-                    + SystemPrompts.COMPOSITION_RULES
                     + SystemPrompts.OBJECT_LIFECYCLE_RULES
                     + "Layout rules:\n"
-                    + "- Frame is 16:9 with " + SystemPrompts.LAYOUT_FRAME_RULES.toLowerCase()
-                    .replace("keep important content within", "important content kept inside")
-                    .replace("usually keep each step to", "keep simultaneous main visual elements around")
-                    .replace(".\n", "\n- ").trim() + "\n"
+                    + "- Treat all placement numbers as storyboard world coordinates. The storyboard must carry top-level `coordinate_bounds` that strictly contain resolved placements with at least 1 unit padding.\n"
+                    + "- Use `placement.positioning = absolute` for direct storyboard coordinates and `relative` for offsets from an anchor object.\n"
+                    + "- Keep simultaneous main visual elements around 7 to 10 unless several are quiet carry-over context.\n"
                     + "- Place formulas near edges, not over the main geometry\n"
                     + "- " + SystemPrompts.STORYBOARD_FIELD_GUIDE_OBJECT_SEMANTICS
                     .replace("\n- ", "\n- ")
@@ -32,10 +30,10 @@ public final class NarrativePrompts {
                     + SystemPrompts.GEOMETRY_CONSTRAINT_AUTHORING_RULES
                     + SystemPrompts.GEOMETRIC_MARKER_AUTHORING_RULES
                     + SystemPrompts.MINIMIZE_HELPER_OBJECTS_AUTHORING_RULES
-                    + "3D rules:\n"
-                    + "- Use `scene_mode = 3d` only when depth is genuinely needed\n"
-                    + "- Include explicit `camera_plan`\n"
-                    + "- Use `screen_overlay_plan` when text must stay fixed relative to the viewport rather than the main geometry\n\n"
+                    + "Dimensionality rules:\n"
+                    + "- Problem dimensionality comes from ProblemBundle `scene_mode`; do not add `scene_mode` to storyboard scenes.\n"
+                    + "- Include explicit `camera_plan` when the problem-level scene_mode is 3d.\n"
+                    + "- Use `screen_overlay_plan` when text must stay fixed relative to the viewport rather than the main geometry.\n\n"
                     + "Storyboard-level rules:\n"
                     + "- Prefer 3 to 5 strong scenes for problem-solving unless more are truly needed\n"
                     + "- Plan per-scene variation: vary the dominant visual focus, spatial layout pattern, and visual density across scenes. Avoid identical composition for consecutive scenes\n"
@@ -82,6 +80,7 @@ public final class NarrativePrompts {
                 + StoryboardSchemaPrompts.PATCH_SEMANTICS_NOTE
                 + "{\n"
                 + "  \"continuity_plan\": \"string, how object identities, anchors, and layout stay stable across scenes\",\n"
+                + StoryboardSchemaPrompts.coordinateBoundsSchema("2d") + ",\n"
                 + "  \"global_visual_rules\": [\"string, global staging rule that should hold across the whole presentation\"],\n"
                 + "  \"object_registry\": [\n"
                 + StoryboardSchemaPrompts.OBJECT_DEFINITION_SCHEMA
@@ -100,8 +99,13 @@ public final class NarrativePrompts {
                     + StoryboardSchemaPrompts.JSON_LEXICAL_EXAMPLES
                     + "{\n"
                     + "  \"continuity_plan\": \"Objects keep stable ids across scenes via object_registry. Anchor-based objects follow their anchors.\",\n"
+                    + "  \"coordinate_bounds\": {\n"
+                    + "    \"x\": { \"min\": -4, \"max\": 4 },\n"
+                    + "    \"y\": { \"min\": -1, \"max\": 3 },\n"
+                    + "    \"padding\": 1\n"
+                    + "  },\n"
                     + "  \"global_visual_rules\": [\n"
-                    + "    \"Keep major content inside the safe frame.\",\n"
+                    + "    \"Keep resolved storyboard placements strictly inside coordinate_bounds.\",\n"
                     + "    \"Prefer transforms and persistent anchors over redraws.\"\n"
                     + "  ],\n"
                     + "  \"object_registry\": [\n"
@@ -143,12 +147,12 @@ public final class NarrativePrompts {
                     + "- Do NOT modify any existing placement that already has data.\n"
                     + "- For objects without placement, compute a reasonable world-space coordinate "
                     + "based on their structured constraints, kind, content, and any available source placements.\n"
-                    + "- Use coordinate_space = \"world\" for all computed placements.\n"
+                    + "- Use placement.positioning = \"absolute\" for computed placements, or \"relative\" when x/y are offsets from an anchor object.\n"
                     + "- Write computed placements on the visible scene object patch in entering_objects or persistent_objects where the object appears; do not rely on object_registry-only placements for computed coordinates.\n"
                     + "- If the same object appears in multiple scenes without placement, add the computed placement to each visible scene patch that needs layout validation.\n"
                     + "- Return the complete storyboard JSON with placements added for objects that lacked them. "
                     + "Every other field must remain identical to the input.\n"
-                    + "- Frame bounds: x in [-7.11, 7.11], y in [-4, 4]. Keep objects within these bounds.";
+                    + "- Use top-level `coordinate_bounds` as the storyboard world-coordinate validation window when present. Keep computed placements strictly inside it; equality with a min/max boundary is out of bounds.";
 
     /**
      * Build the user prompt for the placement-enrichment pass.
@@ -220,7 +224,7 @@ public final class NarrativePrompts {
      */
     public static String buildCleanupUserPrompt(String storyboardJson, java.util.List<String> issues) {
         StringBuilder userPrompt = new StringBuilder();
-        userPrompt.append("Please clean up this storyboard so it is coherent, and ensure that all coordinate-based elements stay within bounds and do not visibly overlap. Optimize cognitive load by judging which objects should persist, dim, transform, merge, or exit based on their usefulness for upcoming teaching steps.\n");
+        userPrompt.append("Please clean up this storyboard so it is coherent, and ensure that all resolved placements stay strictly inside top-level `coordinate_bounds` and do not visibly overlap. Optimize cognitive load by judging which objects should persist, dim, transform, merge, or exit based on their usefulness for upcoming teaching steps.\n");
         userPrompt.append("Preserve the original narrative order, object identity, Chinese learner-facing text, and motion-first visual teaching intent as much as possible; only adjust the layout and wording where necessary.\n");
         userPrompt.append("Apply ASCII cleanup only to backend identifiers such as scene_id, object ids, constraint ids, refs, and action target ids; do not ASCII-normalize titles, narration, descriptions, or visible object content. In Manim mode, also preserve voiceover text.\n");
         userPrompt.append("Visible natural-language object content must be Chinese, but symbolic mathematical labels and equations should remain concise and symbolic. For `kind=text` objects that label geometry, simplify redundant descriptions to the element name only, e.g. `反射点B′` -> `B′`, `直线l` -> `l`, `线段AB` -> `AB`.\n");
@@ -237,7 +241,7 @@ public final class NarrativePrompts {
             userPrompt.append("\n");
         }
         userPrompt.append("Current storyboard:\n```json\n").append(storyboardJson).append("\n```\n\n");
-        userPrompt.append("Return the full corrected storyboard JSON with all scenes, object_registry, and metadata.");
+        userPrompt.append("Return the full corrected storyboard JSON with all scenes, object_registry, coordinate_bounds, and metadata.");
         return userPrompt.toString();
     }
 

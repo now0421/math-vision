@@ -1,6 +1,8 @@
 package com.mathvision.util;
 
 import com.mathvision.model.Narrative.Storyboard;
+import com.mathvision.model.Narrative.StoryboardCoordinateBounds;
+import com.mathvision.model.Narrative.StoryboardCoordinateBoundsAxis;
 import com.mathvision.model.Narrative.StoryboardAction;
 import com.mathvision.model.Narrative.StoryboardConstraint;
 import com.mathvision.model.Narrative.StoryboardObject;
@@ -31,6 +33,7 @@ public final class StoryboardPatchResolver {
 
         Storyboard merged = new Storyboard();
         merged.setContinuityPlan(storyboard.getContinuityPlan());
+        merged.setCoordinateBounds(copyCoordinateBounds(storyboard.getCoordinateBounds()));
         merged.setGlobalVisualRules(copyStringList(storyboard.getGlobalVisualRules()));
 
         Map<String, StoryboardObject> registryDefinitions = new LinkedHashMap<>();
@@ -130,7 +133,6 @@ public final class StoryboardPatchResolver {
         copy.setGoal(source.getGoal());
         copy.setNarration(source.getNarration());
         copy.setDurationSeconds(source.getDurationSeconds());
-        copy.setSceneMode(source.getSceneMode());
         copy.setCameraAnchor(source.getCameraAnchor());
         copy.setCameraPlan(source.getCameraPlan());
         copy.setLayoutGoal(source.getLayoutGoal());
@@ -270,11 +272,33 @@ public final class StoryboardPatchResolver {
             return null;
         }
         StoryboardPlacement copy = new StoryboardPlacement();
-        copy.setCoordinateSpace(source.getCoordinateSpace());
+        copy.setPositioning(source.getPositioning());
         copy.setX(copyPlacementAxis(source.getX()));
         copy.setY(copyPlacementAxis(source.getY()));
         copy.setZ(copyPlacementAxis(source.getZ()));
         return copy.hasData() ? copy : null;
+    }
+
+    private static StoryboardCoordinateBounds copyCoordinateBounds(StoryboardCoordinateBounds source) {
+        if (source == null) {
+            return null;
+        }
+        StoryboardCoordinateBounds copy = new StoryboardCoordinateBounds();
+        copy.setPadding(source.getPadding());
+        copy.setX(copyCoordinateBoundsAxis(source.getX()));
+        copy.setY(copyCoordinateBoundsAxis(source.getY()));
+        copy.setZ(copyCoordinateBoundsAxis(source.getZ()));
+        return copy.hasData() ? copy : null;
+    }
+
+    private static StoryboardCoordinateBoundsAxis copyCoordinateBoundsAxis(StoryboardCoordinateBoundsAxis source) {
+        if (source == null || !source.hasData()) {
+            return null;
+        }
+        StoryboardCoordinateBoundsAxis copy = new StoryboardCoordinateBoundsAxis();
+        copy.setMin(source.getMin());
+        copy.setMax(source.getMax());
+        return copy;
     }
 
     private static StoryboardPlacementAxis copyPlacementAxis(StoryboardPlacementAxis source) {

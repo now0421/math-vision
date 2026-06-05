@@ -138,7 +138,8 @@ public final class StoryboardConstraintCatalog {
                 .ownerRefs("point")
                 .requireRef("point")
                 .requireParam("coordinate")
-                .optionalParams("coordinate_space", "tolerance"));
+                .optionalParams("positioning", "tolerance")
+                .enumParam("positioning", "absolute", "relative"));
         add(relations, spec("constraint", "lies_on")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .geoGebraDefaultPlaceable()
@@ -154,7 +155,8 @@ public final class StoryboardConstraintCatalog {
                 .requireAnyRef("object", "point", "objects")
                 .requireAnyRef("reference", "line", "boundary")
                 .requireParam("side")
-                .optionalParams("coordinate_space", "tolerance")
+                .optionalParams("positioning", "tolerance")
+                .enumParam("positioning", "absolute", "relative")
                 .enumParam("side", "above", "below", "left", "right", "positive", "negative"));
         add(relations, spec("construction", "connects_points")
                 .scopes(Scope.OBJECT, Scope.SCENE)
@@ -360,7 +362,8 @@ public final class StoryboardConstraintCatalog {
                 .ownerRefs("object", "point")
                 .requireAnyRef("object", "point")
                 .requireParam("range")
-                .optionalParams("coordinate_space", "speed", "loop"));
+                .optionalParams("positioning", "speed", "loop")
+                .enumParam("positioning", "absolute", "relative"));
         add(relations, spec("motion", "slider_driven")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .geoGebraDefaultPlaceable()
@@ -384,7 +387,8 @@ public final class StoryboardConstraintCatalog {
                 .dependencyRefs("anchor")
                 .requireRef("label")
                 .requireRef("anchor")
-                .optionalParams("offset", "coordinate_space", "side", "clearance"));
+                .optionalParams("offset", "positioning", "side", "clearance")
+                .enumParam("positioning", "absolute", "relative"));
         add(relations, spec("attachment", "fixed_offset_from")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
@@ -392,26 +396,29 @@ public final class StoryboardConstraintCatalog {
                 .requireAnyRef("object", "label", "attached")
                 .requireRef("anchor")
                 .requireParam("offset")
-                .optionalParams("coordinate_space", "side", "clearance"));
+                .optionalParams("positioning", "side", "clearance")
+                .enumParam("positioning", "absolute", "relative"));
         add(relations, spec("attachment", "anchored_to")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
                 .ownerRefs("object", "attached")
                 .requireAnyRef("object", "attached")
                 .requireRef("anchor")
-                .optionalParams("offset", "coordinate_space", "side"));
+                .optionalParams("offset", "positioning", "side")
+                .enumParam("positioning", "absolute", "relative"));
 
         add(relations, spec("attachment", "fixed_overlay")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .ownerRefs("object", "objects")
                 .requireAnyRef("object", "objects")
-                .optionalParams("coordinate_space", "position", "anchor", "margin"));
+                .optionalParams("position", "anchor", "margin"));
 
         add(relations, spec("layout", "keep_inside_safe_area")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .ownerRefs("object", "objects")
                 .requireAnyRef("object", "objects")
-                .optionalParams("margin", "coordinate_space"));
+                .optionalParams("margin", "positioning")
+                .enumParam("positioning", "absolute", "relative"));
         add(relations, spec("layout", "avoid_overlap")
                 .scopes(Scope.SCENE)
                 .ownerRefs("objects")
@@ -423,7 +430,8 @@ public final class StoryboardConstraintCatalog {
                 .requireAnyRef("object", "objects")
                 .optionalRefs("from", "reference")
                 .requireParam("clearance")
-                .optionalParams("coordinate_space", "priority"));
+                .optionalParams("positioning", "priority")
+                .enumParam("positioning", "absolute", "relative"));
         add(relations, spec("layout", "group_alignment")
                 .scopes(Scope.SCENE)
                 .ownerRefs("objects")

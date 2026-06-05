@@ -2,6 +2,7 @@ package com.mathvision.util;
 
 import com.mathvision.service.AiTraceLogger;
 import com.mathvision.service.AiClient;
+import com.mathvision.service.AiRetryPolicy;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 
@@ -42,6 +43,23 @@ public final class AiRequestUtils {
                 || lower.contains("too many requests")
                 || lower.contains("resource exhausted")
                 || lower.contains("quota exceeded");
+    }
+
+    static boolean isTransportOrTimeoutFailure(Throwable error) {
+        return AiRetryPolicy.isTimeoutFailure(error)
+                || AiRetryPolicy.isRetryableTransportFailure(error)
+                || isRetryableHttpFailure(error);
+    }
+
+    private static boolean isRetryableHttpFailure(Throwable error) {
+        if (error == null || error.getMessage() == null) {
+            return false;
+        }
+        String message = error.getMessage().toLowerCase();
+        return message.contains("http 408")
+                || message.contains("http 425")
+                || message.contains("http 429")
+                || message.matches(".*http 5\\d\\d.*");
     }
 
     private static long rateLimitDelayMillis(int attempt) {
@@ -239,6 +257,11 @@ public final class AiRequestUtils {
                 })
                 .exceptionally(error -> {
                     Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
+                    if (isTransportOrTimeoutFailure(cause)) {
+                        log.warn("Tool calling failed for '{}' due to request/transport error; not falling back to plain chat: {}",
+                                subject, cause.getMessage());
+                        throw new java.util.concurrent.CompletionException(cause);
+                    }
                     log.debug("  Tool calling failed for '{}', falling back to plain chat: {}",
                             subject, cause.getMessage());
                     return null;
@@ -321,6 +344,11 @@ public final class AiRequestUtils {
                 })
                 .exceptionally(error -> {
                     Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
+                    if (isTransportOrTimeoutFailure(cause)) {
+                        log.warn("Tool calling failed for '{}' due to request/transport error; not falling back to plain chat: {}",
+                                subject, cause.getMessage());
+                        throw new java.util.concurrent.CompletionException(cause);
+                    }
                     log.debug("  Tool calling failed for '{}', falling back to plain chat: {}",
                             subject, cause.getMessage());
                     return null;
@@ -429,6 +457,11 @@ public final class AiRequestUtils {
                 })
                 .exceptionally(error -> {
                     Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
+                    if (isTransportOrTimeoutFailure(cause)) {
+                        log.warn("Tool calling failed for '{}' due to request/transport error; not falling back to plain chat: {}",
+                                subject, cause.getMessage());
+                        throw new java.util.concurrent.CompletionException(cause);
+                    }
                     log.debug("  Tool calling failed for '{}', falling back to plain chat: {}",
                             subject, cause.getMessage());
                     return null;

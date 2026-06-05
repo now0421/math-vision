@@ -59,6 +59,7 @@ class ProblemNormalizationNodeTest {
 
         assertEquals("p1", bundle.getId());
         assertEquals(WorkflowConfig.INPUT_MODE_PROBLEM, bundle.getInputMode());
+        assertEquals("2d", bundle.getSceneMode());
         assertEquals("Find the minimum value of AQ.", bundle.getStatement());
         assertNotNull(bundle.getDiagram());
         assertTrue(bundle.getDiagram().isPresent());

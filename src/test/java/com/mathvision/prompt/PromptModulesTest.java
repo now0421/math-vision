@@ -107,9 +107,10 @@ class PromptModulesTest {
         assertTrue(authorityRules.contains("scene `entering_objects`, `persistent_objects`, and `exiting_objects` as per-scene state patches"));
         assertTrue(authorityRules.contains("`notes_for_codegen`"));
         assertTrue(authorityRules.contains("hard semantic requirements"));
-        assertTrue(authorityRules.contains("Use scene-level `placement.x/y/z.value`, `min`, and `max` as preferred visual-state coordinates"));
+        assertTrue(authorityRules.contains("Use scene-level `placement.x/y.value`, `min`, and `max` as preferred visual-state coordinates"));
+        assertTrue(authorityRules.contains("use `placement.z` only when ProblemBundle scene_mode is 3d"));
         assertTrue(authorityRules.contains("adjust them minimally or move/scale the whole constrained group"));
-        assertFalse(authorityRules.contains("Do not treat scene-level `placement.x/y/z.value`, `min`, or `max` as a hard geometric constraint"));
+        assertFalse(authorityRules.contains("Do not treat scene-level `placement.x/y.value`, `min`, or `max` as a hard geometric constraint"));
         assertTrue(referenceRules.contains("consider object_registry constraints together with scene patch placement/style details"));
         assertTrue(manimCodegenPrompt.contains("Use scene placement as the preferred initial visual state"));
         assertTrue(manimCodegenPrompt.contains("scene `notes_for_codegen`"));

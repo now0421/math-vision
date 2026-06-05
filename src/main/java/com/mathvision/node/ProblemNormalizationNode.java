@@ -16,6 +16,7 @@ import com.mathvision.util.AiRequestUtils;
 import com.mathvision.util.ConcurrencyUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.SceneModeUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
@@ -94,6 +95,7 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
 
         NodeConversationContext context = new NodeConversationContext(maxInputTokens);
         context.setSystemMessage(ProblemNormalizationPrompts.buildRulesPrompt());
+        context.setFixedContextMessage(ProblemNormalizationPrompts.buildFixedContextPrompt(outputTarget));
 
         String userPrompt = ProblemNormalizationPrompts.buildUserPrompt(rawText, outputTarget);
 
@@ -132,6 +134,7 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
 
         List<AiMessage> messages = List.of(
                 AiMessage.system(ProblemNormalizationPrompts.buildRulesPrompt()),
+                AiMessage.system(ProblemNormalizationPrompts.buildFixedContextPrompt(outputTarget)),
                 AiMessage.user(userParts)
         );
 
@@ -184,6 +187,7 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
             if (bundle.getInputMode() == null || bundle.getInputMode().isBlank()) {
                 bundle.setInputMode(WorkflowConfig.INPUT_MODE_PROBLEM);
             }
+            bundle.setSceneMode(SceneModeUtils.normalize(bundle.getSceneMode()));
             return bundle;
         } catch (Exception e) {
             log.warn("Failed to parse ProblemBundle from LLM response, using fallback: {}", e.getMessage());
@@ -198,6 +202,7 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
                 ? source.getRawText().substring(0, 50) : source.getRawText());
         bundle.setStatement(source.getRawText());
         bundle.setInputMode(WorkflowConfig.INPUT_MODE_PROBLEM);
+        bundle.setSceneMode(SceneModeUtils.MODE_2D);
         return bundle;
     }
 }

@@ -58,6 +58,10 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     private static final Logger log = LoggerFactory.getLogger(SceneEvaluationNode.class);
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
+    private static final double MANIM_FRAME_MIN_X = -7.0;
+    private static final double MANIM_FRAME_MAX_X = 7.0;
+    private static final double MANIM_FRAME_MIN_Y = -4.0;
+    private static final double MANIM_FRAME_MAX_Y = 4.0;
     private static final double OFFSCREEN_TOLERANCE = 0.03;
     private static final double MIN_OVERLAP_AREA = 0.015;
     private static final double MIN_OVERLAP_RATIO = 0.08;
@@ -163,8 +167,23 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         try {
             JsonNode root = MAPPER.readTree(geometryFile.toFile());
             result.setSceneName(readText(root, "scene_name", result.getSceneName()));
-            double[] frameMin = readPoint(root.path("frame_bounds").path("min"), new double[] {-7.111111, -4.0, 0.0});
-            double[] frameMax = readPoint(root.path("frame_bounds").path("max"), new double[] {7.111111, 4.0, 0.0});
+            double[] frameMin = readPoint(root.path("frame_bounds").path("min"),
+                    new double[] {MANIM_FRAME_MIN_X, MANIM_FRAME_MIN_Y, 0.0});
+            double[] frameMax = readPoint(root.path("frame_bounds").path("max"),
+                    new double[] {MANIM_FRAME_MAX_X, MANIM_FRAME_MAX_Y, 0.0});
+            Storyboard storyboard = storyboardFrom(input.narrative());
+            boolean isGeoGebraTarget = NodeSupport.isGeoGebraTarget(input.config());
+            if (isGeoGebraTarget) {
+                double[][] codeViewBounds = GeoGebraCodeUtils.extractSetCoordSystemBounds(
+                        codeResult != null ? codeResult.getGeneratedCode() : null);
+                if (codeViewBounds != null) {
+                    frameMin = codeViewBounds[0];
+                    frameMax = codeViewBounds[1];
+                }
+            } else {
+                frameMin = new double[] {MANIM_FRAME_MIN_X, MANIM_FRAME_MIN_Y, 0.0};
+                frameMax = new double[] {MANIM_FRAME_MAX_X, MANIM_FRAME_MAX_Y, 0.0};
+            }
 
             List<SampleEvaluation> sampleEvaluations = new ArrayList<>();
             int overlapIssues = 0;
@@ -179,7 +198,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             if (samplesNode.isArray()) {
                 for (JsonNode sampleNode : samplesNode) {
                     SampleEvaluation sampleEvaluation = evaluateSample(
-                            sampleNode, frameMin, frameMax, skipOffscreen);
+                            sampleNode, frameMin, frameMax, skipOffscreen, isGeoGebraTarget);
                     sampleEvaluations.add(sampleEvaluation);
                     if (sampleEvaluation.isHasIssues()) {
                         issueSamples++;
@@ -223,7 +242,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 retryState.setAttempts(attemptsSoFar + 1);
                 retryState.setRequestFix(true);
                 retryState.pendingIssueSummary = issueSummary;
-                retryState.pendingSceneEvaluationJson = buildFixReportJson(result, storyboardFrom(input.narrative()));
+                retryState.pendingSceneEvaluationJson = buildFixReportJson(result, storyboard);
                 result.setRevisionTriggered(true);
                 result.setRevisionAttempts(retryState.getAttempts());
                 result.setGateReason(String.format(
@@ -345,7 +364,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     }
 
     private SampleEvaluation evaluateSample(JsonNode sampleNode, double[] frameMin, double[] frameMax,
-                                            boolean skipOffscreen) {
+                                            boolean skipOffscreen, boolean isGeoGebraTarget) {
         SampleEvaluation sample = new SampleEvaluation();
         sample.setSampleId(readText(sampleNode, "sample_id", ""));
         sample.setPlayIndex(sampleNode.hasNonNull("play_index") ? sampleNode.get("play_index").asInt() : null);
@@ -378,7 +397,9 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 issue.setSeverity("blocking");
                 issue.setReasonCode("OFFSCREEN");
                 issue.setLikelyFalsePositive(false);
-                issue.setRecommendedAction("move_or_scale_into_safe_frame");
+                issue.setRecommendedAction(isGeoGebraTarget
+                        ? "expand_set_coord_system_range_first"
+                        : "expand_axes_coordinate_range_first");
                 issue.setPrimaryElement(toElementRef(element, sample.getSampleRole()));
                 issue.setOverflow(toOverflow(overflow));
                 issues.add(issue);
@@ -671,14 +692,26 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         if (evaluationBounds == null) {
             return null;
         }
-        double left = Math.max(frameMin[0] - evaluationBounds.min[0], 0.0);
-        double right = Math.max(evaluationBounds.max[0] - frameMax[0], 0.0);
-        double bottom = Math.max(frameMin[1] - evaluationBounds.min[1], 0.0);
-        double top = Math.max(evaluationBounds.max[1] - frameMax[1], 0.0);
-        if (Math.max(Math.max(left, right), Math.max(bottom, top)) <= OFFSCREEN_TOLERANCE) {
+        boolean leftIssue = isLowerBoundaryViolation(evaluationBounds.min[0], frameMin[0]);
+        boolean rightIssue = isUpperBoundaryViolation(evaluationBounds.max[0], frameMax[0]);
+        boolean bottomIssue = isLowerBoundaryViolation(evaluationBounds.min[1], frameMin[1]);
+        boolean topIssue = isUpperBoundaryViolation(evaluationBounds.max[1], frameMax[1]);
+        if (!leftIssue && !rightIssue && !bottomIssue && !topIssue) {
             return null;
         }
+        double left = leftIssue ? Math.max(frameMin[0] - evaluationBounds.min[0], 0.0) : 0.0;
+        double right = rightIssue ? Math.max(evaluationBounds.max[0] - frameMax[0], 0.0) : 0.0;
+        double bottom = bottomIssue ? Math.max(frameMin[1] - evaluationBounds.min[1], 0.0) : 0.0;
+        double top = topIssue ? Math.max(evaluationBounds.max[1] - frameMax[1], 0.0) : 0.0;
         return new OverflowMetrics(left, right, top, bottom);
+    }
+
+    private boolean isLowerBoundaryViolation(double value, double min) {
+        return value <= min || (min - value) > OFFSCREEN_TOLERANCE;
+    }
+
+    private boolean isUpperBoundaryViolation(double value, double max) {
+        return value >= max || (value - max) > OFFSCREEN_TOLERANCE;
     }
 
     private BoundsPair evaluationBounds(ElementGeometry element) {
@@ -1483,6 +1516,13 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         payload.put("blocking_issue_count", result.getBlockingIssueCount());
         payload.put("overlap_issue_count", result.getOverlapIssueCount());
         payload.put("offscreen_issue_count", result.getOffscreenIssueCount());
+        if (storyboard != null && storyboard.getCoordinateBounds() != null) {
+            payload.put("coordinate_bounds", storyboard.getCoordinateBounds());
+            payload.put("viewport_rule",
+                    "StoryboardValidation evaluates storyboard placements against storyboard coordinate_bounds; "
+                            + "SceneEvaluation evaluates GeoGebra against the current code SetCoordSystem viewport "
+                            + "and Manim against fixed render-frame bounds x[-7,7], y[-4,4].");
+        }
         Map<String, StoryboardObject> storyboardObjects = buildStoryboardObjectMap(storyboard);
 
         List<Map<String, Object>> samples = new ArrayList<>();

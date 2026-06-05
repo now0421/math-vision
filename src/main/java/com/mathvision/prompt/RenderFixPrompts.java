@@ -20,6 +20,7 @@ public final class RenderFixPrompts {
                     + SystemPrompts.MANIM_CHINESE_TEXT_RENDERING_RULES
                     + "Keep implemented mathematical constructions internally consistent while fixing render issues.\n"
                     + "Treat storyboard scene placement as preferred layout input for non-derived objects, but adjust it when needed to fix runtime failures, offscreen/overlap risk, readability, or internal consistency while preserving structured constraints.\n"
+                    + "Treat storyboard `coordinate_bounds` as the authoritative storyboard world-coordinate range: preserve given storyboard coordinates and map them through `Axes`/`NumberPlane` with `axes.c2p(x, y)`. Do not rewrite storyboard coordinates to fit the frame; if content falls outside, prefer widening `coordinate_bounds` or the coordinate mapping. Derived points stay computed from their dependencies.\n"
                     + "Mandatory rules:\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
@@ -46,6 +47,7 @@ public final class RenderFixPrompts {
                     + "Treat `Point(path, slider)` as slider-driven rather than direct point dragging; use it only when the storyboard explicitly intends slider interaction and the slider is visible/usable.\n"
                     + "Do not apply `SetFixed(object, true)` to storyboard objects that should remain movable/draggable.\n"
                     + "Treat storyboard scene placement as preferred layout input for non-derived objects, but adjust it when needed to fix runtime failures, viewport safety, readability, or internal consistency while preserving structured constraints.\n"
+                    + "Treat storyboard `coordinate_bounds` as the authoritative storyboard world-coordinate view (`SetCoordSystem(x_min, x_max, y_min, y_max)`): preserve given storyboard coordinates and prefer widening `coordinate_bounds` over shrinking it to just enclose elements. Do not rewrite given coordinates; derived points stay computed from their dependencies.\n"
                     + "Use English GeoGebra command names.\n"
                     + "Preserve Chinese learner-facing visible text from storyboard object content; do not translate it to English or pinyin.\n"
                     + SystemPrompts.GEOGEBRA_MANUAL_ONLY_RULES

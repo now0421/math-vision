@@ -3,6 +3,8 @@ package com.mathvision.prompt;
 import com.mathvision.model.Narrative.Storyboard;
 import com.mathvision.model.Narrative.StoryboardAction;
 import com.mathvision.model.Narrative.StoryboardConstraint;
+import com.mathvision.model.Narrative.StoryboardCoordinateBounds;
+import com.mathvision.model.Narrative.StoryboardCoordinateBoundsAxis;
 import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.Narrative.StoryboardPlacement;
 import com.mathvision.model.Narrative.StoryboardPlacementAxis;
@@ -117,6 +119,33 @@ class StoryboardJsonBuilderTest {
     }
 
     @Test
+    void codegenJsonIncludesCoordinateBoundsWhenPresent() throws Exception {
+        Storyboard storyboard = new Storyboard();
+        StoryboardCoordinateBounds bounds = new StoryboardCoordinateBounds();
+        bounds.setX(new StoryboardCoordinateBoundsAxis(-4.0, 5.0));
+        bounds.setY(new StoryboardCoordinateBoundsAxis(-2.0, 3.0));
+        bounds.setPadding(1.0);
+        storyboard.setCoordinateBounds(bounds);
+        storyboard.setObjectRegistry(List.of(objectWithPlacement("A", "point", -3.0, 1.0)));
+
+        StoryboardScene scene = new StoryboardScene();
+        scene.setSceneId("scene_1");
+        scene.setTitle("Coordinate bounds");
+        scene.setEnteringObjects(List.of(scenePatch("A", -3.0, 1.0)));
+        storyboard.setScenes(List.of(scene));
+
+        JsonNode codegen = JsonUtils.mapper().readTree(StoryboardJsonBuilder.buildForCodegen(storyboard));
+
+        JsonNode boundsNode = codegen.path("coordinate_bounds");
+        assertFalse(boundsNode.has("coordinate_space"));
+        assertEquals(-4.0, boundsNode.path("x").path("min").asDouble());
+        assertEquals(5.0, boundsNode.path("x").path("max").asDouble());
+        assertEquals(-2.0, boundsNode.path("y").path("min").asDouble());
+        assertEquals(3.0, boundsNode.path("y").path("max").asDouble());
+        assertEquals(1.0, boundsNode.path("padding").asDouble());
+    }
+
+    @Test
     void codegenJsonIncludesVoiceoverFieldsAndChineseContent() throws Exception {
         Storyboard storyboard = new Storyboard();
         StoryboardObject title = objectWithPlacement("title", "text", 0.0, 2.5);
@@ -196,7 +225,7 @@ class StoryboardJsonBuilderTest {
 
     private static StoryboardPlacement placement(double x, double y) {
         StoryboardPlacement placement = new StoryboardPlacement();
-        placement.setCoordinateSpace("world");
+        placement.setPositioning(StoryboardPlacement.POSITIONING_ABSOLUTE);
         StoryboardPlacementAxis xAxis = new StoryboardPlacementAxis();
         xAxis.setValue(x);
         StoryboardPlacementAxis yAxis = new StoryboardPlacementAxis();

@@ -12,6 +12,8 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 public class ModelConfig {
 
     public static final int DEFAULT_MAX_INPUT_TOKENS = 131072;
+    public static final int DEFAULT_REQUEST_TIMEOUT_SECONDS = 300;
+    public static final int DEFAULT_TRANSIENT_FAILURE_RETRIES = 2;
 
     private String model;
     private String provider;
@@ -26,6 +28,11 @@ public class ModelConfig {
     private String effort;
     private String thinking;
     private boolean supportsVision;
+    private int requestTimeoutSeconds = DEFAULT_REQUEST_TIMEOUT_SECONDS;
+    private int timeoutRetryAttempts = 0;
+    private double timeoutRetryMultiplier = 2.0;
+    private int maxRequestTimeoutSeconds = DEFAULT_REQUEST_TIMEOUT_SECONDS;
+    private int transientFailureRetries = DEFAULT_TRANSIENT_FAILURE_RETRIES;
 
     public ModelConfig copyWithModel(String modelName) {
         ModelConfig copy = new ModelConfig();
@@ -42,6 +49,11 @@ public class ModelConfig {
         copy.effort = effort;
         copy.thinking = thinking;
         copy.supportsVision = supportsVision;
+        copy.requestTimeoutSeconds = requestTimeoutSeconds;
+        copy.timeoutRetryAttempts = timeoutRetryAttempts;
+        copy.timeoutRetryMultiplier = timeoutRetryMultiplier;
+        copy.maxRequestTimeoutSeconds = maxRequestTimeoutSeconds;
+        copy.transientFailureRetries = transientFailureRetries;
         return copy;
     }
 
@@ -114,6 +126,21 @@ public class ModelConfig {
         }
         if (maxOutputTokens <= 0) {
             throw new IllegalStateException("max_output_tokens must be > 0 for model '" + modelName + "'");
+        }
+        if (requestTimeoutSeconds <= 0) {
+            throw new IllegalStateException("request_timeout_seconds must be > 0 for model '" + modelName + "'");
+        }
+        if (timeoutRetryAttempts < 0) {
+            throw new IllegalStateException("timeout_retry_attempts must be >= 0 for model '" + modelName + "'");
+        }
+        if (timeoutRetryMultiplier <= 1.0 && timeoutRetryAttempts > 0) {
+            throw new IllegalStateException("timeout_retry_multiplier must be > 1.0 when timeout retries are enabled for model '" + modelName + "'");
+        }
+        if (maxRequestTimeoutSeconds > 0 && maxRequestTimeoutSeconds < requestTimeoutSeconds) {
+            throw new IllegalStateException("max_request_timeout_seconds must be >= request_timeout_seconds for model '" + modelName + "'");
+        }
+        if (transientFailureRetries < 0) {
+            throw new IllegalStateException("transient_failure_retries must be >= 0 for model '" + modelName + "'");
         }
     }
 
@@ -219,6 +246,46 @@ public class ModelConfig {
 
     public void setSupportsVision(boolean supportsVision) {
         this.supportsVision = supportsVision;
+    }
+
+    public int getRequestTimeoutSeconds() {
+        return requestTimeoutSeconds;
+    }
+
+    public void setRequestTimeoutSeconds(int requestTimeoutSeconds) {
+        this.requestTimeoutSeconds = requestTimeoutSeconds;
+    }
+
+    public int getTimeoutRetryAttempts() {
+        return timeoutRetryAttempts;
+    }
+
+    public void setTimeoutRetryAttempts(int timeoutRetryAttempts) {
+        this.timeoutRetryAttempts = timeoutRetryAttempts;
+    }
+
+    public double getTimeoutRetryMultiplier() {
+        return timeoutRetryMultiplier;
+    }
+
+    public void setTimeoutRetryMultiplier(double timeoutRetryMultiplier) {
+        this.timeoutRetryMultiplier = timeoutRetryMultiplier;
+    }
+
+    public int getMaxRequestTimeoutSeconds() {
+        return maxRequestTimeoutSeconds;
+    }
+
+    public void setMaxRequestTimeoutSeconds(int maxRequestTimeoutSeconds) {
+        this.maxRequestTimeoutSeconds = maxRequestTimeoutSeconds;
+    }
+
+    public int getTransientFailureRetries() {
+        return transientFailureRetries;
+    }
+
+    public void setTransientFailureRetries(int transientFailureRetries) {
+        this.transientFailureRetries = transientFailureRetries;
     }
 
     private static boolean isBlank(String value) {

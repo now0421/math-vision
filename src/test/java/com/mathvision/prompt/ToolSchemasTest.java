@@ -195,6 +195,10 @@ class ToolSchemasTest {
         assertFalse(ToolSchemas.STORYBOARD.contains("\"anchor_id\""));
         assertFalse(ToolSchemas.STORYBOARD.contains("\"dependency_objects\""));
         assertFalse(ToolSchemas.STORYBOARD.contains("\"dependency_relation\""));
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"coordinate_bounds\""));
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"required\": [\"coordinate_bounds\", \"scenes\"]"));
+        assertFalse(ToolSchemas.STORYBOARD.contains("coordinate_space"));
+        assertTrue(ToolSchemas.STORYBOARD.contains("\"enum\": [\"absolute\", \"relative\"]"));
         assertTrue(ToolSchemas.STORYBOARD.contains("\"enum\": [\"create\", \"write\", \"transform\", \"highlight\", \"move\", \"fade_out\", \"camera\", \"restyle\"]"));
         assertTrue(ToolSchemas.STORYBOARD.contains("\"enum\": [\"solid\", \"dashed\", \"dotted\", \"dash_dot\"]"));
     }
@@ -270,5 +274,62 @@ class ToolSchemasTest {
         assertEquals("array", sceneProperties.path("constraints").path("type").asText());
         assertEquals("object", sceneProperties.path("constraints").path("items").path("type").asText());
         assertTrue(sceneProperties.path("constraints").path("items").path("properties").has("relation"));
+    }
+
+    @Test
+    void sceneDesignSchemaIncludesCoordinateBoundsUpdate() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.JsonNode schema = mapper.readTree(ToolSchemas.SCENE_DESIGN);
+
+        com.fasterxml.jackson.databind.JsonNode properties = schema.get(0)
+                .path("function")
+                .path("parameters")
+                .path("properties");
+        com.fasterxml.jackson.databind.JsonNode boundsUpdate = properties.path("coordinate_bounds_update");
+
+        assertEquals("object", boundsUpdate.path("type").asText());
+        assertFalse(boundsUpdate.path("properties").has("coordinate_space"));
+        assertTrue(boundsUpdate.path("properties").path("x").path("properties").has("min"));
+        assertTrue(boundsUpdate.path("properties").path("x").path("properties").has("max"));
+        assertTrue(boundsUpdate.path("properties").has("reason"));
+    }
+
+    @Test
+    void sceneDesignSchemaUsesProblemSceneModeForZFields() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.JsonNode twoD = mapper.readTree(ToolSchemas.sceneDesign("manim", "2d"));
+        com.fasterxml.jackson.databind.JsonNode threeD = mapper.readTree(ToolSchemas.sceneDesign("manim", "3d"));
+
+        com.fasterxml.jackson.databind.JsonNode twoDProperties = twoD.get(0)
+                .path("function")
+                .path("parameters")
+                .path("properties");
+        com.fasterxml.jackson.databind.JsonNode threeDProperties = threeD.get(0)
+                .path("function")
+                .path("parameters")
+                .path("properties");
+
+        assertFalse(twoDProperties.path("coordinate_bounds_update").path("properties").has("z"));
+        assertTrue(threeDProperties.path("coordinate_bounds_update").path("properties").has("z"));
+
+        com.fasterxml.jackson.databind.JsonNode twoDPlacement = twoDProperties.path("scene")
+                .path("properties")
+                .path("entering_objects")
+                .path("items")
+                .path("properties")
+                .path("placement")
+                .path("properties");
+        com.fasterxml.jackson.databind.JsonNode threeDPlacement = threeDProperties.path("scene")
+                .path("properties")
+                .path("entering_objects")
+                .path("items")
+                .path("properties")
+                .path("placement")
+                .path("properties");
+
+        assertFalse(twoDPlacement.has("z"));
+        assertTrue(threeDPlacement.has("z"));
+        assertFalse(twoDProperties.path("scene").path("properties").has("scene_mode"));
+        assertFalse(threeDProperties.path("scene").path("properties").has("scene_mode"));
     }
 }

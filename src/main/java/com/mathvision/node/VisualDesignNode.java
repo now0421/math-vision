@@ -5,6 +5,8 @@ import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
 import com.mathvision.model.Narrative;
 import com.mathvision.model.Narrative.Storyboard;
+import com.mathvision.model.Narrative.StoryboardCoordinateBounds;
+import com.mathvision.model.Narrative.StoryboardCoordinateBoundsAxis;
 import com.mathvision.model.Narrative.StoryboardConstraint;
 import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.Narrative.StoryboardScene;
@@ -17,8 +19,10 @@ import com.mathvision.service.AiClient;
 import com.mathvision.service.FileOutputService;
 import com.mathvision.util.AiRequestUtils;
 import com.mathvision.util.ConcurrencyUtils;
+import com.mathvision.util.CoordinateBoundsUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.SceneModeUtils;
 import com.mathvision.util.StoryboardGeometricMarkerValidator;
 import com.mathvision.util.StoryboardNormalizer;
 import com.mathvision.util.StoryboardPatchResolver;
@@ -64,6 +68,8 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
     private int maxConcurrent = 4;
     private int maxSceneRetries = 3;
     private String outputTarget = WorkflowConfig.OUTPUT_TARGET_MANIM;
+    private String sceneMode = SceneModeUtils.MODE_2D;
+    private String sceneDesignSchema = "";
     private final java.util.Set<String> globalColorPalette = ConcurrentHashMap.newKeySet();
     private ConcurrencyUtils.AsyncLimiter aiCallLimiter;
     private String globalStyleGuide = "";
@@ -74,6 +80,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
     private final List<StoryboardScene> collectedScenes = Collections.synchronizedList(new ArrayList<>());
     private final List<StoryboardObject> objectRegistry = Collections.synchronizedList(new ArrayList<>());
     private final Map<String, StoryboardObject> visibleObjectRegistry = Collections.synchronizedMap(new LinkedHashMap<>());
+    private final CoordinateBoundsAccumulator coordinateBoundsAccumulator = new CoordinateBoundsAccumulator();
     private Map<String, Integer> teachingOrderIndex = new LinkedHashMap<>();
 
     public VisualDesignNode() {
@@ -86,19 +93,22 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         this.workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
         this.problemBundle = (ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE);
         this.maxSceneRetries = 3;
+        this.sceneMode = SceneModeUtils.normalize(problemBundle != null ? problemBundle.getSceneMode() : null);
         if (workflowConfig != null) {
             this.parallelEnabled = workflowConfig.isParallelVisualDesign();
             this.maxConcurrent = workflowConfig.getMaxConcurrent();
             this.maxSceneRetries = Math.max(workflowConfig.getVisualDesignSceneMaxRetries(), 0);
             this.outputTarget = workflowConfig.getOutputTarget();
         }
+        this.sceneDesignSchema = ToolSchemas.sceneDesign(outputTarget, sceneMode);
         return (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
     }
 
     @Override
     public KnowledgeGraph exec(KnowledgeGraph graph) {
         int concurrency = 1;
-        log.info("=== Stage 3: Visual Design (output_target={}, sequential teaching order) ===", outputTarget);
+        log.info("=== Stage 3: Visual Design (output_target={}, scene_mode={}, sequential teaching order) ===",
+                outputTarget, sceneMode);
         if (parallelEnabled && maxConcurrent > 1) {
             log.info("  Visual design ignores configured parallel concurrency={} to preserve scene-to-scene continuity", maxConcurrent);
         }
@@ -107,6 +117,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         collectedScenes.clear();
         objectRegistry.clear();
         visibleObjectRegistry.clear();
+        coordinateBoundsAccumulator.clear();
         aiCallLimiter = new ConcurrencyUtils.AsyncLimiter(concurrency);
         this.graph = graph;
         this.globalStyleGuide = buildGlobalStyleGuide(graph);
@@ -122,12 +133,13 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         String workflowTarget = graph != null ? graph.getTargetConcept() : "";
         this.conversationContext = new NodeConversationContext(maxInputTokens);
         String solutionChain = TargetDescriptionBuilder.buildSolutionChain(graph, null);
-        this.conversationContext.setSystemMessage(VisualDesignPrompts.buildRulesPrompt(outputTarget));
+        this.conversationContext.setSystemMessage(VisualDesignPrompts.buildRulesPrompt(outputTarget, sceneMode));
         this.conversationContext.setFixedContextMessage(VisualDesignPrompts.buildFixedContextPrompt(
                 workflowTarget,
                 TargetDescriptionBuilder.build(graph, null),
                 outputTarget,
-                solutionChain));
+                solutionChain,
+                sceneMode));
 
         try {
             return designGraph(graph);
@@ -235,7 +247,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                         conversationSnapshot,
                         conversationContext.getMaxInputTokens(),
                         userPromptText,
-                        ToolSchemas.sceneDesign(outputTarget),
+                        sceneDesignSchema,
                         () -> toolCalls.incrementAndGet()
                 ))
                 .thenApply(result -> {
@@ -321,7 +333,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                                                String assistantTranscript,
                                                JsonNode data) {
         if (data == null || data.isNull()) {
-            return new SceneDesignResult(node, userPrompt, assistantTranscript, null, List.of(), List.of());
+            return new SceneDesignResult(node, userPrompt, assistantTranscript, null, List.of(), List.of(), null);
         }
 
         JsonNode sceneNode = data.has("scene") ? data.get("scene") : data;
@@ -330,7 +342,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
             scene = JsonUtils.mapper().treeToValue(sanitizeLoosePlacementFields(sceneNode), StoryboardScene.class);
         } catch (Exception e) {
             log.warn("  Failed to parse scene for '{}': {}", node.getStep(), e.getMessage());
-            return new SceneDesignResult(node, userPrompt, assistantTranscript, null, List.of(), List.of());
+            return new SceneDesignResult(node, userPrompt, assistantTranscript, null, List.of(), List.of(), null);
         }
 
         int index = teachingOrderIndex.getOrDefault(node.getId(), collectedScenes.size());
@@ -373,7 +385,24 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                 collectStyleColors(obj.getStyle(), paletteColors);
             }
         }
-        return new SceneDesignResult(node, userPrompt, assistantTranscript, scene, newObjects, paletteColors);
+        StoryboardCoordinateBounds coordinateBoundsUpdate = parseCoordinateBoundsUpdate(data);
+        return new SceneDesignResult(node, userPrompt, assistantTranscript, scene, newObjects, paletteColors,
+                coordinateBoundsUpdate);
+    }
+
+    private StoryboardCoordinateBounds parseCoordinateBoundsUpdate(JsonNode data) {
+        if (data == null || !data.has("coordinate_bounds_update")
+                || data.get("coordinate_bounds_update").isNull()) {
+            return null;
+        }
+        try {
+            return CoordinateBoundsUtils.normalize(JsonUtils.mapper().treeToValue(
+                    sanitizeLoosePlacementFields(data.get("coordinate_bounds_update")),
+                    StoryboardCoordinateBounds.class));
+        } catch (Exception e) {
+            log.debug("  Failed to parse coordinate_bounds_update: {}", e.getMessage());
+            return null;
+        }
     }
 
     private JsonNode sanitizeLoosePlacementFields(JsonNode node) {
@@ -400,6 +429,16 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         }
 
         ObjectNode objectNode = (ObjectNode) node;
+        if (objectNode.has("zindex")) {
+            JsonNode zIndex = objectNode.get("zindex");
+            if (!objectNode.has("z_index")) {
+                objectNode.set("z_index", zIndex);
+            }
+            objectNode.remove("zindex");
+        }
+        if (!SceneModeUtils.isThreeD(sceneMode)) {
+            objectNode.remove("z");
+        }
         JsonNode placement = objectNode.get("placement");
         if (placement != null && placement.isValueNode() && !placement.isNull()) {
             objectNode.remove("placement");
@@ -419,6 +458,10 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
 
         Map<String, StoryboardObject> registryDefinitions = snapshotObjectRegistryById();
         if (result.scene != null) {
+            // VisualDesignNode only aggregates the LLM-provided per-scene math extrema.
+            // It does not re-scan element placements: verifying that coordinate_bounds
+            // actually contains every element is StoryboardValidationNode's responsibility.
+            coordinateBoundsAccumulator.merge(result.coordinateBoundsUpdate);
             stripCoordinateDerivedPlacements(
                     result.scene,
                     result.newObjects,
@@ -691,6 +734,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         Storyboard storyboard = new Storyboard();
         storyboard.setScenes(sorted);
         storyboard.setObjectRegistry(new ArrayList<>(objectRegistry));
+        storyboard.setCoordinateBounds(coordinateBoundsAccumulator.toStoryboardBounds());
 
         // Strip transient style/placement from registry before output —
         // these were accumulated only for LLM context continuity.
@@ -702,8 +746,11 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         // Build global metadata
         storyboard.setContinuityPlan("Objects maintain stable ids across scenes via the global object registry.");
         List<String> globalRules = new ArrayList<>();
-        globalRules.add("Keep major objects inside the safe frame.");
+        globalRules.add("Keep absolute storyboard placements strictly inside coordinate_bounds.");
         globalRules.add("Reuse stable anchors for persistent objects.");
+        if (storyboard.getCoordinateBounds() != null) {
+            globalRules.add(CoordinateBoundsUtils.format(storyboard.getCoordinateBounds()));
+        }
         if (!globalColorPalette.isEmpty()) {
             globalRules.add("Color palette: " + String.join(", ", snapshotPalette()));
         }
@@ -827,8 +874,8 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
 
     private static String formatPlacementSummary(Narrative.StoryboardPlacement placement) {
         StringBuilder sb = new StringBuilder();
-        if (placement.getCoordinateSpace() != null) {
-            sb.append(placement.getCoordinateSpace());
+        if (placement.getPositioning() != null) {
+            sb.append(placement.getPositioning());
         }
         appendAxisSummary(sb, "x", placement.getX());
         appendAxisSummary(sb, "y", placement.getY());
@@ -1023,23 +1070,26 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         private final StoryboardScene scene;
         private final List<StoryboardObject> newObjects;
         private final List<String> paletteColors;
+        private final StoryboardCoordinateBounds coordinateBoundsUpdate;
 
         private SceneDesignResult(KnowledgeNode node,
                                   String userPrompt,
                                   String assistantTranscript,
                                   StoryboardScene scene,
                                   List<StoryboardObject> newObjects,
-                                  List<String> paletteColors) {
+                                  List<String> paletteColors,
+                                  StoryboardCoordinateBounds coordinateBoundsUpdate) {
             this.node = node;
             this.userPrompt = userPrompt;
             this.assistantTranscript = assistantTranscript == null ? "" : assistantTranscript;
             this.scene = scene;
             this.newObjects = newObjects != null ? newObjects : List.of();
             this.paletteColors = paletteColors != null ? paletteColors : List.of();
+            this.coordinateBoundsUpdate = coordinateBoundsUpdate;
         }
 
         private static SceneDesignResult failed(KnowledgeNode node, String userPrompt) {
-            return new SceneDesignResult(node, userPrompt, "", null, List.of(), List.of());
+            return new SceneDesignResult(node, userPrompt, "", null, List.of(), List.of(), null);
         }
 
         private static SceneDesignResult rejected(KnowledgeNode node,
@@ -1058,7 +1108,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                                           String userPrompt,
                                           SceneDesignResult rejectedResult,
                                           List<String> issues) {
-            super(node, userPrompt, "", null, List.of(), List.of());
+            super(node, userPrompt, "", null, List.of(), List.of(), null);
             this.rejectedResult = rejectedResult;
             this.issues = issues != null ? issues : List.of();
         }
@@ -1071,6 +1121,94 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         private SceneDesignRejection(SceneDesignResult rejectedResult, List<String> issues) {
             this.rejectedResult = rejectedResult;
             this.issues = issues != null ? issues : List.of();
+        }
+    }
+
+    private static final class CoordinateBoundsAccumulator {
+        private Double xMin;
+        private Double xMax;
+        private Double yMin;
+        private Double yMax;
+        private Double zMin;
+        private Double zMax;
+
+        private void clear() {
+            xMin = null;
+            xMax = null;
+            yMin = null;
+            yMax = null;
+            zMin = null;
+            zMax = null;
+        }
+
+        private void merge(StoryboardCoordinateBounds bounds) {
+            StoryboardCoordinateBounds normalized = CoordinateBoundsUtils.normalize(bounds);
+            if (normalized == null) {
+                return;
+            }
+            mergeAxis('x', normalized.getX());
+            mergeAxis('y', normalized.getY());
+            mergeAxis('z', normalized.getZ());
+        }
+
+        private void mergeAxis(char axisName, StoryboardCoordinateBoundsAxis axis) {
+            StoryboardCoordinateBoundsAxis normalized = CoordinateBoundsUtils.normalizeAxis(axis);
+            if (normalized == null) {
+                return;
+            }
+            merge(axisName, normalized.getMin(), normalized.getMax());
+        }
+
+        private void merge(char axisName, Double rawMin, Double rawMax) {
+            if (rawMin == null && rawMax == null) {
+                return;
+            }
+            double min = rawMin != null ? rawMin : rawMax;
+            double max = rawMax != null ? rawMax : rawMin;
+            if (min > max) {
+                double tmp = min;
+                min = max;
+                max = tmp;
+            }
+            switch (axisName) {
+                case 'x':
+                    xMin = xMin == null ? min : Math.min(xMin, min);
+                    xMax = xMax == null ? max : Math.max(xMax, max);
+                    break;
+                case 'y':
+                    yMin = yMin == null ? min : Math.min(yMin, min);
+                    yMax = yMax == null ? max : Math.max(yMax, max);
+                    break;
+                case 'z':
+                    zMin = zMin == null ? min : Math.min(zMin, min);
+                    zMax = zMax == null ? max : Math.max(zMax, max);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        private StoryboardCoordinateBounds toStoryboardBounds() {
+            if (xMin == null && yMin == null && zMin == null) {
+                return null;
+            }
+            StoryboardCoordinateBounds raw = new StoryboardCoordinateBounds();
+            raw.setPadding(CoordinateBoundsUtils.DEFAULT_PADDING);
+            raw.setX(axisOrDefault(xMin, xMax, -1.0, 1.0));
+            raw.setY(axisOrDefault(yMin, yMax, -1.0, 1.0));
+            if (zMin != null || zMax != null) {
+                raw.setZ(axisOrDefault(zMin, zMax, 0.0, 0.0));
+            }
+            return CoordinateBoundsUtils.withPadding(raw);
+        }
+
+        private StoryboardCoordinateBoundsAxis axisOrDefault(Double min,
+                                                             Double max,
+                                                             double defaultMin,
+                                                             double defaultMax) {
+            return new StoryboardCoordinateBoundsAxis(
+                    min != null ? min : defaultMin,
+                    max != null ? max : defaultMax);
         }
     }
 }

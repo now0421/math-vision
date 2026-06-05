@@ -43,7 +43,7 @@ public final class SystemPrompts {
                     + "- `kind`: geometric or visual type - point, line, segment, ray, circle, polygon, arc, angle_marker, text, etc. Determines the construction or rendering primitive.\n"
                     + "- `content`: mathematical description or display text (e.g. \"A(0, 3)\" or \"x^2 + y^2 = r^2\"). For `text` objects this is the visible string; for geometry objects it is a label or coordinate hint.\n"
                     + "- `constraints`: machine-readable object-level semantic contract. Each entry has `domain`, `relation`, `refs`, optional `parameters`, `strength`, and `reason`; this is the only source for placement, construction, constraint, metric, marker, attachment, motion, layout, visibility, style, and lifecycle semantics.\n"
-                    + "- `placement`: structured scene-level visual placement patch with `coordinate_space` plus optional x/y/z `value` or `min/max`; use it for initial layout or allowed visual range, not as the source of geometric dependencies.\n"
+                    + "- `placement`: structured scene-level visual placement patch with `positioning` plus optional x/y `value` or `min/max` for 2D problems; 3D problems may also use z when ProblemBundle scene_mode is 3d. Use placement for initial layout or allowed visual range, not as the source of geometric dependencies.\n"
                     + "- `style`: optional single typed object of visual properties such as color, fill_color, stroke_color, opacity, stroke_width, line_style, font_size, padding, and z_index. Do not invent custom style keys. Style is pure visual styling for this object only; create separate constrained objects for labels, badges, helper outlines, cards, or callouts that have their own identity.\n";
 
     /** Scene-structure fields: scene metadata, object lifecycle, and actions. */
@@ -51,7 +51,7 @@ public final class SystemPrompts {
             "- `scene_id`: unique identifier for the scene; used for cross-referencing and code organization.\n"
                     + "- `title`, `narration`: teaching purpose; help choose clear animation structure and pacing.\n"
                     + "- `duration_seconds`: intended scene duration in seconds; guide pacing and animation timing.\n"
-                    + "- `scene_mode`: `2d` (default) or `3d`; determines scene class and camera setup.\n"
+                    + "- Problem dimensionality comes from ProblemBundle `scene_mode`, not from storyboard scenes.\n"
                     + "- `entering_objects`: scene patches for newly entering objects; raw storyboard entries should contain `id` plus optional `placement`/`style` only.\n"
                     + "- `persistent_objects`: scene patches for carried objects; raw storyboard entries should contain `id` plus optional changed `placement`/`style` only.\n"
                     + "- `exiting_objects`: id-only entries for objects that should explicitly leave the scene.\n"
@@ -66,7 +66,7 @@ public final class SystemPrompts {
             "- `goal`: what the scene must accomplish for understanding or solution progress.\n"
                     + "- `layout_goal`: intended screen composition and relative placement of major elements.\n"
                     + "- `constraints`: scene-level structured invariants such as reflections, symmetry, collinearity, intersections, equal lengths, equal-angle groups, motion limits, and lifecycle requirements.\n"
-                    + "- `safe_area_plan`: how important content stays readable and inside the safe frame.\n"
+                    + "- `safe_area_plan`: how resolved storyboard placements stay inside coordinate_bounds and relative labels stay readable around anchors.\n"
                     + "- `screen_overlay_plan`: text or formulas that stay fixed in screen space.\n"
                     + "- `camera_anchor`, `camera_plan`: camera focus and behavior.\n";
 
@@ -87,7 +87,8 @@ public final class SystemPrompts {
                     + "- `persistent_objects`: scene patches for carried objects; use `id` plus optional changed `placement`/`style`.\n"
                     + "- `exiting_objects`: id-only entries that may be translated into hidden helper objects or omitted if persistent visibility would cause clutter.\n"
                     + "- `actions`: state changes; convert into construction order, visibility changes, highlight states, or helper toggles rather than literal animation.\n"
-                    + "- `placement`, `layout_goal`, `safe_area_plan`, `screen_overlay_plan`: guide readable coordinates, allowed ranges, label placement, and visibility choices.\n"
+                    + "- `coordinate_bounds`: the authoritative storyboard world-coordinate range for initial GeoGebra display; use it for SetCoordSystem and keep resolved placements strictly inside it.\n"
+                    + "- `placement`, `layout_goal`, `safe_area_plan`, `screen_overlay_plan`: guide readable storyboard coordinates, relative labels, allowed ranges, and visibility choices.\n"
                     + "- Object and scene `constraints`: preserve dependency relationships, geometric invariants, attachments, motion limits, lifecycle requirements, and measured constructions with dependency-safe GeoGebra commands.\n"
                     + "- For constrained motion, prefer explicit documented GeoGebra constructions such as `Point(path)`, `PointIn(region)`, `Intersect(...)`, `Reflect(...)`, `Midpoint(...)`, or slider-driven parameterizations with declared bounds.\n"
                     + "- When a point should remain on a line, segment, circle, or similar object, the generated command should visibly encode that incidence relation.\n";
@@ -107,7 +108,7 @@ public final class SystemPrompts {
     public static final String STORYBOARD_FIELD_GUIDE_GEOGEBRA_REPAIR =
             "Storyboard field guide for this GeoGebra repair pass:\n"
                     + "- `goal` and `layout_goal`: preserve what the scene is trying to teach and how the construction should be laid out.\n"
-                    + "- The initial GeoGebra visible coordinate window is part of the output contract; do not rely on user zooming or panning to make the construction readable.\n"
+                    + "- The storyboard `coordinate_bounds` world-coordinate range is part of the output contract; do not rely on user zooming or panning to make the construction readable.\n"
                     + "- Fix out-of-bounds, underfilled, clustered, or overlapping layouts by moving/scaling/recentering whole constrained groups while preserving the construction.\n"
                     + "- Scene/object `constraints`: treat hard and repair_hard entries as the primary geometric, attachment, motion, lifecycle, and construction invariants.\n"
                     + "- `kind` and `content`: preserve the geometric or textual identity of each object when repositioning.\n"
@@ -130,9 +131,10 @@ public final class SystemPrompts {
     public static final String STORYBOARD_AUTHORITY_RULES =
             "Storyboard authority rules:\n"
                     + "- Treat `object_registry` as the canonical authority for object identity, kind, content, style, and hard geometric meaning.\n"
+                    + "- Treat top-level `coordinate_bounds` as the authoritative storyboard world-coordinate range. Resolved placements must be strictly inside these bounds with padding.\n"
                     + "- Treat scene `entering_objects`, `persistent_objects`, and `exiting_objects` as per-scene state patches: their `placement`, `style`, and visibility describe the momentary visual state for that scene, not the object's full semantic definition.\n"
                     + "- Treat structured `constraints` and `notes_for_codegen` as hard semantic requirements. Constraints are the only source for geometry, dependency, attachment, motion, measurement, lifecycle, and construction semantics.\n"
-                    + "- Use scene-level `placement.x/y/z.value`, `min`, and `max` as preferred visual-state coordinates for non-derived objects. If they cause offscreen, overlap, poor readability, or conflict with rendered evidence, adjust them minimally or move/scale the whole constrained group while preserving structured constraints.\n"
+                    + "- Use scene-level `placement.x/y.value`, `min`, and `max` as preferred visual-state coordinates for non-derived objects; use `placement.z` only when ProblemBundle scene_mode is 3d. If they cause offscreen, overlap, poor readability, or conflict with rendered evidence, adjust them minimally or move/scale the whole constrained group while preserving structured constraints.\n"
                     + "- For dependency-driven objects, compute or attach them from their source objects according to structured `constraints` refs and catalog relation semantics.\n"
                     + "- Treat scene order, action order, narration, layout_goal, safe_area_plan, screen_overlay_plan, and camera_plan as planning guidance for presentation, continuity, and readability; adapt them when runtime correctness or a clearer implementation requires it. Do not adapt away explicit `notes_for_codegen` constraints unless they are unsupported or contradictory.\n"
                     + STORYBOARD_ELEMENT_SELECTION_RULES
@@ -151,7 +153,7 @@ public final class SystemPrompts {
             "Storyboard reference rules:\n"
                     + "- Treat storyboard JSON as helpful reference context for the intended topic, prior scene plan, object names, and possible teaching ideas, not as a strict semantic authority.\n"
                     + "- When you use storyboard semantics, consider object_registry constraints together with scene patch placement/style details; scene patches are useful visual-state guidance for the current scene.\n"
-                    + "- Use scene-level `placement.x/y/z.value`, `min`, and `max` as preferred layout coordinates for non-derived objects, but adjust them when needed for safe-area, readability, rendered evidence, or internal geometric consistency.\n"
+                    + "- Use scene-level `placement.x/y.value`, `min`, and `max` as preferred layout coordinates for non-derived objects; use `placement.z` only when ProblemBundle scene_mode is 3d. Adjust placements when needed for safe-area, readability, rendered evidence, or internal geometric consistency.\n"
                     + "- Do not block, rewrite, or over-constrain code solely because it omits, merges, renames, simplifies, or reorders storyboard details when the result is runnable, clear, and aligned with the overall user request.\n"
                     + "- Use storyboard geometry, constraints, and placements as hints. Preserve them when they are already implemented consistently or when doing so is low-risk, but runtime correctness, visual clarity, and internally consistent code take precedence.\n"
                     + "- If storyboard details conflict with safer code, rendered evidence, backend limitations, or a clearer implementation, choose a coherent implementation and keep object names, coordinates, dependencies, and layout internally consistent.\n";
@@ -212,8 +214,8 @@ public final class SystemPrompts {
 
     /** Layout frame rules: safe area bounds and element count guidance. */
     public static final String LAYOUT_FRAME_RULES =
-            "Keep important content within x[-7,7] and y[-4,4].\n"
-                    + "Leave about 1 unit of edge margin.\n"
+            "Keep resolved storyboard placements strictly inside storyboard `coordinate_bounds` with at least 1 unit of padding.\n"
+                    + "Use relative positioning for labels and callouts that should follow an anchor.\n"
                     + "Usually keep each step to about 7 to 10 main visual elements unless several are quiet carry-over context.\n";
 
     /** Shared storytelling philosophy for all output targets. */
@@ -245,7 +247,8 @@ public final class SystemPrompts {
                     + "- Preserve intentional empty space and a safe overlay zone; do not solve layout problems by piling overlays or opaque objects over the active geometry.\n"
                     + "- Place formulas near edges, not over the main geometry.\n"
                     + "- If the view becomes crowded, reduce cognitive load by choosing among splitting content, dimming context, grouping, scaling, repositioning, or exiting objects. Base the choice on whether each object will help upcoming reasoning; exiting is allowed, but persistence is not automatically better.\n"
-                    + "- When correcting out-of-bounds elements, reposition them with adequate clearance from every frame edge (minimum 0.5 units on all sides); never fix a boundary violation by placing objects flush against the edge.\n"
+                    + "- When correcting out-of-bounds resolved placements, update `coordinate_bounds` or reposition/recenter the constrained group with at least 1 unit of coordinate padding; equality with a coordinate bound still counts as out of bounds.\n"
+                    + "- Keep relative labels/callouts clear of their anchors; never fix a boundary violation by placing objects flush against the edge.\n"
                     + "- When a derived object (reflection, projection, intersection, etc.) extends outside the frame, do NOT change its placement directly - it is computed from its source objects at render time. Instead, trace the structured constraints in object_registry to identify the upstream source object(s) and adjust their coordinates so the derived result lands inside the frame. For example, if a reflected point B' is offscreen because it mirrors B across line l, move B closer to l or shift l itself; never override B' with an arbitrary coordinate that contradicts its geometric definition.\n";
 
     /** Backend-neutral color syntax and contrast rules. */
@@ -341,7 +344,7 @@ public final class SystemPrompts {
 
     /** Manim-specific layout and readability budget. */
     public static final String MANIM_LAYOUT_FRAME_RULES =
-            "Keep important content within x[-6.5,6.5] and y[-3.5,3.5] whenever possible.\n"
+            "Use storyboard `coordinate_bounds` for storyboard world-coordinate geometry, mapping it into the Manim render frame with Axes/NumberPlane helpers instead of treating large world values as raw scene coordinates.\n"
                     + "Reserve a readable top title band and a bottom note band instead of packing the whole frame.\n"
                     + "Keep simultaneously active foreground elements around 6 to 8 when possible; brief bursts up to about 10 are acceptable when staging and hierarchy stay clear.\n"
                     + "If a scene would have more than 12 simultaneously visible foreground elements, decide which objects still support upcoming reasoning: dim context objects, group or scale supporting elements, or exit completed elements rather than showing everything at full strength.\n"
@@ -529,12 +532,12 @@ public final class SystemPrompts {
     /** GeoGebra viewport and coordinate layout rules. */
     public static final String GEOGEBRA_VIEWPORT_RULES =
             "GeoGebra viewport rules:\n"
-                    + "- Treat the initial visible coordinate window as fixed at x[-7,7] and y[-4,4] unless the renderer explicitly changes it.\n"
-                    + "- The generated script should include or tolerate `SetCoordSystem(-7, 7, -4, 4)` as the initial view contract.\n"
-                    + "- Keep important learner-visible geometry, labels, and text inside x[-6.5,6.5] and y[-3.5,3.5] with margin.\n"
-                    + "- Do not solve layout by zooming out to a much larger visible range; if objects would become tiny or clustered, scale or spread the construction coordinates instead.\n"
+                    + "- Treat storyboard `coordinate_bounds` as the initial visible storyboard world-coordinate range.\n"
+                    + "- The generated script should include or tolerate `SetCoordSystem(x_min, x_max, y_min, y_max)` using storyboard `coordinate_bounds`.\n"
+                    + "- Keep important learner-visible geometry, labels, and text strictly inside coordinate_bounds with margin; an object exactly on a min/max boundary is out of bounds.\n"
+                    + "- Do not invent a much larger visible range than storyboard `coordinate_bounds`; if objects are tiny or clustered, update the storyboard bounds or scale/spread the construction coherently.\n"
                     + "- Aim for the main construction to occupy roughly 45%-80% of the visible width and 35%-75% of the visible height when the math allows it.\n"
-                    + "- For large mathematical values, separate mathematical labels from visual coordinates: use readable display coordinates and labels/captions/text for the original values.\n";
+                    + "- For large storyboard values, preserve the storyboard coordinates and display them through the coordinate system rather than rewriting them as raw screen positions.\n";
 
     // ========================================================================
     // Output format constants
@@ -596,9 +599,10 @@ public final class SystemPrompts {
                     + "- Treat storyboard objects as candidate visual elements; create only the elements that are necessary or helpful for the teaching beat.\n"
                     + "- If an id persists, keep or transform the same mobject instead of redrawing it.\n"
                     + "- When `content`, constraint refs, or related fields mention another object, treat those mentions as object ids only rather than as repeated type declarations.\n"
-                    + "- If a scene uses `scene_mode = 3d`, use `ThreeDScene`, follow `camera_plan`, and judge layout in projected screen space.\n"
+                    + "- If ProblemBundle scene_mode is 3d, use `ThreeDScene`, follow `camera_plan`, and judge layout in projected screen space.\n"
                     + "- Use `screen_overlay_plan` with `add_fixed_in_frame_mobjects` for fixed explanatory text.\n"
                     + "- Respect `safe_area_plan` and dynamic attachment for labels on moving objects.\n"
+                    + "- Use storyboard `coordinate_bounds` as the world-coordinate range for Axes/NumberPlane helpers, and place absolute storyboard objects with `axes.c2p(x, y)` or an equivalent mapping.\n"
                     + "- Read structured attachment constraints such as `label_for`, `anchored_to`, and `fixed_offset_from` literally: if an object follows a moving anchor, implement it with `always_redraw(...)` or an updater.\n"
                     + "- Preserve scene beats, scene exits, and overlay zones from the storyboard instead of compressing everything into one crowded final frame.\n"
                     + MANIM_MANUAL_ONLY_RULES
