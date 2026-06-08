@@ -2,6 +2,7 @@ package com.mathvision.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.ProblemBundleContextBuilder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +16,7 @@ public class CodeFixRequest {
     private String returnAction;
     private String generatedCode;
     private String errorReason;
-    private String targetConcept;
+    private ProblemBundle problemBundle;
     private String targetDescription;
     private String sceneName;
     private String expectedSceneName;
@@ -46,8 +47,15 @@ public class CodeFixRequest {
     public String getErrorReason() { return errorReason; }
     public void setErrorReason(String errorReason) { this.errorReason = errorReason; }
 
-    public String getTargetConcept() { return targetConcept; }
-    public void setTargetConcept(String targetConcept) { this.targetConcept = targetConcept; }
+    public ProblemBundle getProblemBundle() { return problemBundle; }
+    public void setProblemBundle(ProblemBundle problemBundle) { this.problemBundle = problemBundle; }
+
+    public String getTargetConcept() { return ""; }
+    public void setTargetConcept(String legacyTargetConcept) {
+        if (this.problemBundle == null) {
+            this.problemBundle = ProblemBundleContextBuilder.legacyBundle(legacyTargetConcept);
+        }
+    }
 
     public String getTargetDescription() { return targetDescription; }
     public void setTargetDescription(String targetDescription) { this.targetDescription = targetDescription; }

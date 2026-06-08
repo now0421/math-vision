@@ -31,6 +31,7 @@ import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.ProblemBundleContextBuilder;
 import com.mathvision.util.SceneModeUtils;
 import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TimeUtils;
@@ -342,10 +343,8 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
     }
 
     private void initializeConversationContexts(CodeResult codeResult, String fallbackSceneName) {
-        String targetConcept = codeResult != null && codeResult.getTargetConcept() != null
-                ? codeResult.getTargetConcept()
-                : fallbackSceneName;
-        String targetDescription = codeResult != null ? codeResult.getTargetDescription() : "";
+        String targetDescription = ProblemBundleContextBuilder.workflowTargetDescription(
+                problemBundle, fallbackSceneName, "", NodeSupport.resolveOutputTarget(workflowConfig));
         int maxInputTokens = workflowConfig != null
                 ? workflowConfig.resolveMaxInputTokens()
                 : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
@@ -356,7 +355,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                         NodeSupport.resolveOutputTarget(workflowConfig)));
         this.reviewConversationContext.setFixedContextMessage(
                 CodeEvaluationPrompts.buildReviewFixedContextPrompt(
-                        targetConcept,
+                        problemBundle,
                         targetDescription,
                         NodeSupport.resolveOutputTarget(workflowConfig)));
     }
@@ -385,37 +384,29 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                 result.getFinalStaticAnalysis(),
                 result.getFinalReview(),
                 result.getGateReason()));
-        request.setTargetConcept(codeResult.getTargetConcept());
-        request.setTargetDescription(codeResult.getTargetDescription());
         request.setSceneName(sceneName);
         request.setExpectedSceneName(sceneName);
         String outputTarget = NodeSupport.resolveOutputTarget(workflowConfig);
         request.setOutputTarget(outputTarget);
+        request.setProblemBundle(problemBundle);
+        request.setTargetDescription(ProblemBundleContextBuilder.workflowTargetDescription(
+                problemBundle, sceneName, "", outputTarget));
         request.setStoryboardJson(narrative != null && narrative.hasStoryboard()
                 ? StoryboardJsonBuilder.buildForCodegen(narrative.getStoryboard(), outputTarget)
                 : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
         request.setStaticAnalysisJson(JsonUtils.toPrettyJson(result.getFinalStaticAnalysis()));
         request.setReviewJson(JsonUtils.toPrettyJson(result.getFinalReview()));
-        attachEvaluationCodeFixContext(input.fixState(), request, codeResult, sceneName, outputTarget);
+        attachEvaluationCodeFixContext(input.fixState(), request, outputTarget);
         return request;
     }
 
     private void attachEvaluationCodeFixContext(EvaluationFixState fixState,
-                                                CodeFixRequest request,
-                                                CodeResult codeResult,
-                                                String sceneName,
-                                                String outputTarget) {
-        String targetConcept = codeResult != null && codeResult.getTargetConcept() != null
-                && !codeResult.getTargetConcept().isBlank()
-                ? codeResult.getTargetConcept()
-                : sceneName;
-        String targetDescription = codeResult != null && codeResult.getTargetDescription() != null
-                ? codeResult.getTargetDescription()
-                : "";
+                                                 CodeFixRequest request,
+                                                 String outputTarget) {
         String rulesPrompt = CodeEvaluationPrompts.buildRevisionRulesPrompt(outputTarget);
         String fixedContextPrompt = CodeEvaluationPrompts.buildRevisionFixedContextPrompt(
-                targetConcept,
-                targetDescription,
+                request.getProblemBundle(),
+                request.getTargetDescription(),
                 outputTarget);
         NodeConversationContext conversationContext = NodeSupport.ensureCodeFixConversationContext(
                 fixState,

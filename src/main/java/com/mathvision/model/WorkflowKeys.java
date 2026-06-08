@@ -15,7 +15,6 @@ public final class WorkflowKeys {
     public static final String CONFIG = "config";
     public static final String AI_CLIENT = "aiClient";
     public static final String OUTPUT_DIR = "outputDir";
-    public static final String TARGET_INPUT = "targetInput";
 
     // ---- Stage 0: Problem normalization ----
     public static final String PROBLEM_SOURCE = "problemSource";

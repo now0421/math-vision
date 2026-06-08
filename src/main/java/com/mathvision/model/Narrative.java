@@ -16,9 +16,6 @@ import java.util.Map;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Narrative {
 
-    @JsonProperty("target_concept")
-    private String targetConcept;
-
     @JsonProperty("target_description")
     private String targetDescription;
 
@@ -27,24 +24,26 @@ public class Narrative {
 
     public Narrative() {}
 
-    public Narrative(String targetConcept, Storyboard storyboard) {
-        this(targetConcept, "", storyboard);
-    }
-
-    public Narrative(String targetConcept, String targetDescription,
-                     Storyboard storyboard) {
-        this.targetConcept = targetConcept;
+    public Narrative(String targetDescription, Storyboard storyboard) {
         this.targetDescription = targetDescription;
         this.storyboard = storyboard;
     }
 
-    // ---- Getters / Setters ----
+    /**
+     * Legacy constructor kept for callers that still pass a separate target
+     * concept. The target concept is ignored; ProblemBundle owns that data.
+     */
+    public Narrative(String ignoredTargetConcept, String targetDescription, Storyboard storyboard) {
+        this(targetDescription, storyboard);
+    }
 
-    public String getTargetConcept() { return targetConcept; }
-    public void setTargetConcept(String targetConcept) { this.targetConcept = targetConcept; }
+    // ---- Getters / Setters ----
 
     public String getTargetDescription() { return targetDescription; }
     public void setTargetDescription(String targetDescription) { this.targetDescription = targetDescription; }
+
+    public String getTargetConcept() { return ""; }
+    public void setTargetConcept(String ignoredTargetConcept) {}
 
     public Storyboard getStoryboard() { return storyboard; }
     public void setStoryboard(Storyboard storyboard) { this.storyboard = storyboard; }

@@ -1,5 +1,11 @@
 package com.mathvision.prompt;
 
+import com.mathvision.model.Narrative.StoryboardConstraint;
+import com.mathvision.model.Narrative.StoryboardObject;
+import com.mathvision.model.ProblemBundle;
+import com.mathvision.model.ProblemDiagram;
+import com.mathvision.util.JsonUtils;
+import com.mathvision.util.ProblemBundleContextBuilder;
 import com.mathvision.util.SceneModeUtils;
 
 /**
@@ -234,14 +240,25 @@ public final class VisualDesignPrompts {
      * Returns fixed background context: workflow prefix + backend intro +
      * solution chain + backend style reference.
      */
-    public static String buildFixedContextPrompt(String targetConcept,
+    public static String buildFixedContextPrompt(ProblemBundle problemBundle,
                                                   String targetDescription,
                                                   String outputTarget,
                                                   String solutionChain) {
-        return buildFixedContextPrompt(targetConcept, targetDescription, outputTarget, solutionChain, SceneModeUtils.MODE_2D);
+        return buildFixedContextPrompt(problemBundle, targetDescription, outputTarget, solutionChain, SceneModeUtils.MODE_2D);
     }
 
-    public static String buildFixedContextPrompt(String targetConcept,
+    public static String buildFixedContextPrompt(String legacyTargetConcept,
+                                                  String targetDescription,
+                                                  String outputTarget,
+                                                  String solutionChain) {
+        return buildFixedContextPrompt(
+                ProblemBundleContextBuilder.legacyBundle(legacyTargetConcept),
+                targetDescription,
+                outputTarget,
+                solutionChain);
+    }
+
+    public static String buildFixedContextPrompt(ProblemBundle problemBundle,
                                                   String targetDescription,
                                                   String outputTarget,
                                                   String solutionChain,
@@ -250,9 +267,11 @@ public final class VisualDesignPrompts {
         sb.append(SystemPrompts.buildWorkflowPrefix(
                 "Stage 3 / Visual Design",
                 "Scene visual design",
-                targetConcept,
+                ProblemBundleContextBuilder.displayTitle(problemBundle),
                 targetDescription,
                 outputTarget));
+        sb.append(ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(problemBundle)).append("\n\n");
+        appendInitialDiagramContract(sb, problemBundle);
         sb.append("geogebra".equalsIgnoreCase(outputTarget)
                 ? "Design for GeoGebra as an interactive construction medium.\n\n"
                 : "Design for Manim as a teaching animation medium rather than a backend-neutral compromise.\n\n");
@@ -267,5 +286,58 @@ public final class VisualDesignPrompts {
             sb.append("\n\n").append(SystemPrompts.ensureManimStyleReference(""));
         }
         return SystemPrompts.buildFixedContextSection(sb.toString());
+    }
+
+    private static void appendInitialDiagramContract(StringBuilder sb, ProblemBundle problemBundle) {
+        if (problemBundle == null || !problemBundle.hasDiagram()) {
+            return;
+        }
+        ProblemDiagram diagram = problemBundle.getDiagram();
+        sb.append("Mandatory initial diagram contract:\n");
+        sb.append("- Scene 1 must construct the initial problem diagram before any solution-specific construction.\n");
+        if (diagram.getDescription() != null && !diagram.getDescription().isBlank()) {
+            sb.append("- Diagram description: ").append(diagram.getDescription()).append("\n");
+        }
+        sb.append("- Required objects: every `diagram.objects` entry from the ProblemBundle must appear in Scene 1 `entering_objects` and have a matching canonical entry in `new_objects`.\n");
+        if (diagram.getObjects() != null && !diagram.getObjects().isEmpty()) {
+            sb.append("  Required object ids/kinds/content:\n");
+            for (StoryboardObject obj : diagram.getObjects()) {
+                if (obj == null) {
+                    continue;
+                }
+                sb.append("  - id=\"").append(obj.getId())
+                        .append("\", kind=\"").append(obj.getKind())
+                        .append("\", content=\"").append(obj.getContent()).append("\"\n");
+                if (obj.getConstraints() != null && !obj.getConstraints().isEmpty()) {
+                    sb.append("    object_constraints=").append(JsonUtils.toJson(obj.getConstraints())).append("\n");
+                }
+            }
+        }
+        if (diagram.getConstraints() != null && !diagram.getConstraints().isEmpty()) {
+            sb.append("- Hard diagram constraints to honor in Scene 1:\n");
+            for (StoryboardConstraint c : diagram.getConstraints()) {
+                if (c == null) {
+                    continue;
+                }
+                sb.append("  - ").append(c.getDomain()).append("/").append(c.getRelation())
+                        .append(" refs=").append(c.getRefs());
+                if (c.getParameters() != null && !c.getParameters().isEmpty()) {
+                    sb.append(" parameters=").append(c.getParameters());
+                }
+                if (c.getReason() != null && !c.getReason().isBlank()) {
+                    sb.append(" reason=").append(c.getReason());
+                }
+                sb.append("\n");
+            }
+        }
+        if (diagram.getConstructionNotes() != null && !diagram.getConstructionNotes().isEmpty()) {
+            sb.append("- Construction notes:\n");
+            for (String note : diagram.getConstructionNotes()) {
+                if (note != null && !note.isBlank()) {
+                    sb.append("  - ").append(note).append("\n");
+                }
+            }
+        }
+        sb.append("- Do not introduce solution-specific auxiliary objects in Scene 1 before the source-observed initial diagram is established.\n\n");
     }
 }

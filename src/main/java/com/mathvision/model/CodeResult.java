@@ -18,8 +18,6 @@ public class CodeResult {
     private List<SceneCodeEntry> sceneEntries = new ArrayList<>();
     private String sceneName;
     private String description;
-    private String targetConcept;
-    private String targetDescription;
     private String outputTarget = WorkflowConfig.OUTPUT_TARGET_MANIM;
     private String artifactFormat = "python";
     private int toolCalls;
@@ -27,17 +25,23 @@ public class CodeResult {
 
     public CodeResult() {}
 
-    public CodeResult(String generatedCode, String sceneName, String description, String targetConcept) {
-        this(generatedCode, sceneName, description, targetConcept, "");
-    }
-
-    public CodeResult(String generatedCode, String sceneName, String description,
-                      String targetConcept, String targetDescription) {
+    public CodeResult(String generatedCode, String sceneName, String description) {
         this.generatedCode = generatedCode;
         this.sceneName = sceneName;
         this.description = description;
-        this.targetConcept = targetConcept;
-        this.targetDescription = targetDescription;
+    }
+
+    /**
+     * Legacy constructor kept for older callers. Target concept/description
+     * are ignored; ProblemBundle is the authoritative target context.
+     */
+    public CodeResult(String generatedCode, String sceneName, String description, String ignoredTargetConcept) {
+        this(generatedCode, sceneName, description);
+    }
+
+    public CodeResult(String generatedCode, String sceneName, String description,
+                      String ignoredTargetConcept, String ignoredTargetDescription) {
+        this(generatedCode, sceneName, description);
     }
 
     public int codeLineCount() {
@@ -60,11 +64,11 @@ public class CodeResult {
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
 
-    public String getTargetConcept() { return targetConcept; }
-    public void setTargetConcept(String targetConcept) { this.targetConcept = targetConcept; }
+    public String getTargetConcept() { return ""; }
+    public void setTargetConcept(String ignoredTargetConcept) {}
 
-    public String getTargetDescription() { return targetDescription; }
-    public void setTargetDescription(String targetDescription) { this.targetDescription = targetDescription; }
+    public String getTargetDescription() { return ""; }
+    public void setTargetDescription(String ignoredTargetDescription) {}
 
     public String getOutputTarget() { return outputTarget; }
     public void setOutputTarget(String outputTarget) { this.outputTarget = outputTarget; }

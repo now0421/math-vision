@@ -1,7 +1,9 @@
 package com.mathvision.prompt;
 
 import com.mathvision.config.WorkflowConfig;
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.Narrative.Storyboard;
+import com.mathvision.util.ProblemBundleContextBuilder;
 
 /**
  * Prompts for storyboard validation and codegen-prompt assembly.
@@ -266,24 +268,45 @@ public final class NarrativePrompts {
         return SystemPrompts.buildRulesSection(prompt);
     }
 
-    public static String buildFixedContextPrompt(String targetConcept,
-                                                 String targetDescription,
-                                                 String outputTarget) {
-        return buildFixedContextPrompt(targetConcept, targetDescription, outputTarget, "");
+    public static String buildFixedContextPrompt(ProblemBundle problemBundle,
+                                                  String targetDescription,
+                                                  String outputTarget) {
+        return buildFixedContextPrompt(problemBundle, targetDescription, outputTarget, "");
     }
 
-    public static String buildFixedContextPrompt(String targetConcept,
-                                                 String targetDescription,
-                                                 String outputTarget,
-                                                 String solutionChainSummary) {
+    public static String buildFixedContextPrompt(String legacyTargetConcept,
+                                                  String targetDescription,
+                                                  String outputTarget) {
+        return buildFixedContextPrompt(
+                ProblemBundleContextBuilder.legacyBundle(legacyTargetConcept),
+                targetDescription,
+                outputTarget);
+    }
+
+    public static String buildFixedContextPrompt(String legacyTargetConcept,
+                                                  String targetDescription,
+                                                  String outputTarget,
+                                                  String solutionChainSummary) {
+        return buildFixedContextPrompt(
+                ProblemBundleContextBuilder.legacyBundle(legacyTargetConcept),
+                targetDescription,
+                outputTarget,
+                solutionChainSummary);
+    }
+
+    public static String buildFixedContextPrompt(ProblemBundle problemBundle,
+                                                  String targetDescription,
+                                                  String outputTarget,
+                                                  String solutionChainSummary) {
         StringBuilder sb = new StringBuilder();
         sb.append(SystemPrompts.buildWorkflowPrefix(
                 "Stage 4 / Storyboard Validation",
                 "Storyboard composition and validation",
-                targetConcept,
+                ProblemBundleContextBuilder.displayTitle(problemBundle),
                 targetDescription,
                 outputTarget
         ));
+        sb.append(ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(problemBundle)).append("\n");
         sb.append("Output target backend: ").append(outputTarget).append(".\n");
         sb.append("Keep the storyboard reusable, but make it practical for this backend.\n");
         if (solutionChainSummary != null && !solutionChainSummary.isBlank()) {

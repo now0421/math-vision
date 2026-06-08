@@ -3,6 +3,7 @@ package com.mathvision.util;
 import com.mathvision.config.ModelConfig;
 import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
+import com.mathvision.model.ProblemBundle;
 
 import java.util.List;
 
@@ -15,35 +16,24 @@ public final class TargetDescriptionBuilder {
 
     private TargetDescriptionBuilder() {}
 
-    private static String sanitize(String value, String fallback) {
-        if (value == null) {
-            return fallback;
-        }
-        String normalized = value.trim();
-        return normalized.isEmpty() ? fallback : normalized;
-    }
-
     /**
-     * Builds a workflow target description including concept and problem context.
+     * Builds a workflow target description from the authoritative ProblemBundle.
      */
-    public static String build(KnowledgeGraph graph, KnowledgeNode currentNode) {
-        if (graph == null) {
-            return "";
-        }
-
+    public static String build(ProblemBundle bundle, KnowledgeGraph graph, KnowledgeNode currentNode) {
         StringBuilder sb = new StringBuilder();
 
-        String targetConcept = graph.getTargetConcept();
-        if (targetConcept != null && !targetConcept.isBlank()) {
-            sb.append("Workflow target: ").append(targetConcept.trim());
-        }
-
-        if (graph.isProblemMode()) {
-            sb.append("\n\nThis is a problem-solving workflow. The target is a math problem to solve.");
+        if (ProblemBundleContextBuilder.isProblemMode(bundle)
+                || (bundle == null && graph != null && graph.isProblemMode())) {
+            sb.append("This is a problem-solving workflow. The target is the math problem described by the ProblemBundle.");
+        } else {
+            sb.append("The target is the math concept described by the ProblemBundle.");
         }
 
         if (currentNode != null) {
-            sb.append("\n\nCurrent step: ").append(currentNode.getStep());
+            if (sb.length() > 0) {
+                sb.append("\n\n");
+            }
+            sb.append("Current step: ").append(currentNode.getStep());
             if (currentNode.getReason() != null && !currentNode.getReason().isBlank()) {
                 String reason = currentNode.getReason().trim();
                 if (reason.length() > MAX_REASON_LENGTH) {
@@ -56,51 +46,17 @@ public final class TargetDescriptionBuilder {
         return sb.toString().trim();
     }
 
-    /**
-     * Builds the workflow target description used by prompt stages.
-     */
-    public static String workflowTargetDescription(String targetConcept,
-                                                   String terminalConcept,
-                                                   String terminalDescription,
-                                                   boolean problemMode) {
-        return workflowTargetDescription(targetConcept, terminalConcept, terminalDescription, problemMode, null);
-    }
-
-    public static String workflowTargetDescription(String targetConcept,
+    public static String workflowTargetDescription(String legacyTargetConcept,
                                                    String terminalConcept,
                                                    String terminalDescription,
                                                    boolean problemMode,
                                                    String outputTarget) {
-        String safeTarget = sanitize(targetConcept, "Unknown target");
-        String safeTerminalConcept = sanitize(terminalConcept, safeTarget);
-        String safeTerminalDescription = sanitize(terminalDescription, "");
-        boolean geoGebraTarget = "geogebra".equalsIgnoreCase(outputTarget);
-
-        String mediumNoun = geoGebraTarget ? "interactive geometry construction" : "teaching animation";
-        String mediumObject = geoGebraTarget ? "construction" : "animation";
-        String culminationVerb = geoGebraTarget ? "culminate in the final construction insight" : "culminate in the final conclusion";
-
-        if (problemMode) {
-            if (!safeTerminalDescription.isEmpty()) {
-                return String.format(
-                        "Explain and solve the math problem \"%s\" through a coherent %s. The"
-                                + " goal is not only to reach the answer, but to help the viewer"
-                                + " understand why it works. The %s should %s \"%s\": %s",
-                        safeTarget, mediumNoun, mediumObject, culminationVerb, safeTerminalConcept, safeTerminalDescription);
-            }
-            return String.format(
-                    "Explain and solve the math problem \"%s\" through a coherent %s that leads from the opening hook"
-                            + " to \"%s\" while helping the viewer understand the reasoning.",
-                    safeTarget, mediumNoun, safeTerminalConcept);
-        }
-
-        if (!safeTerminalDescription.isEmpty()) {
-            return safeTerminalDescription;
-        }
-        return String.format(
-                "Explain the concept \"%s\" through a coherent %s that progresses from the first teaching beat"
-                        + " to \"%s\".",
-                safeTarget, mediumNoun, safeTerminalConcept);
+        ProblemBundle bundle = ProblemBundleContextBuilder.legacyBundle(legacyTargetConcept);
+        bundle.setInputMode(problemMode
+                ? com.mathvision.config.WorkflowConfig.INPUT_MODE_PROBLEM
+                : com.mathvision.config.WorkflowConfig.INPUT_MODE_CONCEPT);
+        return ProblemBundleContextBuilder.workflowTargetDescription(
+                bundle, terminalConcept, terminalDescription, outputTarget);
     }
 
     /**

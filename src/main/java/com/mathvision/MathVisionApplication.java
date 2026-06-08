@@ -74,15 +74,15 @@ public class MathVisionApplication {
             return;
         }
 
-        // If first arg doesn't start with '-', treat it as the target input
-        String targetInput = null;
+        // If first arg doesn't start with '-', treat it as raw source text.
+        String rawInput = null;
         String problemFilePath = null;
         int startIndex = 0;
         if (!args[0].startsWith("-")) {
             if (isExistingMarkdownFile(args[0])) {
                 problemFilePath = args[0];
             } else {
-                targetInput = args[0];
+                rawInput = args[0];
             }
             startIndex = 1;
         }
@@ -144,7 +144,7 @@ public class MathVisionApplication {
             }
         }
 
-        if (targetInput != null && problemFilePath != null) {
+        if (rawInput != null && problemFilePath != null) {
             log.error("Provide either a target input argument or --problem-file, not both.");
             printUsage();
             System.exit(1);
@@ -171,7 +171,7 @@ public class MathVisionApplication {
 
         if (problemFilePath != null) {
             problemInput = loadProblemInputFromFile(problemFilePath);
-            targetInput = problemInput.rawText;
+            rawInput = problemInput.rawText;
         }
 
         if (fromGraphPath != null && fromCodePath != null) {
@@ -184,6 +184,7 @@ public class MathVisionApplication {
         // Load pre-built knowledge graph if --from-graph is specified
         KnowledgeGraph preloadedGraph = null;
         Path graphOutputDir = null;
+        ProblemBundle preloadedProblemBundle = null;
         if (fromGraphPath != null) {
             Path graphFile = resolveGraphPath(fromGraphPath);
             if (!Files.exists(graphFile)) {
@@ -193,8 +194,12 @@ public class MathVisionApplication {
             }
             preloadedGraph = FileOutputService.loadKnowledgeGraph(graphFile);
             graphOutputDir = graphFile.toAbsolutePath().getParent();
-            if (targetInput == null) {
-                targetInput = preloadedGraph.getTargetConcept();
+            preloadedProblemBundle = FileOutputService.loadProblemBundle(graphOutputDir);
+            if (rawInput == null && preloadedProblemBundle != null) {
+                rawInput = TextUtils.firstNonBlank(
+                        preloadedProblemBundle.getStatement(),
+                        preloadedProblemBundle.getTitle(),
+                        preloadedProblemBundle.getId());
             }
         }
 
@@ -209,14 +214,18 @@ public class MathVisionApplication {
             }
             preloadedCodeResult = FileOutputService.loadCodeResult(codeFile);
             codeOutputDir = codeFile.toAbsolutePath().getParent();
-            if (targetInput == null) {
-                targetInput = TextUtils.firstNonBlank(
-                        preloadedCodeResult.getTargetConcept(),
-                        preloadedCodeResult.getSceneName());
+            preloadedProblemBundle = FileOutputService.loadProblemBundle(codeOutputDir);
+            if (rawInput == null) {
+                rawInput = preloadedProblemBundle != null
+                        ? TextUtils.firstNonBlank(
+                                preloadedProblemBundle.getStatement(),
+                                preloadedProblemBundle.getTitle(),
+                                preloadedProblemBundle.getId())
+                        : preloadedCodeResult.getSceneName();
             }
         }
 
-        if (targetInput == null) {
+        if (rawInput == null) {
             log.error("No target input provided. Specify a target input, use --problem-file, or use --from-graph/--from-code.");
             printUsage();
             System.exit(1);
@@ -243,13 +252,13 @@ public class MathVisionApplication {
                     Path.of("output"),
                     problemInput != null && problemInput.sourcePath != null
                             ? fileStem(problemInput.sourcePath)
-                            : targetInput,
+                            : rawInput,
                     config.getOutputTarget());
         }
 
         log.info("============================================================");
         log.info("  MathVision Workflow");
-        log.info("  Input:    {}", summarizeTargetInputForLog(targetInput));
+        log.info("  Input:    {}", summarizeRawInputForLog(rawInput));
         if (problemFilePath != null) {
             log.info("  Source:   {}", Path.of(problemFilePath).toAbsolutePath().normalize());
         }
@@ -272,14 +281,13 @@ public class MathVisionApplication {
 
         // Build shared context
         Map<String, Object> ctx = new HashMap<>();
-        ctx.put(WorkflowKeys.TARGET_INPUT, targetInput);
         ctx.put(WorkflowKeys.CONFIG, config);
         ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
         ctx.put(WorkflowKeys.OUTPUT_DIR, outputDir);
 
         // Build ProblemSource for normalization node
         ProblemSource problemSource = new ProblemSource();
-        problemSource.setRawText(targetInput);
+        problemSource.setRawText(rawInput);
 
         List<SourceAsset> assets = new ArrayList<>();
         Set<String> seenAssetPaths = new LinkedHashSet<>();
@@ -301,18 +309,21 @@ public class MathVisionApplication {
             addImageAsset(assets, seenAssetPaths, assetPath);
         }
         problemSource.setAssets(assets);
-        problemSource.setSourceType(resolveSourceType(targetInput, assets));
+        problemSource.setSourceType(resolveSourceType(rawInput, assets));
         ctx.put(WorkflowKeys.PROBLEM_SOURCE, problemSource);
 
         if (preloadedGraph != null) {
             ctx.put(WorkflowKeys.KNOWLEDGE_GRAPH, preloadedGraph);
             ctx.put(WorkflowKeys.EXPLORATION_API_CALLS, 0);
-            ctx.put(WorkflowKeys.PROBLEM_BUNDLE, buildDegradedBundle(targetInput, config,
-                    preloadedGraph.isProblemMode()));
+            ctx.put(WorkflowKeys.PROBLEM_BUNDLE, preloadedProblemBundle != null
+                    ? preloadedProblemBundle
+                    : buildDegradedBundle(rawInput, config, preloadedGraph.isProblemMode()));
         }
         if (preloadedCodeResult != null) {
             ctx.put(WorkflowKeys.CODE_RESULT, preloadedCodeResult);
-            ctx.put(WorkflowKeys.PROBLEM_BUNDLE, buildDegradedBundle(targetInput, config, true));
+            ctx.put(WorkflowKeys.PROBLEM_BUNDLE, preloadedProblemBundle != null
+                    ? preloadedProblemBundle
+                    : buildDegradedBundle(rawInput, config, true));
         }
 
         // Create and run workflow
@@ -408,7 +419,7 @@ public class MathVisionApplication {
                 + sceneEvaluationCalls;
 
         WorkflowConfig workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
-        summary.put("target_input", ctx.get(WorkflowKeys.TARGET_INPUT));
+        summary.put("target_input", summarizeWorkflowTarget(ctx, graph, codeResult));
         summary.put("input_mode_configured", workflowConfig.getInputMode());
         summary.put("input_mode_resolved", resolveSummaryInputMode(ctx, workflowConfig, graph));
         summary.put("output_target", workflowConfig.getOutputTarget());
@@ -489,6 +500,17 @@ public class MathVisionApplication {
         summary.put("total_api_calls_estimate", totalLlmCalls);
         summary.put("duration_human", formatDuration(elapsed));
         return summary;
+    }
+
+    private static String summarizeWorkflowTarget(Map<String, Object> ctx,
+                                                  KnowledgeGraph graph,
+                                                  CodeResult codeResult) {
+        ProblemBundle problemBundle = (ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE);
+        return TextUtils.firstNonBlank(
+                problemBundle != null ? problemBundle.getStatement() : null,
+                problemBundle != null ? problemBundle.getTitle() : null,
+                problemBundle != null ? problemBundle.getId() : null,
+                "");
     }
 
     @SuppressWarnings("unchecked")
@@ -842,24 +864,24 @@ public class MathVisionApplication {
         return WorkflowConfig.normalizeInputMode(workflowConfig.getInputMode());
     }
 
-    private static String summarizeTargetInputForLog(String targetInput) {
-        if (targetInput == null) {
+    private static String summarizeRawInputForLog(String rawInput) {
+        if (rawInput == null) {
             return "";
         }
-        String normalized = targetInput.replaceAll("\\s+", " ").trim();
+        String normalized = rawInput.replaceAll("\\s+", " ").trim();
         if (normalized.length() <= 120) {
             return normalized;
         }
         return normalized.substring(0, 117) + "...";
     }
 
-    private static ProblemBundle buildDegradedBundle(String targetInput, WorkflowConfig config,
+    private static ProblemBundle buildDegradedBundle(String rawInput, WorkflowConfig config,
                                                      boolean isProblemMode) {
         ProblemBundle bundle = new ProblemBundle();
         bundle.setId("preloaded");
-        bundle.setTitle(targetInput != null && targetInput.length() > 50
-                ? targetInput.substring(0, 50) : targetInput);
-        bundle.setStatement(targetInput);
+        bundle.setTitle(rawInput != null && rawInput.length() > 50
+                ? rawInput.substring(0, 50) : rawInput);
+        bundle.setStatement(rawInput);
         bundle.setInputMode(isProblemMode
                 ? WorkflowConfig.INPUT_MODE_PROBLEM : WorkflowConfig.INPUT_MODE_CONCEPT);
         bundle.setOutputTarget(config.getOutputTarget());

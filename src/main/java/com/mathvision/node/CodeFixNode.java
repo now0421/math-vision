@@ -23,6 +23,7 @@ import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.ConcurrencyUtils;
 import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.ProblemBundleContextBuilder;
 import com.mathvision.util.TextHealthDiagnostics;
 import com.mathvision.util.TextUtils;
 import com.mathvision.util.TimeUtils;
@@ -243,7 +244,7 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             entry.setReturnAction(request.getReturnAction());
             entry.setSceneName(request.getSceneName());
             entry.setExpectedSceneName(request.getExpectedSceneName());
-            entry.setTargetConcept(request.getTargetConcept());
+            entry.setProblemTitle(ProblemBundleContextBuilder.displayTitle(request.getProblemBundle()));
             entry.setErrorReason(request.getErrorReason());
             entry.setErrorContextMode(request.getErrorContextMode());
             entry.setInputTextHealth(request.getInputTextHealth());
@@ -287,23 +288,21 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
 
     private String selectFixedContextPrompt(CodeFixRequest request) {
         String outputTarget = resolveOutputTarget(request);
-        String targetConcept = TextUtils.firstNonBlank(
-                request.getTargetConcept(), request.getSceneName(), "Unknown target");
         String targetDescription = TextUtils.firstNonBlank(request.getTargetDescription(), "");
         if (request.getSource() == CodeFixSource.CODE_EVALUATION) {
             return CodeEvaluationPrompts.buildRevisionFixedContextPrompt(
-                    targetConcept,
+                    request.getProblemBundle(),
                     targetDescription,
                     outputTarget);
         }
         if (request.getSource() == CodeFixSource.SCENE_LAYOUT_EVALUATION) {
             return SceneEvaluationPrompts.buildLayoutFixFixedContextPrompt(
-                    targetConcept,
+                    request.getProblemBundle(),
                     targetDescription,
                     outputTarget);
         }
         return RenderFixPrompts.buildFixedContextPrompt(
-                targetConcept,
+                request.getProblemBundle(),
                 targetDescription,
                 outputTarget);
     }

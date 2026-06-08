@@ -16,6 +16,7 @@ import com.mathvision.util.ConceptUtils;
 import com.mathvision.util.ConcurrencyUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.ProblemBundleContextBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
@@ -37,13 +38,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Stage 1: direct knowledge-graph planning for concept and problem inputs.
  */
-public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, String> {
+public class ExplorationNode extends PocketFlow.Node<ProblemBundle, KnowledgeGraph, String> {
 
     private static final Logger log = LoggerFactory.getLogger(ExplorationNode.class);
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
-    private String targetInput;
+    private String targetLabel;
     private ProblemBundle problemBundle;
 
     private String inputMode = WorkflowConfig.INPUT_MODE_AUTO;
@@ -60,7 +61,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     }
 
     @Override
-    public String prep(Map<String, Object> ctx) {
+    public ProblemBundle prep(Map<String, Object> ctx) {
         this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
         this.workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
         if (workflowConfig != null) {
@@ -72,31 +73,34 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 && !problemBundle.getInputMode().isBlank()) {
             this.inputMode = problemBundle.getInputMode();
         }
-        return problemBundle != null && problemBundle.getStatement() != null
-                ? problemBundle.getStatement()
-                : (String) ctx.get(WorkflowKeys.TARGET_INPUT);
+        if (problemBundle == null) {
+            throw new IllegalStateException("ExplorationNode requires a ProblemBundle in workflow context. "
+                    + "Run ProblemNormalizationNode before exploration.");
+        }
+        return problemBundle;
     }
 
     @Override
-    public KnowledgeGraph exec(String targetInput) {
-        this.targetInput = targetInput;
+    public KnowledgeGraph exec(ProblemBundle bundle) {
+        this.problemBundle = bundle;
+        this.targetLabel = displayTarget(bundle);
         apiCalls.set(0);
 
         int maxInputTokens = workflowConfig != null
                 ? workflowConfig.resolveMaxInputTokens()
                 : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
         initializeRoutingContext(maxInputTokens);
-        String resolvedMode = resolveInputMode(targetInput);
+        String resolvedMode = resolveInputMode(bundle);
         initializeGraphContexts(maxInputTokens, resolvedMode);
 
         log.info("=== Stage 1: {} Graph Planning ===",
                 WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode) ? "Problem" : "Concept");
         log.info("Target input: {}, mode: {}, output_target: {}",
-                targetInput, resolvedMode, outputTarget);
+                targetLabel, resolvedMode, outputTarget);
 
         KnowledgeGraph graph = WorkflowConfig.INPUT_MODE_PROBLEM.equals(resolvedMode)
-                ? buildProblemGraph(targetInput)
-                : buildConceptGraph(targetInput);
+                ? buildProblemGraph(bundle)
+                : buildConceptGraph(bundle);
         validateGraph(graph);
 
         log.info("Exploration complete: {} nodes, {} edges, {} API calls",
@@ -105,7 +109,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     }
 
     @Override
-    public String post(Map<String, Object> ctx, String targetInput, KnowledgeGraph graph) {
+    public String post(Map<String, Object> ctx, ProblemBundle bundle, KnowledgeGraph graph) {
         ctx.put(WorkflowKeys.KNOWLEDGE_GRAPH, graph);
         ctx.put(WorkflowKeys.EXPLORATION_API_CALLS, apiCalls.get());
         ctx.put(WorkflowKeys.RESOLVED_INPUT_MODE,
@@ -121,10 +125,11 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         return null;
     }
 
-    private KnowledgeGraph buildConceptGraph(String concept) {
-        String normalizedConcept = concept == null ? "" : concept.trim();
+    private KnowledgeGraph buildConceptGraph(ProblemBundle bundle) {
+        String normalizedConcept = displayTarget(bundle);
         String prompt = SystemPrompts.buildCurrentRequestSection(
-                "Math concept:\n" + normalizedConcept + "\n\n"
+                ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(bundle)
+                        + "\n\nMath concept statement:\n" + normalizedConcept + "\n\n"
                         + "Presentation target: " + outputTarget + ".");
 
         JsonNode payload = requestDirectGraphPayload(
@@ -137,10 +142,11 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
         return parseDirectGraphPayload(payload, normalizedConcept, DirectGraphMode.CONCEPT);
     }
 
-    private KnowledgeGraph buildProblemGraph(String problemStatement) {
-        String normalizedProblem = problemStatement == null ? "" : problemStatement.trim();
+    private KnowledgeGraph buildProblemGraph(ProblemBundle bundle) {
+        String normalizedProblem = displayTarget(bundle);
         String prompt = SystemPrompts.buildCurrentRequestSection(
-                "Math problem:\n" + normalizedProblem + "\n\n"
+                ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(bundle)
+                        + "\n\nMath problem statement:\n" + normalizedProblem + "\n\n"
                         + "Presentation target: " + outputTarget + ".");
 
         JsonNode payload = requestDirectGraphPayload(
@@ -151,6 +157,25 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
                 "Problem graph generation failed"
         );
         return parseDirectGraphPayload(payload, normalizedProblem, DirectGraphMode.PROBLEM);
+    }
+
+    private String displayTarget(ProblemBundle bundle) {
+        if (bundle == null) {
+            return "";
+        }
+        return firstNonBlank(bundle.getStatement(), bundle.getTitle(), bundle.getId());
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return "";
     }
 
     private JsonNode requestDirectGraphPayload(String subject,
@@ -176,7 +201,7 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
     }
 
     private KnowledgeGraph parseDirectGraphPayload(JsonNode payload,
-                                                   String targetInput,
+                                                   String ignoredTargetInput,
                                                    DirectGraphMode graphMode) {
         Map<String, KnowledgeNode> nodes = parseDirectGraphNodes(payload, graphMode);
         Map<String, List<String>> nextEdges = parseDirectGraphNextEdges(payload, nodes);
@@ -191,7 +216,6 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
         return new KnowledgeGraph(
                 startId,
-                targetInput,
                 orderNodes(nodes),
                 orderDirectGraphNextEdges(nextEdges, nodes),
                 teachingOrder
@@ -512,38 +536,39 @@ public class ExplorationNode extends PocketFlow.Node<String, KnowledgeGraph, Str
 
         if (nodeCount < 3) {
             log.warn("Graph validation: only {} nodes for '{}' - graph may be too shallow.",
-                    nodeCount, targetInput);
+                    nodeCount, targetLabel);
         }
 
         log.info("Graph validation: {} nodes, {} edges, max depth {}",
                 nodeCount, graph.countEdges(), graph.getMaxDepth());
     }
 
-    private String resolveInputMode(String input) {
+    private String resolveInputMode(ProblemBundle bundle) {
         if (WorkflowConfig.isExplicitInputMode(inputMode)) {
             return WorkflowConfig.normalizeInputMode(inputMode);
         }
 
         // If ProblemBundle already classified mode, use it directly
-        if (problemBundle != null && problemBundle.getInputMode() != null
-                && WorkflowConfig.isExplicitInputMode(problemBundle.getInputMode())) {
-            return WorkflowConfig.normalizeInputMode(problemBundle.getInputMode());
+        if (bundle != null && bundle.getInputMode() != null
+                && WorkflowConfig.isExplicitInputMode(bundle.getInputMode())) {
+            return WorkflowConfig.normalizeInputMode(bundle.getInputMode());
         }
 
-        String llmDecision = classifyInputModeWithLlm(input);
+        String llmDecision = classifyInputModeWithLlm(bundle);
         if (WorkflowConfig.INPUT_MODE_CONCEPT.equals(llmDecision)
                 || WorkflowConfig.INPUT_MODE_PROBLEM.equals(llmDecision)) {
             return llmDecision;
         }
 
+        String input = displayTarget(bundle);
         log.warn("Falling back to heuristic auto-mode classification for input: {}", input);
         return classifyInputModeHeuristically(input);
     }
 
-    private String classifyInputModeWithLlm(String input) {
-        String normalizedInput = input == null ? "" : input.trim();
+    private String classifyInputModeWithLlm(ProblemBundle bundle) {
+        String normalizedInput = displayTarget(bundle);
         String prompt = SystemPrompts.buildCurrentRequestSection(
-                "User input:\n" + normalizedInput + "\n\n"
+                ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(bundle) + "\n\n"
                         + "Classify the routing mode for this workflow input.");
 
         try {

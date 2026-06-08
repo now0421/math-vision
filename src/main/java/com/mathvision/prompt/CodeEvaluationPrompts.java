@@ -1,5 +1,8 @@
 package com.mathvision.prompt;
 
+import com.mathvision.model.ProblemBundle;
+import com.mathvision.util.ProblemBundleContextBuilder;
+
 /**
  * Prompts for Stage 6: code evaluation and revision.
  */
@@ -151,17 +154,26 @@ public final class CodeEvaluationPrompts {
         return SystemPrompts.buildRulesSection(REVIEW_SYSTEM_MANIM);
     }
 
-    public static String buildReviewFixedContextPrompt(String targetConcept,
+    public static String buildReviewFixedContextPrompt(ProblemBundle problemBundle,
                                                        String targetDescription,
                                                        String outputTarget) {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 6 / Code Evaluation",
                 "Review " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra code" : "code")
                         + " for render readiness, layout, continuity, pacing, and clutter risk",
-                targetConcept,
+                ProblemBundleContextBuilder.displayTitle(problemBundle),
                 targetDescription,
                 outputTarget
-        ));
+        ) + "\n" + ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(problemBundle));
+    }
+
+    public static String buildReviewFixedContextPrompt(String legacyTargetConcept,
+                                                       String targetDescription,
+                                                       String outputTarget) {
+        return buildReviewFixedContextPrompt(
+                ProblemBundleContextBuilder.legacyBundle(legacyTargetConcept),
+                targetDescription,
+                outputTarget);
     }
 
     public static String reviewUserPrompt(String sceneName,
@@ -211,17 +223,26 @@ public final class CodeEvaluationPrompts {
                 SystemPrompts.ensureManimSyntaxManual(REVISION_SYSTEM_MANIM));
     }
 
-    public static String buildRevisionFixedContextPrompt(String targetConcept,
+    public static String buildRevisionFixedContextPrompt(ProblemBundle problemBundle,
                                                          String targetDescription,
                                                          String outputTarget) {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 6 / Code Evaluation",
                 "Revise " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra code" : "Manim code")
                         + " after code evaluation before render",
-                targetConcept,
+                ProblemBundleContextBuilder.displayTitle(problemBundle),
                 targetDescription,
                 outputTarget
-        ));
+        ) + "\n" + ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(problemBundle));
+    }
+
+    public static String buildRevisionFixedContextPrompt(String legacyTargetConcept,
+                                                         String targetDescription,
+                                                         String outputTarget) {
+        return buildRevisionFixedContextPrompt(
+                ProblemBundleContextBuilder.legacyBundle(legacyTargetConcept),
+                targetDescription,
+                outputTarget);
     }
 
     public static String revisionUserPrompt(String sceneName,

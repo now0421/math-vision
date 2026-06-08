@@ -2437,6 +2437,11 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             NodeConversationContext conversationContext =
                     new NodeConversationContext(maxInputTokens, Math.max(maxAttempts, 1));
             conversationContext.setSystemMessage(NarrativePrompts.PLACEMENT_ENRICHMENT_SYSTEM_PROMPT);
+            conversationContext.setFixedContextMessage(NarrativePrompts.buildFixedContextPrompt(
+                    problemBundle,
+                    "Resolve validation-only placements while preserving the ProblemBundle geometry and storyboard semantics.",
+                    outputTarget,
+                    buildDagChainSummary(storyboard)));
 
             String userPrompt = NarrativePrompts.buildPlacementEnrichmentUserPrompt(storyboardJson);
             List<String> lastIssues = List.of();
@@ -2706,11 +2711,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             fixedStoryboard = StoryboardNormalizer.normalize(fixedStoryboard);
             preserveStepRefs(narrative.getStoryboard(), fixedStoryboard);
 
-            return new Narrative(
-                    narrative.getTargetConcept(),
-                    narrative.getTargetDescription(),
-                    fixedStoryboard
-            );
+            return new Narrative(narrative.getTargetDescription(), fixedStoryboard);
         } catch (CompletionException e) {
             log.warn("LLM fix call failed: {}", e.getMessage());
             return null;
@@ -2728,7 +2729,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
                     + "\n\n" + NarrativePrompts.buildRepairRules(outputTarget);
             fixConversationContext.setSystemMessage(systemPrompt);
             fixConversationContext.setFixedContextMessage(NarrativePrompts.buildFixedContextPrompt(
-                    narrative.getTargetConcept(),
+                    problemBundle,
                     narrative.getTargetDescription(),
                     outputTarget,
                     buildDagChainSummary(narrative.getStoryboard())));

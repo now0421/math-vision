@@ -28,6 +28,7 @@ import com.mathvision.util.JsonUtils;
 import com.mathvision.util.TimeUtils;
 import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.ProblemBundleContextBuilder;
 import com.mathvision.util.SceneModeUtils;
 import com.mathvision.util.StoryboardConstraintCatalog;
 import com.mathvision.util.StoryboardConstraintUtils;
@@ -123,15 +124,16 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
 
         if (narrative == null && input.existingCodeResult() == null) {
             log.warn("Narrative is empty, cannot generate code");
-            CodeResult emptyResult = new CodeResult("", "", "Empty narrative", "", "");
+            CodeResult emptyResult = new CodeResult("", "", "Empty narrative");
             emptyResult.setExecutionTimeSeconds(TimeUtils.secondsSince(start));
             return emptyResult;
         }
 
-        String targetConcept = narrative != null ? narrative.getTargetConcept()
-                : input.existingCodeResult().getTargetConcept();
-        String targetDescription = narrative != null ? narrative.getTargetDescription()
-                : input.existingCodeResult().getTargetDescription();
+        String targetDescription = narrative != null && narrative.getTargetDescription() != null
+                && !narrative.getTargetDescription().isBlank()
+                ? narrative.getTargetDescription()
+                : ProblemBundleContextBuilder.workflowTargetDescription(
+                        problemBundle, "", "", NodeSupport.resolveOutputTarget(workflowConfig));
 
         // Build object registry JSON for fixed context (shared across all scene generations)
         String objectRegistryJson = "";
@@ -152,7 +154,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                         SceneModeUtils.normalize(problemBundle != null ? problemBundle.getSceneMode() : null)));
         this.conversationContext.setFixedContextMessage(
                 CodeGenerationPrompts.buildFixedContextPrompt(
-                        targetConcept, targetDescription,
+                        problemBundle, targetDescription,
                         NodeSupport.resolveOutputTarget(workflowConfig), objectRegistryJson,
                         SceneModeUtils.normalize(problemBundle != null ? problemBundle.getSceneMode() : null)));
 
@@ -178,9 +180,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                 CodeResult emptyResult = new CodeResult(
                         "",
                         "",
-                        "Empty narrative",
-                        targetConcept,
-                        targetDescription
+                        "Empty narrative"
                 );
                 emptyResult.setExecutionTimeSeconds(TimeUtils.secondsSince(start));
                 return emptyResult;
@@ -207,9 +207,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         CodeResult result = new CodeResult(
                 generatedCode,
                 artifactName,
-                buildResultDescription(targetConcept),
-                targetConcept,
-                targetDescription
+                buildResultDescription()
         );
         if (sceneResult != null) {
             result.setHeaderCode(sceneResult.getHeaderCode());
@@ -1207,10 +1205,10 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         return NodeSupport.isGeoGebraTarget(workflowConfig) ? "commands" : "python";
     }
 
-    private String buildResultDescription(String targetConcept) {
+    private String buildResultDescription() {
         return NodeSupport.isGeoGebraTarget(workflowConfig)
-                ? "GeoGebra construction for " + targetConcept
-                : "Manim animation for " + targetConcept;
+                ? "GeoGebra construction generated from ProblemBundle"
+                : "Manim animation generated from ProblemBundle";
     }
 
 }

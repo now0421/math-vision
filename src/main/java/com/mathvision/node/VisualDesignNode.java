@@ -22,6 +22,7 @@ import com.mathvision.util.ConcurrencyUtils;
 import com.mathvision.util.CoordinateBoundsUtils;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.ProblemBundleContextBuilder;
 import com.mathvision.util.SceneModeUtils;
 import com.mathvision.util.StoryboardGeometricMarkerValidator;
 import com.mathvision.util.StoryboardNormalizer;
@@ -130,13 +131,12 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         }
 
         int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
-        String workflowTarget = graph != null ? graph.getTargetConcept() : "";
         this.conversationContext = new NodeConversationContext(maxInputTokens);
         String solutionChain = TargetDescriptionBuilder.buildSolutionChain(graph, null);
         this.conversationContext.setSystemMessage(VisualDesignPrompts.buildRulesPrompt(outputTarget, sceneMode));
         this.conversationContext.setFixedContextMessage(VisualDesignPrompts.buildFixedContextPrompt(
-                workflowTarget,
-                TargetDescriptionBuilder.build(graph, null),
+                problemBundle,
+                TargetDescriptionBuilder.build(problemBundle, graph, null),
                 outputTarget,
                 solutionChain,
                 sceneMode));
@@ -758,19 +758,13 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
 
         storyboard = StoryboardNormalizer.normalize(storyboard);
 
-        String targetConcept = graph.getTargetConcept();
         KnowledgeNode terminal = graph.findPrimaryTerminalNode();
-        String targetDescription = TargetDescriptionBuilder.workflowTargetDescription(
-                targetConcept,
+        String targetDescription = ProblemBundleContextBuilder.workflowTargetDescription(
+                problemBundle,
                 terminal != null ? terminal.getStep() : "",
                 "",
-                graph.isProblemMode(),
                 outputTarget);
-        Narrative narrative = new Narrative(
-                targetConcept,
-                targetDescription,
-                storyboard
-        );
+        Narrative narrative = new Narrative(targetDescription, storyboard);
 
         int totalDuration = StoryboardNormalizer.calculateStoryboardDuration(storyboard, sorted.size() * 8);
         List<String> sceneTitles = sorted.stream()
@@ -970,32 +964,6 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         sb.append("- Depth: ").append(node.getMinDepth()).append("\n");
         if (objectRegistry.isEmpty()) {
             sb.append("- This is the first scene. All objects must be in entering_objects; persistent_objects and exiting_objects must be empty.\n");
-            if (problemBundle != null && problemBundle.hasDiagram()) {
-                sb.append("\nMANDATORY INITIAL DIAGRAM CONTRACT:\n");
-                sb.append("Scene 1 must construct the initial problem diagram before any solution-specific construction.\n");
-                sb.append("Diagram description: ").append(problemBundle.getDiagram().getDescription()).append("\n");
-                sb.append("Required objects (must ALL appear in entering_objects):\n");
-                for (StoryboardObject obj : problemBundle.getDiagram().getObjects()) {
-                    sb.append("  - id=\"").append(obj.getId())
-                            .append("\", kind=\"").append(obj.getKind())
-                            .append("\", content=\"").append(obj.getContent()).append("\"\n");
-                }
-                if (!problemBundle.getDiagram().getConstraints().isEmpty()) {
-                    sb.append("Hard constraints to honor in this scene:\n");
-                    for (StoryboardConstraint c : problemBundle.getDiagram().getConstraints()) {
-                        sb.append("  - ").append(c.getDomain()).append("/").append(c.getRelation())
-                                .append(" refs=").append(c.getRefs())
-                                .append(" (").append(c.getReason()).append(")\n");
-                    }
-                }
-                if (!problemBundle.getDiagram().getConstructionNotes().isEmpty()) {
-                    sb.append("Construction notes:\n");
-                    for (String note : problemBundle.getDiagram().getConstructionNotes()) {
-                        sb.append("  - ").append(note).append("\n");
-                    }
-                }
-                sb.append("Do NOT introduce solution-specific auxiliary objects (reflection points, proof lines, etc.) in this scene.\n");
-            }
         }
         if (node.getReason() != null && !node.getReason().isBlank()) {
             sb.append("- Reason: ").append(node.getReason()).append("\n");

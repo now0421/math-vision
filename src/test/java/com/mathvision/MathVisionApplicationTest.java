@@ -5,6 +5,7 @@ import com.mathvision.config.WorkflowConfig;
 import com.mathvision.model.CodeFixTraceReport;
 import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.WorkflowKeys;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -30,13 +31,14 @@ class MathVisionApplicationTest {
     Path tempDir;
 
     @Test
-    void workflowSummaryUsesTargetInputAndResolvedModeNames() throws Exception {
+    void workflowSummaryUsesProblemBundleStatementAndResolvedModeNames() throws Exception {
         WorkflowConfig config = ConfigLoader.load(null, null);
         config.setInputMode(WorkflowConfig.INPUT_MODE_AUTO);
 
         Map<String, Object> ctx = new LinkedHashMap<>();
         ctx.put(WorkflowKeys.CONFIG, config);
-        ctx.put(WorkflowKeys.TARGET_INPUT, "Given A and B, find the shortest path.");
+        ctx.put(WorkflowKeys.PROBLEM_BUNDLE,
+                problemBundle("Given A and B, find the shortest path.", WorkflowConfig.INPUT_MODE_PROBLEM));
         ctx.put(WorkflowKeys.KNOWLEDGE_GRAPH, problemGraph());
         ctx.put(WorkflowKeys.RESOLVED_INPUT_MODE, WorkflowConfig.INPUT_MODE_PROBLEM);
 
@@ -84,7 +86,8 @@ class MathVisionApplicationTest {
 
         Map<String, Object> ctx = new LinkedHashMap<>();
         ctx.put(WorkflowKeys.CONFIG, config);
-        ctx.put(WorkflowKeys.TARGET_INPUT, "Given a diagram, extract the problem.");
+        ctx.put(WorkflowKeys.PROBLEM_BUNDLE,
+                problemBundle("Given a diagram, extract the problem.", WorkflowConfig.INPUT_MODE_PROBLEM));
         ctx.put(WorkflowKeys.PROBLEM_NORMALIZATION_API_CALLS, 1);
 
         Map<String, Object> summary = buildSummary(ctx);
@@ -118,6 +121,17 @@ class MathVisionApplicationTest {
                 Map.of("start", start),
                 Map.of("start", List.of()),
                 List.of("start"));
+    }
+
+    private ProblemBundle problemBundle(String statement, String inputMode) {
+        ProblemBundle bundle = new ProblemBundle();
+        bundle.setId("test-problem");
+        bundle.setTitle(statement);
+        bundle.setInputMode(inputMode);
+        bundle.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        bundle.setSceneMode("2d");
+        bundle.setStatement(statement);
+        return bundle;
     }
 
     private Object loadProblemInput(Path path) throws Exception {

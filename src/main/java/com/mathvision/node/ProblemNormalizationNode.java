@@ -163,9 +163,6 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
         ctx.put(WorkflowKeys.PROBLEM_BUNDLE, bundle);
         ctx.put(WorkflowKeys.PROBLEM_NORMALIZATION_API_CALLS, apiCalls.get());
 
-        // Also set TARGET_INPUT for backward compatibility
-        ctx.put(WorkflowKeys.TARGET_INPUT, bundle.getStatement());
-
         Path outputDir = (Path) ctx.get(WorkflowKeys.OUTPUT_DIR);
         if (outputDir != null) {
             FileOutputService.saveProblemSource(outputDir, source);

@@ -1,5 +1,8 @@
 package com.mathvision.prompt;
 
+import com.mathvision.model.ProblemBundle;
+import com.mathvision.util.ProblemBundleContextBuilder;
+
 import java.util.List;
 
 /**
@@ -69,20 +72,30 @@ public final class SceneEvaluationPrompts {
         return SystemPrompts.buildRulesSection(MANIM_SYSTEM);
     }
 
-    public static String buildLayoutFixFixedContextPrompt(String targetConcept,
+    public static String buildLayoutFixFixedContextPrompt(ProblemBundle problemBundle,
                                                           String targetDescription,
                                                           String outputTarget) {
         String fixedContext = SystemPrompts.buildWorkflowPrefix(
                 "Stage 8 / Scene Evaluation Fix",
                 "Revise " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra commands" : "Manim code")
                         + " after geometry-based scene evaluation",
-                targetConcept,
+                ProblemBundleContextBuilder.displayTitle(problemBundle),
                 targetDescription,
-                outputTarget);
+                outputTarget)
+                + "\n" + ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(problemBundle);
         fixedContext = "geogebra".equalsIgnoreCase(outputTarget)
                 ? SystemPrompts.ensureGeoGebraSyntaxManual(fixedContext)
                 : SystemPrompts.ensureManimSyntaxManual(fixedContext);
         return SystemPrompts.buildFixedContextSection(fixedContext);
+    }
+
+    public static String buildLayoutFixFixedContextPrompt(String legacyTargetConcept,
+                                                          String targetDescription,
+                                                          String outputTarget) {
+        return buildLayoutFixFixedContextPrompt(
+                ProblemBundleContextBuilder.legacyBundle(legacyTargetConcept),
+                targetDescription,
+                outputTarget);
     }
 
     public static String manimLayoutFixUserPrompt(String storyboardJson,

@@ -1,5 +1,8 @@
 package com.mathvision.prompt;
 
+import com.mathvision.model.ProblemBundle;
+import com.mathvision.util.ProblemBundleContextBuilder;
+
 /**
  * Prompts for Stage 2: math enrichment.
  *
@@ -60,16 +63,17 @@ public final class EnrichmentPrompts {
     /**
      * Returns fixed background context: workflow prefix + solution chain.
      */
-    public static String buildFixedContextPrompt(String targetConcept,
+    public static String buildFixedContextPrompt(ProblemBundle problemBundle,
                                                   String targetDescription,
                                                   String solutionChain) {
         StringBuilder sb = new StringBuilder();
         sb.append(SystemPrompts.buildWorkflowPrefix(
                 "Stage 2 / Mathematical Enrichment",
                 "Mathematical content enrichment",
-                targetConcept,
+                ProblemBundleContextBuilder.displayTitle(problemBundle),
                 targetDescription,
                 (String) null));
+        sb.append("\n").append(ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(problemBundle));
         if (solutionChain != null && !solutionChain.isBlank()) {
             sb.append("\n\n").append(solutionChain);
         }

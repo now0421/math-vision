@@ -1,5 +1,8 @@
 package com.mathvision.prompt;
 
+import com.mathvision.model.Narrative;
+import com.mathvision.model.ProblemBundle;
+import com.mathvision.model.ProblemDiagram;
 import com.mathvision.util.TargetDescriptionBuilder;
 import com.mathvision.util.TextHealthDiagnostics;
 import org.junit.jupiter.api.Test;
@@ -182,6 +185,44 @@ class PromptModulesTest {
         assertTrue(geogebraVisualPrompt.contains("draggable, constrained, or movable construction elements over text-heavy explanation"));
         assertTrue(narrativePrompt.contains("motion-first visual-action teaching intent"));
         assertTrue(narrativePrompt.contains("do not turn a movable reveal, construction, transform, or manipulation into a static text/formula-only explanation"));
+    }
+
+    @Test
+    void visualFixedContextCarriesCompleteProblemBundleAndDiagramContract() {
+        ProblemBundle bundle = new ProblemBundle();
+        bundle.setId("triangle_setup");
+        bundle.setTitle("Triangle setup");
+        bundle.setInputMode("problem");
+        bundle.setOutputTarget("manim");
+        bundle.setSceneMode("2d");
+        bundle.setStatement("Given triangle ABC, construct altitude AD.");
+
+        ProblemDiagram diagram = new ProblemDiagram();
+        diagram.setPresent(true);
+        diagram.setDescription("Triangle ABC with altitude AD.");
+        Narrative.StoryboardObject pointA = new Narrative.StoryboardObject();
+        pointA.setId("A");
+        pointA.setKind("point");
+        pointA.setContent("Point A");
+        diagram.setObjects(java.util.List.of(pointA));
+        diagram.setConstructionNotes(java.util.List.of("Build triangle ABC before showing altitude AD."));
+        bundle.setDiagram(diagram);
+
+        String prompt = VisualDesignPrompts.buildFixedContextPrompt(
+                bundle,
+                "Design the setup",
+                "manim",
+                "");
+
+        assertTrue(prompt.contains("ProblemBundle JSON (authoritative workflow input):"));
+        assertTrue(prompt.contains("\"id\" : \"triangle_setup\""));
+        assertTrue(prompt.contains("Field roles:"));
+        assertTrue(prompt.contains("`statement` is the normalized human-readable problem or concept text"));
+        assertTrue(prompt.contains("`diagram.constraints` and object-level `constraints` are authoritative hard geometry contracts"));
+        assertTrue(prompt.contains("Mandatory initial diagram contract:"));
+        assertTrue(prompt.contains("Scene 1 must construct the initial problem diagram"));
+        assertTrue(prompt.contains("id=\"A\", kind=\"point\", content=\"Point A\""));
+        assertTrue(prompt.contains("Build triangle ABC before showing altitude AD."));
     }
 
     @Test

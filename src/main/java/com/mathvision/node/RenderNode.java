@@ -7,6 +7,7 @@ import com.mathvision.model.CodeFixResult;
 import com.mathvision.model.CodeFixSource;
 import com.mathvision.model.CodeResult;
 import com.mathvision.model.Narrative;
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.RenderResult;
 import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
@@ -22,6 +23,7 @@ import com.mathvision.util.ErrorSummarizer;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.ManimCodeUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.ProblemBundleContextBuilder;
 import com.mathvision.util.TextHealthDiagnostics;
 import com.mathvision.util.TimeUtils;
 import io.github.the_pocket.PocketFlow;
@@ -67,6 +69,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         private final CodeResult codeResult;
         private final CodeEvaluationResult codeEvaluationResult;
         private final Narrative narrative;
+        private final ProblemBundle problemBundle;
         private final WorkflowConfig config;
         private final Path outputDir;
         private final CodeFixResult previousFixResult;
@@ -75,6 +78,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         public RenderInput(CodeResult codeResult,
                            CodeEvaluationResult codeEvaluationResult,
                            Narrative narrative,
+                           ProblemBundle problemBundle,
                            WorkflowConfig config,
                            Path outputDir,
                            CodeFixResult previousFixResult,
@@ -82,6 +86,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
             this.codeResult = codeResult;
             this.codeEvaluationResult = codeEvaluationResult;
             this.narrative = narrative;
+            this.problemBundle = problemBundle;
             this.config = config;
             this.outputDir = outputDir;
             this.previousFixResult = previousFixResult;
@@ -91,6 +96,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         public CodeResult codeResult() { return codeResult; }
         public CodeEvaluationResult codeEvaluationResult() { return codeEvaluationResult; }
         public Narrative narrative() { return narrative; }
+        public ProblemBundle problemBundle() { return problemBundle; }
         public WorkflowConfig config() { return config; }
         public Path outputDir() { return outputDir; }
         public CodeFixResult previousFixResult() { return previousFixResult; }
@@ -120,10 +126,11 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         CodeEvaluationResult codeEvaluationResult =
                 (CodeEvaluationResult) ctx.get(WorkflowKeys.CODE_EVALUATION_RESULT);
         Narrative narrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
+        ProblemBundle problemBundle = (ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE);
         WorkflowConfig config = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
         Path outputDir = (Path) ctx.get(WorkflowKeys.OUTPUT_DIR);
         deleteStaleSceneEvaluationArtifact(outputDir);
-        return new RenderInput(codeResult, codeEvaluationResult, narrative, config, outputDir, previousFixResult, retryState);
+        return new RenderInput(codeResult, codeEvaluationResult, narrative, problemBundle, config, outputDir, previousFixResult, retryState);
     }
 
     @Override
@@ -490,8 +497,6 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         request.setReturnAction(WorkflowActions.RETRY_RENDER);
         request.setGeneratedCode(codeResult.getGeneratedCode());
         request.setErrorReason(retryState.pendingFocusedError);
-        request.setTargetConcept(codeResult.getTargetConcept());
-        request.setTargetDescription(codeResult.getTargetDescription());
         request.setSceneName(codeResult.getSceneName());
         request.setOutputTarget(codeResult.isGeoGebraTarget()
                 ? WorkflowConfig.OUTPUT_TARGET_GEOGEBRA
@@ -502,6 +507,9 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         String outputTarget = codeResult.isGeoGebraTarget()
                 ? WorkflowConfig.OUTPUT_TARGET_GEOGEBRA
                 : WorkflowConfig.OUTPUT_TARGET_MANIM;
+        request.setProblemBundle(input.problemBundle());
+        request.setTargetDescription(ProblemBundleContextBuilder.workflowTargetDescription(
+                input.problemBundle(), codeResult.getSceneName(), "", outputTarget));
         request.setStoryboardJson(input.narrative() != null && input.narrative().hasStoryboard()
                 ? StoryboardJsonBuilder.buildForCodegen(input.narrative().getStoryboard(), outputTarget)
                 : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
@@ -518,18 +526,10 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
     private void attachRenderCodeFixContext(RenderInput input,
                                             CodeFixRequest request,
                                             String outputTarget) {
-        CodeResult codeResult = input.codeResult();
-        String targetConcept = codeResult != null && codeResult.getTargetConcept() != null
-                && !codeResult.getTargetConcept().isBlank()
-                ? codeResult.getTargetConcept()
-                : request.getSceneName();
-        String targetDescription = codeResult != null && codeResult.getTargetDescription() != null
-                ? codeResult.getTargetDescription()
-                : "";
         String rulesPrompt = RenderFixPrompts.buildRulesPrompt(outputTarget);
         String fixedContextPrompt = RenderFixPrompts.buildFixedContextPrompt(
-                targetConcept,
-                targetDescription,
+                request.getProblemBundle(),
+                request.getTargetDescription(),
                 outputTarget);
         NodeConversationContext conversationContext = NodeSupport.ensureCodeFixConversationContext(
                 input.retryState(),

@@ -13,7 +13,7 @@ public class CodeFixTraceEntry {
     private String returnAction;
     private String sceneName;
     private String expectedSceneName;
-    private String targetConcept;
+    private String problemTitle;
     private String errorReason;
     private String errorContextMode;
     private String inputTextHealth;
@@ -46,8 +46,8 @@ public class CodeFixTraceEntry {
     public String getExpectedSceneName() { return expectedSceneName; }
     public void setExpectedSceneName(String expectedSceneName) { this.expectedSceneName = expectedSceneName; }
 
-    public String getTargetConcept() { return targetConcept; }
-    public void setTargetConcept(String targetConcept) { this.targetConcept = targetConcept; }
+    public String getProblemTitle() { return problemTitle; }
+    public void setProblemTitle(String problemTitle) { this.problemTitle = problemTitle; }
 
     public String getErrorReason() { return errorReason; }
     public void setErrorReason(String errorReason) { this.errorReason = errorReason; }

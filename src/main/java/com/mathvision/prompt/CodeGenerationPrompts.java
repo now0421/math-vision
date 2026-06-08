@@ -1,5 +1,7 @@
 package com.mathvision.prompt;
 
+import com.mathvision.model.ProblemBundle;
+import com.mathvision.util.ProblemBundleContextBuilder;
 import com.mathvision.util.SceneModeUtils;
 
 import java.util.List;
@@ -188,15 +190,26 @@ public final class CodeGenerationPrompts {
                 SystemPrompts.ensureManimSyntaxManual(MANIM_CODE_GENERATION_SYSTEM + sceneModeRule));
     }
 
-    public static String buildFixedContextPrompt(String targetConcept,
+    public static String buildFixedContextPrompt(ProblemBundle problemBundle,
                                                  String targetDescription,
                                                  String outputTarget,
                                                  String objectRegistryJson) {
-        return buildFixedContextPrompt(targetConcept, targetDescription, outputTarget, objectRegistryJson,
+        return buildFixedContextPrompt(problemBundle, targetDescription, outputTarget, objectRegistryJson,
                 SceneModeUtils.MODE_2D);
     }
 
-    public static String buildFixedContextPrompt(String targetConcept,
+    public static String buildFixedContextPrompt(String legacyTargetConcept,
+                                                 String targetDescription,
+                                                 String outputTarget,
+                                                 String objectRegistryJson) {
+        return buildFixedContextPrompt(
+                ProblemBundleContextBuilder.legacyBundle(legacyTargetConcept),
+                targetDescription,
+                outputTarget,
+                objectRegistryJson);
+    }
+
+    public static String buildFixedContextPrompt(ProblemBundle problemBundle,
                                                  String targetDescription,
                                                  String outputTarget,
                                                  String objectRegistryJson,
@@ -209,10 +222,11 @@ public final class CodeGenerationPrompts {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 5 / Code Generation",
                 "Generate executable " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra code" : "Manim code"),
-                targetConcept,
+                ProblemBundleContextBuilder.displayTitle(problemBundle),
                 targetDescription,
                 outputTarget
-        ) + "\nProblem-level scene_mode: `" + SceneModeUtils.normalize(sceneMode)
+        ) + "\n" + ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(problemBundle)
+                + "\n\nProblem-level scene_mode: `" + SceneModeUtils.normalize(sceneMode)
                 + "`. This is fixed for the whole generated program.\n" + registrySection);
     }
 
@@ -221,14 +235,14 @@ public final class CodeGenerationPrompts {
                 SystemPrompts.ensureManimSyntaxManual(MANIM_VALIDATION_FIX_SYSTEM));
     }
 
-    public static String buildManimValidationFixFixedContextPrompt(String targetConcept, String targetDescription) {
+    public static String buildManimValidationFixFixedContextPrompt(ProblemBundle problemBundle, String targetDescription) {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 5 / Code Fix",
                 "Repair generated code after validation findings",
-                targetConcept,
+                ProblemBundleContextBuilder.displayTitle(problemBundle),
                 targetDescription,
                 "manim"
-        ));
+        ) + "\n" + ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(problemBundle));
     }
 
     public static String buildGeoGebraValidationFixRulesPrompt() {
@@ -236,14 +250,14 @@ public final class CodeGenerationPrompts {
                 SystemPrompts.ensureGeoGebraSyntaxManual(GEOGEBRA_VALIDATION_FIX_SYSTEM));
     }
 
-    public static String buildGeoGebraValidationFixFixedContextPrompt(String targetConcept, String targetDescription) {
+    public static String buildGeoGebraValidationFixFixedContextPrompt(ProblemBundle problemBundle, String targetDescription) {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 5 / Code Fix",
                 "Repair generated GeoGebra commands after validation findings",
-                targetConcept,
+                ProblemBundleContextBuilder.displayTitle(problemBundle),
                 targetDescription,
                 "geogebra"
-        ));
+        ) + "\n" + ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(problemBundle));
     }
 
     public static String manimValidationFixUserPrompt(String sceneName,

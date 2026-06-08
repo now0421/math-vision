@@ -1,6 +1,8 @@
 package com.mathvision.prompt;
 
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.util.ErrorSummarizer;
+import com.mathvision.util.ProblemBundleContextBuilder;
 
 import java.util.Collections;
 import java.util.List;
@@ -72,16 +74,25 @@ public final class RenderFixPrompts {
                 SystemPrompts.ensureManimSyntaxManual(MANIM_SYSTEM));
     }
 
-    public static String buildFixedContextPrompt(String targetConcept,
-                                                 String targetDescription,
-                                                 String outputTarget) {
+    public static String buildFixedContextPrompt(ProblemBundle problemBundle,
+                                                  String targetDescription,
+                                                  String outputTarget) {
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
                 "Stage 7 / Code Rendering",
                 "Repair " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra commands" : "Manim code") + " after render failure",
-                targetConcept,
+                ProblemBundleContextBuilder.displayTitle(problemBundle),
                 targetDescription,
                 outputTarget
-        ));
+        ) + "\n" + ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(problemBundle));
+    }
+
+    public static String buildFixedContextPrompt(String legacyTargetConcept,
+                                                  String targetDescription,
+                                                  String outputTarget) {
+        return buildFixedContextPrompt(
+                ProblemBundleContextBuilder.legacyBundle(legacyTargetConcept),
+                targetDescription,
+                outputTarget);
     }
 
     public static String manimUserPrompt(String generatedCode, String error) {

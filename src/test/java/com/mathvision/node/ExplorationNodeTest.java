@@ -3,6 +3,7 @@ package com.mathvision.node;
 import com.mathvision.config.WorkflowConfig;
 import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
@@ -24,6 +25,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExplorationNodeTest {
 
@@ -128,6 +130,9 @@ class ExplorationNodeTest {
         KnowledgeGraph graph = (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
         assertNotNull(graph);
         assertEquals(List.of(ToolSchemas.PROBLEM_GRAPH), aiClient.requestedTools);
+        String requestText = aiClient.lastToolUserMessage();
+        assertTrue(requestText.contains("ProblemBundle JSON (authoritative workflow input):"));
+        assertTrue(requestText.contains("\"statement\" : \"Given A and line l, find the shortest path.\""));
         assertEquals("prompt", graph.getStartNodeId());
         assertEquals(0, graph.getNode("prompt").getMinDepth());
         assertEquals(1, graph.getNode("observe").getMinDepth());
@@ -159,8 +164,18 @@ class ExplorationNodeTest {
         Map<String, Object> ctx = new LinkedHashMap<>();
         ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
         ctx.put(WorkflowKeys.CONFIG, config);
-        ctx.put(WorkflowKeys.TARGET_INPUT, concept);
+        ctx.put(WorkflowKeys.PROBLEM_BUNDLE, problemBundle(concept, config.getInputMode()));
         return ctx;
+    }
+
+    private static ProblemBundle problemBundle(String statement, String inputMode) {
+        ProblemBundle bundle = new ProblemBundle();
+        bundle.setId("test-input");
+        bundle.setTitle(statement);
+        bundle.setInputMode(inputMode);
+        bundle.setSceneMode("2d");
+        bundle.setStatement(statement);
+        return bundle;
     }
 
     private static WorkflowConfig createConfig(String inputMode) {
@@ -358,6 +373,7 @@ class ExplorationNodeTest {
     private static final class QueueAiClient implements AiClient {
         private final Deque<JsonNode> toolResponses = new ArrayDeque<>();
         private final List<String> requestedTools = new ArrayList<>();
+        private final List<List<NodeConversationContext.Message>> toolSnapshots = new ArrayList<>();
         private int toolCallCount = 0;
         private int chatCallCount = 0;
 
@@ -372,12 +388,27 @@ class ExplorationNodeTest {
                                                                  String toolsJson) {
             toolCallCount++;
             requestedTools.add(toolsJson);
+            toolSnapshots.add(new ArrayList<>(snapshot));
             return CompletableFuture.completedFuture(toolResponses.removeFirst());
         }
 
         @Override
         public String providerName() {
             return "test";
+        }
+
+        private String lastToolUserMessage() {
+            if (toolSnapshots.isEmpty()) {
+                return "";
+            }
+            List<NodeConversationContext.Message> snapshot = toolSnapshots.get(toolSnapshots.size() - 1);
+            for (int i = snapshot.size() - 1; i >= 0; i--) {
+                NodeConversationContext.Message message = snapshot.get(i);
+                if ("user".equals(message.getRole())) {
+                    return message.getContent();
+                }
+            }
+            return "";
         }
     }
 }

@@ -7,6 +7,7 @@ import com.mathvision.model.CodeResult;
 import com.mathvision.model.Narrative;
 import com.mathvision.model.Narrative.Storyboard;
 import com.mathvision.model.Narrative.StoryboardObject;
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.RenderResult;
 import com.mathvision.model.SceneEvaluationResult;
 import com.mathvision.model.SceneEvaluationResult.Bounds;
@@ -24,6 +25,7 @@ import com.mathvision.util.ErrorSummarizer;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.service.FileOutputService;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.ProblemBundleContextBuilder;
 import com.mathvision.util.StoryboardConstraintUtils;
 import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TextUtils;
@@ -83,19 +85,22 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     public static class SceneEvaluationInput {
         private final CodeResult codeResult;
         private final Narrative narrative;
+        private final ProblemBundle problemBundle;
         private final RenderResult renderResult;
         private final WorkflowConfig config;
         private final Path outputDir;
         private final SceneEvaluationRetryState retryState;
 
         public SceneEvaluationInput(CodeResult codeResult,
-                                    Narrative narrative,
-                                    RenderResult renderResult,
+                                     Narrative narrative,
+                                     ProblemBundle problemBundle,
+                                     RenderResult renderResult,
                                     WorkflowConfig config,
                                     Path outputDir,
                                     SceneEvaluationRetryState retryState) {
             this.codeResult = codeResult;
             this.narrative = narrative;
+            this.problemBundle = problemBundle;
             this.renderResult = renderResult;
             this.config = config;
             this.outputDir = outputDir;
@@ -104,6 +109,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
 
         public CodeResult codeResult() { return codeResult; }
         public Narrative narrative() { return narrative; }
+        public ProblemBundle problemBundle() { return problemBundle; }
         public RenderResult renderResult() { return renderResult; }
         public WorkflowConfig config() { return config; }
         public Path outputDir() { return outputDir; }
@@ -121,10 +127,11 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
 
         CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
         Narrative narrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
+        ProblemBundle problemBundle = (ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE);
         RenderResult renderResult = (RenderResult) ctx.get(WorkflowKeys.RENDER_RESULT);
         WorkflowConfig config = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
         Path outputDir = (Path) ctx.get(WorkflowKeys.OUTPUT_DIR);
-        return new SceneEvaluationInput(codeResult, narrative, renderResult, config, outputDir, retryState);
+        return new SceneEvaluationInput(codeResult, narrative, problemBundle, renderResult, config, outputDir, retryState);
     }
 
     @Override
@@ -304,8 +311,6 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         request.setSceneEvaluationJson(retryState.pendingSceneEvaluationJson != null
                 ? retryState.pendingSceneEvaluationJson
                 : buildFixReportJson(result, storyboard));
-        request.setTargetConcept(codeResult.getTargetConcept());
-        request.setTargetDescription(codeResult.getTargetDescription());
         request.setSceneName(codeResult.getSceneName());
         // For GeoGebra, the expected scene name is typically GeoGebraCodeUtils.EXPECTED_FIGURE_NAME
         boolean isGeoGebra = renderResult != null && renderResult.isGeoGebraTarget();
@@ -314,6 +319,9 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 : WorkflowConfig.OUTPUT_TARGET_MANIM);
         request.setExpectedSceneName(isGeoGebra ? GeoGebraCodeUtils.EXPECTED_FIGURE_NAME : "MainScene");
         String outputTarget = isGeoGebra ? WorkflowConfig.OUTPUT_TARGET_GEOGEBRA : WorkflowConfig.OUTPUT_TARGET_MANIM;
+        request.setProblemBundle(input.problemBundle());
+        request.setTargetDescription(ProblemBundleContextBuilder.workflowTargetDescription(
+                input.problemBundle(), codeResult.getSceneName(), "", outputTarget));
         request.setStoryboardJson(storyboard != null
                 ? StoryboardJsonBuilder.buildForSceneEvaluationFix(storyboard, outputTarget)
                 : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
@@ -325,18 +333,10 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     private void attachSceneEvaluationCodeFixContext(SceneEvaluationInput input,
                                                      CodeFixRequest request,
                                                      String outputTarget) {
-        CodeResult codeResult = input.codeResult();
-        String targetConcept = codeResult != null && codeResult.getTargetConcept() != null
-                && !codeResult.getTargetConcept().isBlank()
-                ? codeResult.getTargetConcept()
-                : request.getSceneName();
-        String targetDescription = codeResult != null && codeResult.getTargetDescription() != null
-                ? codeResult.getTargetDescription()
-                : "";
         String rulesPrompt = SceneEvaluationPrompts.buildLayoutFixRulesPrompt(outputTarget);
         String fixedContextPrompt = SceneEvaluationPrompts.buildLayoutFixFixedContextPrompt(
-                targetConcept,
-                targetDescription,
+                request.getProblemBundle(),
+                request.getTargetDescription(),
                 outputTarget);
         NodeConversationContext conversationContext = NodeSupport.ensureCodeFixConversationContext(
                 input.retryState(),

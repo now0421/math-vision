@@ -5,6 +5,7 @@ import com.mathvision.model.CodeResult;
 import com.mathvision.model.CodeFixTraceReport;
 import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.Narrative;
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.RenderResult;
 import com.mathvision.model.CodeEvaluationResult;
 import com.mathvision.model.SceneEvaluationResult;
@@ -73,12 +74,12 @@ public class FileOutputService {
     private static final Pattern SCENE_CLASS_PATTERN =
             Pattern.compile("class\\s+(\\w+)\\s*\\(.*?Scene.*?\\)");
 
-    public static Path createOutputDir(Path baseDir, String targetInput) {
-        return createOutputDir(baseDir, targetInput, WorkflowConfig.OUTPUT_TARGET_MANIM);
+    public static Path createOutputDir(Path baseDir, String rawInput) {
+        return createOutputDir(baseDir, rawInput, WorkflowConfig.OUTPUT_TARGET_MANIM);
     }
 
-    public static Path createOutputDir(Path baseDir, String targetInput, String outputTarget) {
-        String safeName = targetInput.toLowerCase()
+    public static Path createOutputDir(Path baseDir, String rawInput, String outputTarget) {
+        String safeName = rawInput.toLowerCase()
                 .replaceAll("[^a-z0-9]+", "_")
                 .replaceAll("^_|_$", "");
         if (safeName.length() > 50) {
@@ -120,6 +121,22 @@ public class FileOutputService {
         }
     }
 
+    public static ProblemBundle loadProblemBundle(Path outputDir) {
+        if (outputDir == null) {
+            return null;
+        }
+        Path path = outputDir.resolve(PROBLEM_BUNDLE_FILE);
+        if (!Files.exists(path)) {
+            return null;
+        }
+        try {
+            log.info("[Load] problem bundle <- {}", path);
+            return mapper.readValue(path.toFile(), ProblemBundle.class);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load problem bundle from: " + path, e);
+        }
+    }
+
     public static CodeResult loadCodeResult(Path path) {
         try {
             log.info("[Load] code <- {}", path);
@@ -138,17 +155,11 @@ public class FileOutputService {
             }
 
             String description = readTextField(metadata, "description");
-            String targetConcept = readTextField(metadata, "target_concept");
-            if (targetConcept.isBlank()) {
-                targetConcept = sceneName;
-            }
 
             CodeResult codeResult = new CodeResult(
                     generatedCode,
                     sceneName,
-                    description,
-                    targetConcept,
-                    readTextField(metadata, "target_description"));
+                    description);
             codeResult.setOutputTarget(outputTarget);
             codeResult.setArtifactFormat(resolveArtifactFormat(outputTarget, metadata));
             codeResult.setToolCalls(0);
@@ -186,8 +197,6 @@ public class FileOutputService {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("scene_name", codeResult.getSceneName());
         meta.put("description", codeResult.getDescription());
-        meta.put("target_concept", codeResult.getTargetConcept());
-        meta.put("target_description", codeResult.getTargetDescription());
         meta.put("output_target", codeResult.getOutputTarget());
         meta.put("artifact_format", codeResult.getArtifactFormat());
         meta.put("code_lines", codeResult.codeLineCount());

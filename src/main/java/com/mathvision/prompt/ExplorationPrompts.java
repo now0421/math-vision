@@ -5,6 +5,18 @@ package com.mathvision.prompt;
  */
 public final class ExplorationPrompts {
 
+    private static final String PROBLEM_BUNDLE_AUTHORITY_RULES =
+            "ProblemBundle authority rules:\n"
+                    + "- When the current request includes ProblemBundle JSON, treat that JSON as the authoritative workflow input from Stage 0.\n"
+                    + "- `statement` is the normalized human-readable problem or concept text; it may be shorter than the full visual structure extracted from images.\n"
+                    + "- `input_mode` selects the concept/problem workflow when explicit.\n"
+                    + "- `scene_mode` is the authoritative dimensionality for downstream visual stages.\n"
+                    + "- `diagram.description` summarizes the source-observed figure when present.\n"
+                    + "- `diagram.objects` declares source-observed object identities that later stages should preserve.\n"
+                    + "- Object-level `constraints` and `diagram.constraints` are hard geometry contracts; do not reinterpret, weaken, or replace them with a different plausible figure.\n"
+                    + "- `diagram.construction_notes` contains source-diagram construction requirements and should guide the first setup beat and later geometric reasoning.\n"
+                    + "- If `statement` is ambiguous, prefer the explicit diagram constraints and construction notes.\n\n";
+
     private static final String INPUT_MODE_CLASSIFIER_SYSTEM =
             "You are a routing classifier for a math teaching-visualization workflow.\n"
                     + "Choose `problem` for a concrete question, proof, optimization, or exercise to solve.\n"
@@ -40,6 +52,7 @@ public final class ExplorationPrompts {
                     + "6. Do not bundle genuinely different reasoning moves into one node, but also do not over-split a natural continuous fact into multiple nodes.\n"
                     + "7. Every node must stay directly relevant to the final teaching goal.\n"
                     + "8. Add a final comparison beat only when it clearly improves understanding; do not add one for formal completeness.\n\n"
+                    + PROBLEM_BUNDLE_AUTHORITY_RULES
                     + "Edge rules:\n"
                     + "1. Add an edge only for truly necessary prerequisites, not helpful background.\n"
                     + "2. Avoid synonyms, near-duplicates, and parent-child duplication across nodes.\n"
@@ -83,6 +96,7 @@ public final class ExplorationPrompts {
                     + "6. Do not bundle multiple hidden reasoning moves into one node, but also do not over-split a natural continuous small inference into multiple nodes.\n"
                     + "7. Every node must stay directly relevant to the final solving goal.\n"
                     + "8. Add a final comparison beat only when it helps confirm optimality or the conclusion; do not add one for formal completeness.\n\n"
+                    + PROBLEM_BUNDLE_AUTHORITY_RULES
                     + "Edge rules:\n"
                     + "1. Add an edge only for truly necessary prerequisites.\n"
                     + "2. Avoid synonyms, near-duplicates, and parent-child duplication across nodes.\n"

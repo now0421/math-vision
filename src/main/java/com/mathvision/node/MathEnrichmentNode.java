@@ -3,6 +3,7 @@ package com.mathvision.node;
 import com.mathvision.config.WorkflowConfig;
 import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
+import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.prompt.EnrichmentPrompts;
 import com.mathvision.prompt.SystemPrompts;
@@ -12,6 +13,7 @@ import com.mathvision.util.AiRequestUtils;
 import com.mathvision.util.ConceptUtils;
 import com.mathvision.util.ConcurrencyUtils;
 import com.mathvision.util.NodeConversationContext;
+import com.mathvision.util.ProblemBundleContextBuilder;
 import com.mathvision.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
@@ -46,6 +48,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
     private ConcurrencyUtils.AsyncLimiter aiCallLimiter;
     private NodeConversationContext conversationContext;
     private KnowledgeGraph graph;
+    private ProblemBundle problemBundle;
 
     public MathEnrichmentNode() {
         super(1, 0);
@@ -55,6 +58,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
     public KnowledgeGraph prep(Map<String, Object> ctx) {
         this.aiClient = (AiClient) ctx.get(WorkflowKeys.AI_CLIENT);
         this.workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
+        this.problemBundle = (ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE);
         if (workflowConfig != null) {
             this.parallelEnabled = workflowConfig.isParallelMathEnrichment();
             this.maxConcurrent = workflowConfig.getMaxConcurrent();
@@ -74,13 +78,12 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         this.graph = graph;
 
         int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
-        String workflowTarget = graph != null ? graph.getTargetConcept() : "";
         this.conversationContext = new NodeConversationContext(maxInputTokens);
         String solutionChain = TargetDescriptionBuilder.buildSolutionChain(graph, null);
         this.conversationContext.setSystemMessage(EnrichmentPrompts.buildRulesPrompt());
         this.conversationContext.setFixedContextMessage(EnrichmentPrompts.buildFixedContextPrompt(
-                workflowTarget,
-                TargetDescriptionBuilder.build(graph, null),
+                problemBundle,
+                TargetDescriptionBuilder.build(problemBundle, graph, null),
                 solutionChain));
 
         try {

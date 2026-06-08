@@ -24,9 +24,6 @@ public class KnowledgeGraph {
     @JsonProperty("start_node_id")
     private String startNodeId;
 
-    @JsonProperty("target_concept")
-    private String targetConcept;
-
     private Map<String, KnowledgeNode> nodes = new LinkedHashMap<>();
 
     @JsonProperty("next_edges")
@@ -38,15 +35,26 @@ public class KnowledgeGraph {
     public KnowledgeGraph() {}
 
     public KnowledgeGraph(String startNodeId,
-                          String targetConcept,
                           Map<String, KnowledgeNode> nodes,
                           Map<String, List<String>> nextEdges,
                           List<String> teachingOrder) {
         this.startNodeId = startNodeId;
-        this.targetConcept = targetConcept;
         this.nodes = new LinkedHashMap<>(nodes);
         this.nextEdges = new LinkedHashMap<>(nextEdges);
         this.teachingOrder = teachingOrder != null ? new ArrayList<>(teachingOrder) : new ArrayList<>();
+    }
+
+    /**
+     * Legacy constructor kept for older tests and deserialization helpers.
+     * The target concept argument is intentionally ignored; ProblemBundle is
+     * now the authoritative workflow target.
+     */
+    public KnowledgeGraph(String startNodeId,
+                          String ignoredTargetConcept,
+                          Map<String, KnowledgeNode> nodes,
+                          Map<String, List<String>> nextEdges,
+                          List<String> teachingOrder) {
+        this(startNodeId, nodes, nextEdges, teachingOrder);
     }
 
     public KnowledgeNode getStartNode() {
@@ -316,9 +324,6 @@ public class KnowledgeGraph {
         KnowledgeNode start = getStartNode();
         KnowledgeNode terminal = findPrimaryTerminalNode();
         sb.append("KnowledgeGraph\n");
-        if (targetConcept != null && !targetConcept.isBlank()) {
-            sb.append("Target: ").append(targetConcept).append("\n");
-        }
         if (start != null) {
             sb.append("Start: ").append(start.getStep())
                     .append(" [depth=").append(start.getMinDepth()).append("]\n");
@@ -486,9 +491,6 @@ public class KnowledgeGraph {
     public String getStartNodeId() { return startNodeId; }
     public void setStartNodeId(String startNodeId) { this.startNodeId = startNodeId; }
 
-    public String getTargetConcept() { return targetConcept; }
-    public void setTargetConcept(String targetConcept) { this.targetConcept = targetConcept; }
-
     public Map<String, KnowledgeNode> getNodes() { return nodes; }
     public void setNodes(Map<String, KnowledgeNode> nodes) { this.nodes = nodes; }
 
@@ -533,22 +535,6 @@ public class KnowledgeGraph {
         if (hasProblemNode) {
             return true;
         }
-
-        String normalized = targetConcept == null ? "" : targetConcept.trim().toLowerCase(Locale.ROOT);
-        int wordCount = normalized.isBlank() ? 0 : normalized.split("\\s+").length;
-        return normalized.contains("?")
-                || normalized.contains("problem")
-                || normalized.contains("prove")
-                || normalized.contains("show that")
-                || normalized.contains("solve")
-                || normalized.contains("find")
-                || normalized.contains("determine")
-                || normalized.contains("minimize")
-                || normalized.contains("maximize")
-                || normalized.contains("minimum")
-                || normalized.contains("maximum")
-                || normalized.contains("given")
-                || normalized.contains("let ")
-                || wordCount > 12;
+        return false;
     }
 }
