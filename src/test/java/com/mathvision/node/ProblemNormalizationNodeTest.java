@@ -15,9 +15,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -63,6 +65,48 @@ class ProblemNormalizationNodeTest {
         assertEquals("Find the minimum value of AQ.", bundle.getStatement());
         assertNotNull(bundle.getDiagram());
         assertTrue(bundle.getDiagram().isPresent());
+        assertTrue(bundle.getDiagram().hasDescriptionPayload());
+    }
+
+    @Test
+    void textNormalizationReturnsReviewedAndRepairedBundle() {
+        ProblemSource source = new ProblemSource();
+        source.setSourceType("text");
+        source.setRawText("Given triangle ABC with AB = 5, find angle C.");
+
+        WorkflowConfig config = new WorkflowConfig();
+        config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_MANIM);
+
+        QueuePayloadAiClient aiClient = new QueuePayloadAiClient(
+                problemBundlePayload(
+                        "p_wrong",
+                        "Triangle ABC",
+                        "Given triangle ABC with AB = 6, find angle C."),
+                problemBundlePayload(
+                        "p_fixed",
+                        "Triangle ABC",
+                        "Given triangle ABC with AB = 5, find angle C.")
+        );
+
+        Map<String, Object> ctx = new HashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.CONFIG, config);
+        ctx.put(WorkflowKeys.OUTPUT_DIR, tempDir);
+
+        ProblemNormalizationNode node = new ProblemNormalizationNode();
+        node.prep(ctx);
+
+        ProblemBundle bundle = node.exec(source);
+        node.post(ctx, source, bundle);
+
+        assertEquals("p_fixed", bundle.getId());
+        assertEquals("Given triangle ABC with AB = 5, find angle C.", bundle.getStatement());
+        assertEquals(2, aiClient.toolCallCount);
+        assertEquals(2, ctx.get(WorkflowKeys.PROBLEM_NORMALIZATION_API_CALLS));
+
+        ProblemBundle storedBundle = (ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE);
+        assertEquals("p_fixed", storedBundle.getId());
+        assertEquals("Given triangle ABC with AB = 5, find angle C.", storedBundle.getStatement());
     }
 
     private static final class ToolPayloadAiClient implements AiClient {
@@ -89,34 +133,88 @@ class ProblemNormalizationNodeTest {
         }
 
         private JsonNode rawToolResponse() {
-            String arguments = "{"
-                    + "\"id\":\"p1\","
-                    + "\"title\":\"Geometry problem\","
-                    + "\"input_mode\":\"problem\","
-                    + "\"statement\":\"Find the minimum value of AQ.\","
-                    + "\"diagram\":{"
-                    + "\"present\":true,"
-                    + "\"description\":\"Quarter-circle diagram\","
-                    + "\"objects\":[],"
-                    + "\"constraints\":[],"
-                    + "\"construction_notes\":[]"
-                    + "}"
-                    + "}";
-            String response = "{"
-                    + "\"choices\":[{"
-                    + "\"message\":{"
-                    + "\"role\":\"assistant\","
-                    + "\"tool_calls\":[{"
-                    + "\"type\":\"function\","
-                    + "\"function\":{"
-                    + "\"name\":\"write_problem_bundle\","
-                    + "\"arguments\":" + JsonUtils.toJson(arguments)
-                    + "}"
-                    + "}]"
-                    + "}"
-                    + "}]"
-                    + "}";
-            return JsonUtils.parseTree(response);
+            return ProblemNormalizationNodeTest.rawToolResponse(problemBundlePayload(
+                    "p1",
+                    "Geometry problem",
+                    "Find the minimum value of AQ.",
+                    true));
         }
+    }
+
+    private static final class QueuePayloadAiClient implements AiClient {
+        private final Queue<String> payloads = new ArrayDeque<>();
+        private int toolCallCount;
+
+        private QueuePayloadAiClient(String... payloads) {
+            this.payloads.addAll(List.of(payloads));
+        }
+
+        @Override
+        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
+            return CompletableFuture.failedFuture(new UnsupportedOperationException());
+        }
+
+        @Override
+        public CompletableFuture<JsonNode> chatWithToolsRawAsync(
+                List<NodeConversationContext.Message> snapshot, String toolsJson) {
+            toolCallCount++;
+            String payload = payloads.remove();
+            return CompletableFuture.completedFuture(rawToolResponse(payload));
+        }
+
+        @Override
+        public String providerName() {
+            return "fake";
+        }
+    }
+
+    private static String problemBundlePayload(String id, String title, String statement) {
+        return problemBundlePayload(id, title, statement, false);
+    }
+
+    private static String problemBundlePayload(String id, String title, String statement, boolean diagramPresent) {
+        String diagramPayload = diagramPresent
+                ? "\"present\":true,"
+                        + "\"source_observed\":true,"
+                        + "\"diagram_description\":{\"overall_shape\":\"Quarter-circle diagram\"},"
+                        + "\"coordinate_model\":{},"
+                        + "\"unknowns\":[],"
+                        + "\"ambiguities\":[],"
+                        + "\"normalization_notes\":[]"
+                : "\"present\":false,"
+                        + "\"source_observed\":false,"
+                        + "\"diagram_description\":{},"
+                        + "\"coordinate_model\":{},"
+                        + "\"unknowns\":[],"
+                        + "\"ambiguities\":[],"
+                        + "\"normalization_notes\":[]";
+        return "{"
+                + "\"id\":" + JsonUtils.toJson(id) + ","
+                + "\"title\":" + JsonUtils.toJson(title) + ","
+                + "\"input_mode\":\"problem\","
+                + "\"scene_mode\":\"2d\","
+                + "\"statement\":" + JsonUtils.toJson(statement) + ","
+                + "\"diagram\":{"
+                + diagramPayload
+                + "}"
+                + "}";
+    }
+
+    private static JsonNode rawToolResponse(String arguments) {
+        String response = "{"
+                + "\"choices\":[{"
+                + "\"message\":{"
+                + "\"role\":\"assistant\","
+                + "\"tool_calls\":[{"
+                + "\"type\":\"function\","
+                + "\"function\":{"
+                + "\"name\":\"write_problem_bundle\","
+                + "\"arguments\":" + JsonUtils.toJson(arguments)
+                + "}"
+                + "}]"
+                + "}"
+                + "}]"
+                + "}";
+        return JsonUtils.parseTree(response);
     }
 }

@@ -42,6 +42,7 @@ public final class StoryboardConstraintCatalog {
     private static final List<String> STRENGTHS = List.of("hard", "repair_hard", "soft");
 
     private static final Map<String, RelationSpec> RELATIONS = buildRelations();
+    private static final Map<String, Map<String, RelationSpec>> RELATIONS_BY_DOMAIN = indexRelationsByDomain(RELATIONS.values());
 
     private StoryboardConstraintCatalog() {}
 
@@ -57,6 +58,19 @@ public final class StoryboardConstraintCatalog {
         return RELATIONS.get(normalize(relation));
     }
 
+    public static RelationSpec relation(String domain, String relation) {
+        String normalizedDomain = normalize(domain);
+        String normalizedRelation = normalize(relation);
+        Map<String, RelationSpec> domainRelations = RELATIONS_BY_DOMAIN.get(normalizedDomain);
+        if (domainRelations != null) {
+            RelationSpec spec = domainRelations.get(normalizedRelation);
+            if (spec != null) {
+                return spec;
+            }
+        }
+        return relation(normalizedRelation);
+    }
+
     public static Collection<RelationSpec> relations() {
         return RELATIONS.values();
     }
@@ -70,11 +84,11 @@ public final class StoryboardConstraintCatalog {
     }
 
     public static String relationEnumJson() {
-        return jsonStringArray(RELATIONS.keySet());
+        return jsonStringArray(relationNames());
     }
 
     public static String relationList() {
-        return String.join(", ", RELATIONS.keySet());
+        return String.join(", ", relationNames());
     }
 
     public static String domainList() {
@@ -105,8 +119,18 @@ public final class StoryboardConstraintCatalog {
         return spec != null && spec.coordinateDerived();
     }
 
+    public static boolean isCoordinateDerivedRelation(String domain, String relation) {
+        RelationSpec spec = relation(domain, relation);
+        return spec != null && spec.coordinateDerived();
+    }
+
     public static boolean isGeoGebraDefaultPlaceableRelation(String relation) {
         RelationSpec spec = relation(relation);
+        return spec != null && spec.geoGebraDefaultPlaceable();
+    }
+
+    public static boolean isGeoGebraDefaultPlaceableRelation(String domain, String relation) {
+        RelationSpec spec = relation(domain, relation);
         return spec != null && spec.geoGebraDefaultPlaceable();
     }
 
@@ -115,8 +139,18 @@ public final class StoryboardConstraintCatalog {
         return spec != null && spec.motionSensitive();
     }
 
+    public static boolean isMotionSensitiveRelation(String domain, String relation) {
+        RelationSpec spec = relation(domain, relation);
+        return spec != null && spec.motionSensitive();
+    }
+
     public static boolean isAttachmentRelation(String relation) {
         RelationSpec spec = relation(relation);
+        return spec != null && "attachment".equals(spec.domain());
+    }
+
+    public static boolean isAttachmentRelation(String domain, String relation) {
+        RelationSpec spec = relation(domain, relation);
         return spec != null && "attachment".equals(spec.domain());
     }
 
@@ -125,8 +159,18 @@ public final class StoryboardConstraintCatalog {
         return spec != null ? spec.ownerRefRoles() : Set.of();
     }
 
+    public static Set<String> ownerRefRoles(String domain, String relation) {
+        RelationSpec spec = relation(domain, relation);
+        return spec != null ? spec.ownerRefRoles() : Set.of();
+    }
+
     public static Set<String> dependencyRefRoles(String relation) {
         RelationSpec spec = relation(relation);
+        return spec != null ? spec.dependencyRefRoles() : Set.of();
+    }
+
+    public static Set<String> dependencyRefRoles(String domain, String relation) {
+        RelationSpec spec = relation(domain, relation);
         return spec != null ? spec.dependencyRefRoles() : Set.of();
     }
 
@@ -181,6 +225,14 @@ public final class StoryboardConstraintCatalog {
                 .requireAnyRef("ray", "object")
                 .requireAnyRef("start", "from")
                 .requireAnyRef("through", "end", "to"));
+        add(relations, spec("construction", "vector_from_to")
+                .scopes(Scope.OBJECT, Scope.SCENE)
+                .coordinateDerived()
+                .ownerRefs("vector", "object", "arrow", "directed_segment")
+                .requireAnyRef("vector", "object", "arrow", "directed_segment")
+                .requireAnyRef("start", "from")
+                .requireAnyRef("end", "to")
+                .optionalParams("tolerance"));
         add(relations, spec("construction", "intersection_of")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
@@ -197,6 +249,16 @@ public final class StoryboardConstraintCatalog {
                 .requireRef("source")
                 .requireAnyRef("mirror", "axis", "line")
                 .optionalParams("tolerance"));
+        add(relations, spec("construction", "rotate_about")
+                .scopes(Scope.OBJECT, Scope.SCENE)
+                .coordinateDerived()
+                .ownerRefs("image")
+                .requireRef("image")
+                .requireRef("source")
+                .requireAnyRef("center", "anchor", "point")
+                .requireParam("angle")
+                .optionalParams("direction", "branch", "tolerance")
+                .enumParam("direction", "clockwise", "counterclockwise"));
         add(relations, spec("construction", "midpoint_of")
                 .scopes(Scope.OBJECT, Scope.SCENE)
                 .coordinateDerived()
@@ -379,6 +441,15 @@ public final class StoryboardConstraintCatalog {
                 .requireAnyRef("object", "point")
                 .requireAnyRef("path", "support")
                 .optionalParams("range", "speed", "loop"));
+        add(relations, spec("motion", "trace_of")
+                .scopes(Scope.OBJECT, Scope.SCENE)
+                .coordinateDerived()
+                .ownerRefs("trace", "object", "path", "locus")
+                .dependencyRefs("source", "source_point", "moving_point")
+                .requireAnyRef("trace", "object", "path", "locus")
+                .requireAnyRef("source", "source_point", "moving_point")
+                .optionalRefs("driver", "support")
+                .optionalParams("range", "sample_count", "style", "tolerance"));
 
         add(relations, spec("attachment", "label_for")
                 .scopes(Scope.OBJECT, Scope.SCENE)
@@ -474,6 +545,8 @@ public final class StoryboardConstraintCatalog {
                 .requireAnyRef("object", "objects")
                 .requireParam("scene"));
 
+        addOtherRelations(relations);
+
         return Collections.unmodifiableMap(relations);
     }
 
@@ -483,7 +556,44 @@ public final class StoryboardConstraintCatalog {
 
     private static void add(Map<String, RelationSpec> relations, RelationSpec.Builder builder) {
         RelationSpec spec = builder.build();
-        relations.put(spec.relation(), spec);
+        relations.put(relationKey(spec.domain(), spec.relation()), spec);
+    }
+
+    private static void addOtherRelations(Map<String, RelationSpec> relations) {
+        for (String domain : DOMAINS) {
+            add(relations, spec(domain, "other")
+                    .scopes(Scope.OBJECT, Scope.SCENE)
+                    .ownerRefs("object", "objects", "owner", "point", "points", "member", "members")
+                    .dependencyRefs("source", "reference", "support", "anchor", "target", "driver")
+                    .optionalRefs(
+                            "object", "objects", "owner",
+                            "point", "points", "member", "members",
+                            "source", "reference", "support", "anchor", "target", "driver")
+                    .optionalParams(
+                            "description", "semantics", "details", "formula",
+                            "value", "range", "branch", "reason", "tolerance"));
+        }
+    }
+
+    private static Map<String, Map<String, RelationSpec>> indexRelationsByDomain(Collection<RelationSpec> specs) {
+        Map<String, Map<String, RelationSpec>> byDomain = new LinkedHashMap<>();
+        for (RelationSpec spec : specs) {
+            byDomain.computeIfAbsent(spec.domain(), ignored -> new LinkedHashMap<>())
+                    .put(spec.relation(), spec);
+        }
+        Map<String, Map<String, RelationSpec>> immutable = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, RelationSpec>> entry : byDomain.entrySet()) {
+            immutable.put(entry.getKey(), Collections.unmodifiableMap(entry.getValue()));
+        }
+        return Collections.unmodifiableMap(immutable);
+    }
+
+    private static String relationKey(String domain, String relation) {
+        String normalizedRelation = normalize(relation);
+        if (!"other".equals(normalizedRelation)) {
+            return normalizedRelation;
+        }
+        return normalize(domain) + ":" + normalizedRelation;
     }
 
     private static String jsonStringArray(Collection<String> values) {
@@ -498,6 +608,17 @@ public final class StoryboardConstraintCatalog {
         }
         sb.append("]");
         return sb.toString();
+    }
+
+    private static List<String> relationNames() {
+        List<String> names = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (RelationSpec spec : RELATIONS.values()) {
+            if (seen.add(spec.relation())) {
+                names.add(spec.relation());
+            }
+        }
+        return names;
     }
 
     /**

@@ -59,6 +59,6 @@ public class ProblemBundle {
     public void setDiagram(ProblemDiagram diagram) { this.diagram = diagram; }
 
     public boolean hasDiagram() {
-        return diagram != null && diagram.isPresent() && !diagram.getObjects().isEmpty();
+        return diagram != null && diagram.isPresent() && diagram.hasDescriptionPayload();
     }
 }

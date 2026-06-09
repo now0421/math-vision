@@ -1065,14 +1065,14 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         sb.append(objId).append("(").append(kind).append("): ");
         sb.append(c.getDomain() != null ? c.getDomain() : "?").append("/");
         sb.append(c.getRelation() != null ? c.getRelation() : "?");
-        if (StoryboardConstraintCatalog.isCoordinateDerivedRelation(c.getRelation())) {
+        if (StoryboardConstraintCatalog.isCoordinateDerivedRelation(c.getDomain(), c.getRelation())) {
             sb.append(" [coordinate-derived]");
         }
-        if (StoryboardConstraintCatalog.isMotionSensitiveRelation(c.getRelation())) {
+        if (StoryboardConstraintCatalog.isMotionSensitiveRelation(c.getDomain(), c.getRelation())) {
             sb.append(" [motion-sensitive]");
         }
-        Set<String> ownerRoles = StoryboardConstraintCatalog.ownerRefRoles(c.getRelation());
-        Set<String> dependencyRoles = StoryboardConstraintCatalog.dependencyRefRoles(c.getRelation());
+        Set<String> ownerRoles = StoryboardConstraintCatalog.ownerRefRoles(c.getDomain(), c.getRelation());
+        Set<String> dependencyRoles = StoryboardConstraintCatalog.dependencyRefRoles(c.getDomain(), c.getRelation());
         Set<String> ownerIds = StoryboardConstraintUtils.ownerIds(c);
         Set<String> dependencyIds = StoryboardConstraintUtils.dependencyIds(c);
         if (!ownerIds.isEmpty()) {

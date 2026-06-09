@@ -1,7 +1,5 @@
 package com.mathvision.prompt;
 
-import com.mathvision.model.Narrative.StoryboardConstraint;
-import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.ProblemDiagram;
 import com.mathvision.util.JsonUtils;
@@ -294,49 +292,28 @@ public final class VisualDesignPrompts {
         }
         ProblemDiagram diagram = problemBundle.getDiagram();
         sb.append("Mandatory initial diagram contract:\n");
-        sb.append("- Scene 1 must construct the initial problem diagram before any solution-specific construction.\n");
-        if (diagram.getDescription() != null && !diagram.getDescription().isBlank()) {
-            sb.append("- Diagram description: ").append(diagram.getDescription()).append("\n");
+        sb.append("- Scene 1 must construct the source-observed initial problem diagram before any solution-specific construction.\n");
+        sb.append("- The ProblemBundle diagram payload is native JSON source evidence, not storyboard-ready object definitions. Translate it into `new_objects`, object ids, placements, and structured storyboard constraints.\n");
+        sb.append("- Preserve named point/segment/region/mark identities from `diagram_description` when they are present; use concise ids that match mathematical labels such as A, B, C, P, Q, arc_AB, segment_AQ.\n");
+        sb.append("- Convert `coordinate_model` coordinates, equations, ranges, and dependency formulas into storyboard constraints and notes_for_codegen where they are needed for reliable rendering.\n");
+        sb.append("- Convert source-resolved choices in `ambiguities` into hard storyboard branch constraints. Examples: choose the stated side of a line, clockwise/counterclockwise rotation, near/far intersection, minor/major arc, or inside/outside branch.\n");
+        sb.append("- If `unknowns` includes moving or dependent quantities, make Scene 1 or the first relevant scene show the variable/dependent relationship without solving the problem prematurely.\n");
+        if (diagram.getDiagramDescription() != null && !diagram.getDiagramDescription().isNull()) {
+            sb.append("- Source diagram description JSON:\n")
+                    .append(diagram.getDiagramDescription().toPrettyString()).append("\n");
         }
-        sb.append("- Required objects: every `diagram.objects` entry from the ProblemBundle must appear in Scene 1 `entering_objects` and have a matching canonical entry in `new_objects`.\n");
-        if (diagram.getObjects() != null && !diagram.getObjects().isEmpty()) {
-            sb.append("  Required object ids/kinds/content:\n");
-            for (StoryboardObject obj : diagram.getObjects()) {
-                if (obj == null) {
-                    continue;
-                }
-                sb.append("  - id=\"").append(obj.getId())
-                        .append("\", kind=\"").append(obj.getKind())
-                        .append("\", content=\"").append(obj.getContent()).append("\"\n");
-                if (obj.getConstraints() != null && !obj.getConstraints().isEmpty()) {
-                    sb.append("    object_constraints=").append(JsonUtils.toJson(obj.getConstraints())).append("\n");
-                }
-            }
+        if (diagram.getCoordinateModel() != null && !diagram.getCoordinateModel().isNull()) {
+            sb.append("- Coordinate/model JSON:\n")
+                    .append(diagram.getCoordinateModel().toPrettyString()).append("\n");
         }
-        if (diagram.getConstraints() != null && !diagram.getConstraints().isEmpty()) {
-            sb.append("- Hard diagram constraints to honor in Scene 1:\n");
-            for (StoryboardConstraint c : diagram.getConstraints()) {
-                if (c == null) {
-                    continue;
-                }
-                sb.append("  - ").append(c.getDomain()).append("/").append(c.getRelation())
-                        .append(" refs=").append(c.getRefs());
-                if (c.getParameters() != null && !c.getParameters().isEmpty()) {
-                    sb.append(" parameters=").append(c.getParameters());
-                }
-                if (c.getReason() != null && !c.getReason().isBlank()) {
-                    sb.append(" reason=").append(c.getReason());
-                }
-                sb.append("\n");
-            }
+        if (diagram.getUnknowns() != null && !diagram.getUnknowns().isEmpty()) {
+            sb.append("- Unknowns JSON: ").append(JsonUtils.toJson(diagram.getUnknowns())).append("\n");
         }
-        if (diagram.getConstructionNotes() != null && !diagram.getConstructionNotes().isEmpty()) {
-            sb.append("- Construction notes:\n");
-            for (String note : diagram.getConstructionNotes()) {
-                if (note != null && !note.isBlank()) {
-                    sb.append("  - ").append(note).append("\n");
-                }
-            }
+        if (diagram.getAmbiguities() != null && !diagram.getAmbiguities().isEmpty()) {
+            sb.append("- Ambiguities/branch choices JSON: ").append(JsonUtils.toJson(diagram.getAmbiguities())).append("\n");
+        }
+        if (diagram.getNormalizationNotes() != null && !diagram.getNormalizationNotes().isEmpty()) {
+            sb.append("- Normalization notes: ").append(JsonUtils.toJson(diagram.getNormalizationNotes())).append("\n");
         }
         sb.append("- Do not introduce solution-specific auxiliary objects in Scene 1 before the source-observed initial diagram is established.\n\n");
     }

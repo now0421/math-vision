@@ -8,7 +8,7 @@
     "zhipu": {
       "api_key_env": "ZHIPU_API_KEY",
       "base_url_env": "ZHIPU_BASE_URL",
-      "base_url": "https://open.bigmodel.cn/api/coding/paas/v4"
+      "base_url": "https://open.bigmodel.cn/api/paas/v4"
     },
     "deepseek": {
       "api_key_env": "DEEPSEEK_API_KEY",
@@ -108,12 +108,12 @@
       "thinking": "disabled",
       "supports_vision": true
     },
-    "GLM-5": {
-      "model": "GLM-5",
+    "GLM-5V-Turbo": {
+      "model": "GLM-5V-Turbo",
       "provider": "zhipu",
       "reasoning_content_fallback": true,
       "temperature": 0.4,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 128000,
       "max_input_tokens": 200000,
       "request_timeout_seconds": 300,
       "timeout_retry_attempts": 1,
@@ -121,12 +121,12 @@
       "max_request_timeout_seconds": 900,
       "transient_failure_retries": 2
     },
-    "deepseek-reasoner": {
-      "model": "deepseek-reasoner",
+    "deepseek-v4-flash": {
+      "model": "deepseek-v4-flash",
       "reasoning_content_fallback": true,
       "temperature": 0.4,
       "max_output_tokens": 65536,
-      "max_input_tokens": 131072,
+      "max_input_tokens": 1000000,
       "request_timeout_seconds": 300,
       "timeout_retry_attempts": 1,
       "timeout_retry_multiplier": 2.0,

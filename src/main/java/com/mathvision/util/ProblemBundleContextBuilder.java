@@ -107,11 +107,12 @@ public final class ProblemBundleContextBuilder {
                 + "- `statement` is the normalized human-readable problem or concept text.\n"
                 + "- `input_mode` selects the concept or problem workflow when explicit.\n"
                 + "- `scene_mode` defines the dimensionality all later visual stages must preserve.\n"
-                + "- `diagram.description` summarizes the source-observed figure when present.\n"
-                + "- `diagram.objects` declares source-observed objects and their identities.\n"
-                + "- `diagram.constraints` and object-level `constraints` are authoritative hard geometry contracts.\n"
-                + "- `diagram.construction_notes` are source-diagram construction requirements for downstream stages.\n"
-                + "When the statement is ambiguous, preserve the diagram constraints and construction notes exactly.";
+                + "- `diagram.diagram_description` is native JSON that describes the source-observed figure in natural language groups such as shape, points, segments, marks, regions, or graph features.\n"
+                + "- `diagram.coordinate_model` is an optional mathematical model with coordinates, equations, ranges, and dependency formulas extracted from the statement/source figure.\n"
+                + "- `diagram.unknowns` lists moving, dependent, or target quantities.\n"
+                + "- `diagram.ambiguities` records source-resolved or unresolved branch choices such as side, clockwise/counterclockwise, near/far intersection, minor/major arc, or inside/outside.\n"
+                + "- ProblemBundle diagram fields are source evidence, not storyboard object definitions or structured constraints.\n"
+                + "When the statement is ambiguous, preserve the diagram observations, coordinate model, and ambiguity selections.";
     }
 
     public static String buildWorkflowPrefix(String stageLabel,

@@ -23,9 +23,12 @@ class StoryboardConstraintCatalogTest {
     void mapsRepresentativeRelationsToReclassifiedDomains() {
         assertEquals("placement", StoryboardConstraintCatalog.relation("point_at").domain());
         assertEquals("construction", StoryboardConstraintCatalog.relation("reflection_across").domain());
+        assertEquals("construction", StoryboardConstraintCatalog.relation("rotate_about").domain());
+        assertEquals("construction", StoryboardConstraintCatalog.relation("vector_from_to").domain());
         assertEquals("constraint", StoryboardConstraintCatalog.relation("lies_on").domain());
         assertEquals("metric", StoryboardConstraintCatalog.relation("equal_measure_group").domain());
         assertEquals("marker", StoryboardConstraintCatalog.relation("angle_between").domain());
+        assertEquals("motion", StoryboardConstraintCatalog.relation("trace_of").domain());
     }
 
     @Test
@@ -37,9 +40,12 @@ class StoryboardConstraintCatalogTest {
     @Test
     void locksCoordinateDerivedRelationsWhoseOwnersAreComputedFromRefs() {
         assertCoordinateDerivedAndMotionSensitive("reflection_across");
+        assertCoordinateDerivedAndMotionSensitive("rotate_about");
+        assertCoordinateDerivedAndMotionSensitive("vector_from_to");
         assertCoordinateDerivedAndMotionSensitive("midpoint_of");
         assertCoordinateDerivedAndMotionSensitive("intersection_of");
         assertCoordinateDerivedAndMotionSensitive("parallel_through");
+        assertCoordinateDerivedAndMotionSensitive("trace_of");
         assertCoordinateDerivedAndMotionSensitive("angle_between");
         assertCoordinateDerivedAndMotionSensitive("label_for");
     }
@@ -92,6 +98,43 @@ class StoryboardConstraintCatalogTest {
                 assertTrue(spec.enumParameters().get("positioning").contains("relative"), spec.relation());
             }
         }
+    }
+
+    @Test
+    void otherRelationIsDomainSpecificFallback() {
+        for (String domain : StoryboardConstraintCatalog.domainList().split("\\|")) {
+            StoryboardConstraintCatalog.RelationSpec spec = StoryboardConstraintCatalog.relation(domain, "other");
+            assertEquals(domain, spec.domain());
+            assertTrue(spec.allowedParameters().contains("description"));
+            assertTrue(spec.allowedParameters().contains("formula"));
+            assertTrue(spec.allowedRefs().contains("object"));
+            assertTrue(spec.allowedRefs().contains("source"));
+            assertTrue(spec.requiredRefGroups().isEmpty());
+        }
+        assertTrue(StoryboardConstraintCatalog.relationList().contains("other"));
+        assertTrue(StoryboardConstraintCatalog.relationEnumJson().contains("\"other\""));
+        assertFalse(StoryboardConstraintCatalog.relationEnumJson().contains("construction:other"));
+    }
+
+    @Test
+    void newRelationsUseExpectedRolesAndParameters() {
+        StoryboardConstraintCatalog.RelationSpec rotate = StoryboardConstraintCatalog.relation("rotate_about");
+        assertTrue(rotate.allowedRefs().contains("image"));
+        assertTrue(rotate.allowedRefs().contains("source"));
+        assertTrue(rotate.allowedRefs().contains("center"));
+        assertTrue(rotate.requiredParameters().contains("angle"));
+        assertTrue(rotate.enumParameters().get("direction").contains("counterclockwise"));
+
+        StoryboardConstraintCatalog.RelationSpec trace = StoryboardConstraintCatalog.relation("trace_of");
+        assertEquals("motion", trace.domain());
+        assertTrue(trace.allowedRefs().contains("trace"));
+        assertTrue(trace.allowedRefs().contains("source_point"));
+
+        StoryboardConstraintCatalog.RelationSpec vector = StoryboardConstraintCatalog.relation("vector_from_to");
+        assertEquals("construction", vector.domain());
+        assertTrue(vector.allowedRefs().contains("vector"));
+        assertTrue(vector.allowedRefs().contains("start"));
+        assertTrue(vector.allowedRefs().contains("end"));
     }
 
     private static void assertNotCoordinateDerived(String relation) {

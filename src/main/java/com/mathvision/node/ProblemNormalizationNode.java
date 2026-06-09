@@ -18,6 +18,8 @@ import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
 import com.mathvision.util.SceneModeUtils;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,6 +80,7 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
             }
 
             ProblemBundle bundle = parseProblemBundle(payload, source);
+            bundle = reviewProblemBundle(source, rawText, bundle, hasAssets);
             log.info("Normalization complete: id={}, mode={}, diagram.present={}",
                     bundle.getId(), bundle.getInputMode(),
                     bundle.getDiagram() != null && bundle.getDiagram().isPresent());
@@ -111,26 +114,12 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
     }
 
     private JsonNode requestMultimodal(ProblemSource source, String rawText) {
-        int imageCount = 0;
+        ImageAttachmentPayload imagePayload = buildImageAttachmentPayload(source);
         List<AiContentPart> userParts = new ArrayList<>();
-
-        for (SourceAsset asset : source.getAssets()) {
-            if ("image".equals(asset.getType()) && asset.getPath() != null) {
-                try {
-                    byte[] bytes = Files.readAllBytes(Path.of(asset.getPath()));
-                    String base64 = Base64.getEncoder().encodeToString(bytes);
-                    String mime = asset.getMimeType() != null ? asset.getMimeType() : "image/png";
-                    userParts.add(AiContentPart.image(mime, base64));
-                    imageCount++;
-                } catch (Exception e) {
-                    log.warn("Failed to read image asset {}: {}", asset.getPath(), e.getMessage());
-                }
-            }
-        }
-
         String textPrompt = ProblemNormalizationPrompts.buildMultimodalUserPrompt(
-                rawText, outputTarget, imageCount);
-        userParts.add(0, AiContentPart.text(textPrompt));
+                rawText, outputTarget, imagePayload.getImageCount());
+        userParts.add(AiContentPart.text(textPrompt));
+        userParts.addAll(imagePayload.getParts());
 
         List<AiMessage> messages = List.of(
                 AiMessage.system(ProblemNormalizationPrompts.buildRulesPrompt()),
@@ -156,6 +145,110 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
         return rawResponse;
     }
 
+    private ProblemBundle reviewProblemBundle(ProblemSource source,
+                                              String rawText,
+                                              ProblemBundle generatedBundle,
+                                              boolean hasAssets) {
+        if (generatedBundle == null) {
+            return buildFallbackBundle(source);
+        }
+
+        log.info("Reviewing normalized ProblemBundle against original source");
+        JsonNode payload = hasAssets
+                ? requestMultimodalReview(source, rawText, generatedBundle)
+                : requestTextOnlyReview(rawText, generatedBundle);
+        ProblemBundle reviewedBundle = parseProblemBundle(payload, source, generatedBundle);
+        log.info("ProblemBundle review complete: id={}, mode={}, diagram.present={}",
+                reviewedBundle.getId(), reviewedBundle.getInputMode(),
+                reviewedBundle.getDiagram() != null && reviewedBundle.getDiagram().isPresent());
+        return reviewedBundle;
+    }
+
+    private JsonNode requestTextOnlyReview(String rawText, ProblemBundle generatedBundle) {
+        int maxInputTokens = workflowConfig != null
+                ? workflowConfig.resolveMaxInputTokens()
+                : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
+
+        NodeConversationContext context = new NodeConversationContext(maxInputTokens);
+        context.setSystemMessage(ProblemNormalizationPrompts.buildReviewRulesPrompt());
+        context.setFixedContextMessage(ProblemNormalizationPrompts.buildReviewFixedContextPrompt(outputTarget));
+
+        String userPrompt = ProblemNormalizationPrompts.buildReviewUserPrompt(
+                rawText,
+                outputTarget,
+                0,
+                JsonUtils.toPrettyJson(generatedBundle));
+
+        return AiRequestUtils.requestJsonObjectAsync(
+                aiClient,
+                log,
+                "ProblemBundle review",
+                context,
+                userPrompt,
+                ToolSchemas.PROBLEM_BUNDLE,
+                () -> apiCalls.incrementAndGet()
+        ).join();
+    }
+
+    private JsonNode requestMultimodalReview(ProblemSource source, String rawText, ProblemBundle generatedBundle) {
+        ImageAttachmentPayload imagePayload = buildImageAttachmentPayload(source);
+        String textPrompt = ProblemNormalizationPrompts.buildReviewUserPrompt(
+                rawText,
+                outputTarget,
+                imagePayload.getImageCount(),
+                JsonUtils.toPrettyJson(generatedBundle));
+
+        List<AiContentPart> userParts = new ArrayList<>();
+        userParts.add(AiContentPart.text(textPrompt));
+        userParts.addAll(imagePayload.getParts());
+
+        List<AiMessage> messages = List.of(
+                AiMessage.system(ProblemNormalizationPrompts.buildReviewRulesPrompt()),
+                AiMessage.system(ProblemNormalizationPrompts.buildReviewFixedContextPrompt(outputTarget)),
+                AiMessage.user(userParts)
+        );
+
+        apiCalls.incrementAndGet();
+        JsonNode rawResponse = aiClient.chatMultimodalWithToolsRawAsync(
+                messages, ToolSchemas.PROBLEM_BUNDLE).join();
+        JsonNode payload = JsonUtils.extractToolCallPayload(rawResponse);
+        if (payload != null && payload.isObject() && payload.size() > 0) {
+            return payload;
+        }
+
+        String textContent = JsonUtils.extractBestEffortTextFromResponse(rawResponse);
+        JsonNode parsed = JsonUtils.parseTreeBestEffort(textContent);
+        if (parsed != null && parsed.isObject() && parsed.size() > 0) {
+            return parsed;
+        }
+
+        log.warn("Multimodal ProblemBundle review response did not contain a usable payload");
+        return rawResponse;
+    }
+
+    private ImageAttachmentPayload buildImageAttachmentPayload(ProblemSource source) {
+        List<AiContentPart> parts = new ArrayList<>();
+        if (source == null || source.getAssets() == null) {
+            return new ImageAttachmentPayload(parts, 0);
+        }
+
+        int imageCount = 0;
+        for (SourceAsset asset : source.getAssets()) {
+            if ("image".equals(asset.getType()) && asset.getPath() != null) {
+                try {
+                    byte[] bytes = Files.readAllBytes(Path.of(asset.getPath()));
+                    String base64 = Base64.getEncoder().encodeToString(bytes);
+                    String mime = asset.getMimeType() != null ? asset.getMimeType() : "image/png";
+                    parts.add(AiContentPart.image(mime, base64));
+                    imageCount++;
+                } catch (Exception e) {
+                    log.warn("Failed to read image asset {}: {}", asset.getPath(), e.getMessage());
+                }
+            }
+        }
+        return new ImageAttachmentPayload(parts, imageCount);
+    }
+
     @Override
     public String post(Map<String, Object> ctx, ProblemSource source, ProblemBundle bundle) {
         bundle.setOutputTarget(outputTarget);
@@ -173,7 +266,23 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
     }
 
     private ProblemBundle parseProblemBundle(JsonNode payload, ProblemSource source) {
+        return parseProblemBundle(payload, source, null);
+    }
+
+    private ProblemBundle parseProblemBundle(JsonNode payload, ProblemSource source, ProblemBundle fallbackBundle) {
         if (payload == null || payload.isEmpty()) {
+            if (fallbackBundle != null) {
+                log.warn("ProblemBundle review returned no usable payload, keeping generated bundle");
+                return fallbackBundle;
+            }
+            return buildFallbackBundle(source);
+        }
+        if (!looksLikeProblemBundlePayload(payload)) {
+            if (fallbackBundle != null) {
+                log.warn("ProblemBundle review returned a non-bundle payload, keeping generated bundle");
+                return fallbackBundle;
+            }
+            log.warn("Normalization response did not look like a ProblemBundle, using fallback");
             return buildFallbackBundle(source);
         }
         try {
@@ -185,11 +294,26 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
                 bundle.setInputMode(WorkflowConfig.INPUT_MODE_PROBLEM);
             }
             bundle.setSceneMode(SceneModeUtils.normalize(bundle.getSceneMode()));
+            migrateLegacyDiagramPayload(bundle, payload);
             return bundle;
         } catch (Exception e) {
+            if (fallbackBundle != null) {
+                log.warn("Failed to parse reviewed ProblemBundle, keeping generated bundle: {}", e.getMessage());
+                return fallbackBundle;
+            }
             log.warn("Failed to parse ProblemBundle from LLM response, using fallback: {}", e.getMessage());
             return buildFallbackBundle(source);
         }
+    }
+
+    private boolean looksLikeProblemBundlePayload(JsonNode payload) {
+        if (payload == null || !payload.isObject()) {
+            return false;
+        }
+        return payload.has("statement")
+                || payload.has("diagram")
+                || payload.has("input_mode")
+                || payload.has("scene_mode");
     }
 
     private ProblemBundle buildFallbackBundle(ProblemSource source) {
@@ -201,5 +325,76 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
         bundle.setInputMode(WorkflowConfig.INPUT_MODE_PROBLEM);
         bundle.setSceneMode(SceneModeUtils.MODE_2D);
         return bundle;
+    }
+
+    private void migrateLegacyDiagramPayload(ProblemBundle bundle, JsonNode payload) {
+        if (bundle == null || bundle.getDiagram() == null || payload == null) {
+            return;
+        }
+        JsonNode diagramPayload = payload.path("diagram");
+        if (!diagramPayload.isObject()) {
+            return;
+        }
+
+        var diagram = bundle.getDiagram();
+        if (!diagram.isPresent()) {
+            diagram.setSourceObserved(false);
+            return;
+        }
+        if (!diagram.isSourceObserved()) {
+            diagram.setSourceObserved(true);
+        }
+
+        if (!diagram.hasDescriptionPayload()) {
+            ObjectNode description = JsonUtils.mapper().createObjectNode();
+            String legacyDescription = diagramPayload.path("description").asText("");
+            if (!legacyDescription.isBlank()) {
+                description.put("overall_shape", legacyDescription);
+            }
+            if (diagramPayload.has("objects")) {
+                description.set("legacy_objects", diagramPayload.get("objects"));
+            }
+            if (diagramPayload.has("constraints")) {
+                description.set("legacy_constraints", diagramPayload.get("constraints"));
+            }
+            if (description.size() > 0) {
+                diagram.setDiagramDescription(description);
+            }
+
+            ArrayNode notes = JsonUtils.mapper().createArrayNode();
+            JsonNode legacyNotes = diagramPayload.get("construction_notes");
+            if (legacyNotes != null && legacyNotes.isArray()) {
+                for (JsonNode note : legacyNotes) {
+                    if (note != null && !note.asText("").isBlank()) {
+                        notes.add(note.asText());
+                    }
+                }
+            }
+            if (notes.size() > 0) {
+                List<String> normalizationNotes = new ArrayList<>();
+                for (JsonNode note : notes) {
+                    normalizationNotes.add(note.asText());
+                }
+                diagram.setNormalizationNotes(normalizationNotes);
+            }
+        }
+    }
+
+    private static final class ImageAttachmentPayload {
+        private final List<AiContentPart> parts;
+        private final int imageCount;
+
+        private ImageAttachmentPayload(List<AiContentPart> parts, int imageCount) {
+            this.parts = parts;
+            this.imageCount = imageCount;
+        }
+
+        private List<AiContentPart> getParts() {
+            return parts;
+        }
+
+        private int getImageCount() {
+            return imageCount;
+        }
     }
 }

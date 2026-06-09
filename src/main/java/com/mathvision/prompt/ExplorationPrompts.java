@@ -11,11 +11,12 @@ public final class ExplorationPrompts {
                     + "- `statement` is the normalized human-readable problem or concept text; it may be shorter than the full visual structure extracted from images.\n"
                     + "- `input_mode` selects the concept/problem workflow when explicit.\n"
                     + "- `scene_mode` is the authoritative dimensionality for downstream visual stages.\n"
-                    + "- `diagram.description` summarizes the source-observed figure when present.\n"
-                    + "- `diagram.objects` declares source-observed object identities that later stages should preserve.\n"
-                    + "- Object-level `constraints` and `diagram.constraints` are hard geometry contracts; do not reinterpret, weaken, or replace them with a different plausible figure.\n"
-                    + "- `diagram.construction_notes` contains source-diagram construction requirements and should guide the first setup beat and later geometric reasoning.\n"
-                    + "- If `statement` is ambiguous, prefer the explicit diagram constraints and construction notes.\n\n";
+                    + "- `diagram.diagram_description` is a native-JSON natural-language description of the source-observed figure, not storyboard objects or constraints.\n"
+                    + "- `diagram.coordinate_model` may provide coordinates, equations, ranges, and dependency formulas extracted from the statement/source figure; use it for mathematical branch selection when relevant.\n"
+                    + "- `diagram.unknowns` lists moving, dependent, or target quantities that should shape the problem setup and solving DAG.\n"
+                    + "- `diagram.ambiguities` records source-resolved or unresolved branch choices such as side, clockwise/counterclockwise, near/far intersection, or inside/outside. Do not ignore these choices when they affect the answer.\n"
+                    + "- ProblemBundle diagram fields are source evidence, not storyboard constraints. Later visual stages convert them into concrete object ids and structured constraints.\n"
+                    + "- If `statement` is ambiguous, prefer the explicit source observations, coordinate model, and ambiguity selections in the diagram payload.\n\n";
 
     private static final String INPUT_MODE_CLASSIFIER_SYSTEM =
             "You are a routing classifier for a math teaching-visualization workflow.\n"

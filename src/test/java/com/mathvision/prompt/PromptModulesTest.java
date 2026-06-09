@@ -1,8 +1,8 @@
 package com.mathvision.prompt;
 
-import com.mathvision.model.Narrative;
 import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.ProblemDiagram;
+import com.mathvision.util.JsonUtils;
 import com.mathvision.util.TargetDescriptionBuilder;
 import com.mathvision.util.TextHealthDiagnostics;
 import org.junit.jupiter.api.Test;
@@ -199,13 +199,17 @@ class PromptModulesTest {
 
         ProblemDiagram diagram = new ProblemDiagram();
         diagram.setPresent(true);
-        diagram.setDescription("Triangle ABC with altitude AD.");
-        Narrative.StoryboardObject pointA = new Narrative.StoryboardObject();
-        pointA.setId("A");
-        pointA.setKind("point");
-        pointA.setContent("Point A");
-        diagram.setObjects(java.util.List.of(pointA));
-        diagram.setConstructionNotes(java.util.List.of("Build triangle ABC before showing altitude AD."));
+        diagram.setSourceObserved(true);
+        diagram.setDiagramDescription(JsonUtils.parseTree("{"
+                + "\"overall_shape\":\"Triangle ABC with altitude AD.\","
+                + "\"points\":{\"A\":{\"role\":\"vertex\",\"position\":\"top\"}},"
+                + "\"segments\":[{\"name\":\"AD\",\"description\":\"altitude from A\"}]"
+                + "}"));
+        diagram.setUnknowns(java.util.List.of(JsonUtils.parseTree("{"
+                + "\"name\":\"altitude AD\","
+                + "\"description\":\"construct the altitude from A\""
+                + "}")));
+        diagram.setNormalizationNotes(java.util.List.of("Build triangle ABC before showing altitude AD."));
         bundle.setDiagram(diagram);
 
         String prompt = VisualDesignPrompts.buildFixedContextPrompt(
@@ -218,10 +222,11 @@ class PromptModulesTest {
         assertTrue(prompt.contains("\"id\" : \"triangle_setup\""));
         assertTrue(prompt.contains("Field roles:"));
         assertTrue(prompt.contains("`statement` is the normalized human-readable problem or concept text"));
-        assertTrue(prompt.contains("`diagram.constraints` and object-level `constraints` are authoritative hard geometry contracts"));
+        assertTrue(prompt.contains("`diagram.diagram_description` is native JSON"));
         assertTrue(prompt.contains("Mandatory initial diagram contract:"));
-        assertTrue(prompt.contains("Scene 1 must construct the initial problem diagram"));
-        assertTrue(prompt.contains("id=\"A\", kind=\"point\", content=\"Point A\""));
+        assertTrue(prompt.contains("Scene 1 must construct the source-observed initial problem diagram"));
+        assertTrue(prompt.contains("Translate it into `new_objects`"));
+        assertTrue(prompt.contains("\"overall_shape\" : \"Triangle ABC with altitude AD.\""));
         assertTrue(prompt.contains("Build triangle ABC before showing altitude AD."));
     }
 

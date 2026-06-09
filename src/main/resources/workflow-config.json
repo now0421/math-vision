@@ -15,5 +15,5 @@
   "scene_evaluation_max_retries": 5,
   "input_mode": "auto",
   "output_target": "manim",
-  "model": "gpt-5.5"
+  "model": "GLM-5V-Turbo"
 }

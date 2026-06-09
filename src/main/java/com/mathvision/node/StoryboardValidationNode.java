@@ -813,7 +813,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             if (constraint.getRelation() == null || constraint.getRelation().isBlank()) {
                 issues.add(label + ": missing relation");
             } else {
-                relationSpec = StoryboardConstraintCatalog.relation(constraint.getRelation());
+                relationSpec = StoryboardConstraintCatalog.relation(constraint.getDomain(), constraint.getRelation());
                 if (relationSpec == null) {
                     issues.add(label + ": unknown relation '" + constraint.getRelation().trim()
                             + "'; use one of " + StoryboardConstraintCatalog.relationList());
@@ -1789,7 +1789,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         }
         String objectId = StoryboardPatchResolver.objectId(object);
         for (StoryboardConstraint constraint : object.getConstraints()) {
-            if (!StoryboardConstraintCatalog.isAttachmentRelation(constraint.getRelation())
+            if (!StoryboardConstraintCatalog.isAttachmentRelation(constraint.getDomain(), constraint.getRelation())
                     || constraint.getRefs() == null) {
                 continue;
             }
@@ -2290,7 +2290,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             return false;
         }
         for (StoryboardConstraint constraint : textObject.getConstraints()) {
-            if (!StoryboardConstraintCatalog.isAttachmentRelation(constraint.getRelation())) {
+            if (!StoryboardConstraintCatalog.isAttachmentRelation(constraint.getDomain(), constraint.getRelation())) {
                 continue;
             }
             Map<String, Object> refs = constraint.getRefs();

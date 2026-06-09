@@ -60,7 +60,7 @@ public final class StoryboardConstraintUtils {
         if (constraint == null || constraint.getRefs() == null) {
             return ids;
         }
-        RelationSpec spec = StoryboardConstraintCatalog.relation(constraint.getRelation());
+        RelationSpec spec = StoryboardConstraintCatalog.relation(constraint.getDomain(), constraint.getRelation());
         Set<String> roles = spec != null ? spec.ownerRefRoles() : Set.of();
         for (String role : roles) {
             collectRefIds(constraint.getRefs().get(role), ids);
@@ -73,7 +73,7 @@ public final class StoryboardConstraintUtils {
         if (constraint == null || constraint.getRefs() == null) {
             return ids;
         }
-        RelationSpec spec = StoryboardConstraintCatalog.relation(constraint.getRelation());
+        RelationSpec spec = StoryboardConstraintCatalog.relation(constraint.getDomain(), constraint.getRelation());
         Set<String> roles = spec != null ? spec.dependencyRefRoles() : Set.of();
         for (String role : roles) {
             collectRefIds(constraint.getRefs().get(role), ids);
@@ -87,7 +87,7 @@ public final class StoryboardConstraintUtils {
         if (constraint == null || constraint.getRefs() == null) {
             return groups;
         }
-        RelationSpec spec = StoryboardConstraintCatalog.relation(constraint.getRelation());
+        RelationSpec spec = StoryboardConstraintCatalog.relation(constraint.getDomain(), constraint.getRelation());
         if (spec == null) {
             return groups;
         }
@@ -110,27 +110,32 @@ public final class StoryboardConstraintUtils {
     }
 
     public static boolean isAttachmentConstraint(StoryboardConstraint constraint) {
-        return constraint != null && StoryboardConstraintCatalog.isAttachmentRelation(constraint.getRelation());
+        return constraint != null
+                && StoryboardConstraintCatalog.isAttachmentRelation(constraint.getDomain(), constraint.getRelation());
     }
 
     public static boolean isMotionConstraint(StoryboardConstraint constraint) {
         if (constraint == null) {
             return false;
         }
-        RelationSpec spec = StoryboardConstraintCatalog.relation(constraint.getRelation());
+        RelationSpec spec = StoryboardConstraintCatalog.relation(constraint.getDomain(), constraint.getRelation());
         return spec != null && "motion".equals(spec.domain());
     }
 
     public static boolean isCoordinateDerivedConstraint(StoryboardConstraint constraint) {
-        return constraint != null && StoryboardConstraintCatalog.isCoordinateDerivedRelation(constraint.getRelation());
+        return constraint != null
+                && StoryboardConstraintCatalog.isCoordinateDerivedRelation(constraint.getDomain(), constraint.getRelation());
     }
 
     public static boolean isGeoGebraDefaultPlaceableConstraint(StoryboardConstraint constraint) {
-        return constraint != null && StoryboardConstraintCatalog.isGeoGebraDefaultPlaceableRelation(constraint.getRelation());
+        return constraint != null
+                && StoryboardConstraintCatalog.isGeoGebraDefaultPlaceableRelation(
+                        constraint.getDomain(), constraint.getRelation());
     }
 
     public static boolean isMotionSensitiveConstraint(StoryboardConstraint constraint) {
-        return constraint != null && StoryboardConstraintCatalog.isMotionSensitiveRelation(constraint.getRelation());
+        return constraint != null
+                && StoryboardConstraintCatalog.isMotionSensitiveRelation(constraint.getDomain(), constraint.getRelation());
     }
 
     public static boolean isObjectMotionConstrained(String objectId, Storyboard storyboard) {
