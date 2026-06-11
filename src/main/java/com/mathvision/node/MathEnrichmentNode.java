@@ -5,6 +5,7 @@ import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
 import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.WorkflowKeys;
+import com.mathvision.node.support.NodeSupport;
 import com.mathvision.prompt.EnrichmentPrompts;
 import com.mathvision.prompt.SystemPrompts;
 import com.mathvision.prompt.ToolSchemas;
@@ -202,15 +203,16 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
             String userPrompt,
             List<NodeConversationContext.Message> batchConversationSnapshot,
             String cacheKey) {
-        return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonObjectResultAsync(
+        return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonAsync(
                 aiClient,
                 log,
                 node.getStep(),
-                batchConversationSnapshot,
-                conversationContext.getMaxInputTokens(),
-                userPrompt,
-                ToolSchemas.MATH_ENRICHMENT,
-                () -> toolCalls.incrementAndGet()
+                NodeSupport.buildAiRequest(
+                        batchConversationSnapshot,
+                        conversationContext.getMaxInputTokens(),
+                        userPrompt,
+                        ToolSchemas.MATH_ENRICHMENT),
+                AiRequestUtils.JsonRequestOptions.of(() -> toolCalls.incrementAndGet())
         )).thenApply(result -> new EnrichmentRequestResult(
                 cacheKey,
                 userPrompt,

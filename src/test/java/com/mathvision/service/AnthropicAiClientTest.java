@@ -9,7 +9,8 @@ import com.anthropic.models.messages.ToolChoiceTool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mathvision.config.ModelConfig;
-import com.mathvision.util.NodeConversationContext;
+import com.mathvision.model.AiContentPart;
+import com.mathvision.model.AiMessage;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -25,10 +26,10 @@ class AnthropicAiClientTest {
     @Test
     void convertsSnapshotToAnthropicMessagesWithoutSystemMessages() {
         List<MessageParam> messages = AnthropicAiClient.toAnthropicMessages(List.of(
-                new NodeConversationContext.Message("system", "system one"),
-                new NodeConversationContext.Message("user", "hello"),
-                new NodeConversationContext.Message("assistant", "hi"),
-                new NodeConversationContext.Message("system", "system two")
+                AiMessage.system("system one"),
+                AiMessage.user(List.of(AiContentPart.text("hello"))),
+                new AiMessage("assistant", List.of(AiContentPart.text("hi"))),
+                AiMessage.system("system two")
         ));
 
         assertEquals(2, messages.size());
@@ -41,9 +42,9 @@ class AnthropicAiClientTest {
     @Test
     void combinesSystemMessagesIntoTopLevelSystem() {
         String system = AnthropicAiClient.collectSystemMessages(List.of(
-                new NodeConversationContext.Message("system", "first"),
-                new NodeConversationContext.Message("user", "hello"),
-                new NodeConversationContext.Message("system", "second")
+                AiMessage.system("first"),
+                AiMessage.user(List.of(AiContentPart.text("hello"))),
+                AiMessage.system("second")
         ));
 
         assertEquals("first\n\nsecond", system);
@@ -54,8 +55,8 @@ class AnthropicAiClientTest {
         AnthropicAiClient client = new AnthropicAiClient(modelConfig(), null);
 
         MessageCreateParams params = client.buildMessageCreateParams(List.of(
-                new NodeConversationContext.Message("system", "system"),
-                new NodeConversationContext.Message("user", "hello")
+                AiMessage.system("system"),
+                AiMessage.user(List.of(AiContentPart.text("hello")))
         ), List.of(), null);
 
         assertEquals("claude-opus-4-8", params.model().asString());
@@ -120,7 +121,7 @@ class AnthropicAiClientTest {
         AnthropicAiClient client = new AnthropicAiClient(modelConfig(), null);
 
         MessageCreateParams params = client.buildMessageCreateParams(List.of(
-                new NodeConversationContext.Message("user", "hello")
+                AiMessage.user(List.of(AiContentPart.text("hello")))
         ), tools, toolChoice);
 
         assertTrue(params.tools().isPresent());

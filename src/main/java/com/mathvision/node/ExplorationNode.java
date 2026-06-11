@@ -6,6 +6,7 @@ import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
 import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.WorkflowKeys;
+import com.mathvision.node.support.NodeSupport;
 import com.mathvision.prompt.ExplorationPrompts;
 import com.mathvision.prompt.SystemPrompts;
 import com.mathvision.prompt.ToolSchemas;
@@ -184,15 +185,14 @@ public class ExplorationNode extends PocketFlow.Node<ProblemBundle, KnowledgeGra
                                                String toolSchema,
                                                String failureMessage) {
         try {
-            JsonNode payload = AiRequestUtils.requestJsonObjectAsync(
+            AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
                     aiClient,
                     log,
                     subject,
-                    graphContext,
-                    prompt,
-                    toolSchema,
-                    () -> apiCalls.incrementAndGet()
+                    NodeSupport.buildAiRequest(graphContext, prompt, toolSchema),
+                    AiRequestUtils.JsonRequestOptions.of(() -> apiCalls.incrementAndGet())
             ).join();
+            JsonNode payload = result.getPayload();
             return payload != null ? payload : JsonUtils.mapper().createObjectNode();
         } catch (CompletionException e) {
             Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
@@ -572,20 +572,20 @@ public class ExplorationNode extends PocketFlow.Node<ProblemBundle, KnowledgeGra
                         + "Classify the routing mode for this workflow input.");
 
         try {
-            String extractedText = AiRequestUtils.requestExtractedTextAsync(
+            AiRequestUtils.TextResult result = AiRequestUtils.requestTextAsync(
                     aiClient,
                     log,
                     normalizedInput,
-                    routingContext,
-                    prompt,
-                    ToolSchemas.INPUT_MODE,
-                    () -> apiCalls.incrementAndGet(),
-                    List.of("input_mode"),
-                    text -> text == null ? null : text.trim(),
-                    text -> text != null && !text.isBlank()
+                    NodeSupport.buildAiRequest(routingContext, prompt, ToolSchemas.INPUT_MODE),
+                    AiRequestUtils.TextRequestOptions.builder()
+                            .onApiCall(() -> apiCalls.incrementAndGet())
+                            .preferredPayloadFields(List.of("input_mode"))
+                            .textExtractor(text -> text == null ? null : text.trim())
+                            .textValidator(text -> text != null && !text.isBlank())
+                            .build()
             ).join();
 
-            String normalized = normalizeInputModeDecision(extractedText);
+            String normalized = normalizeInputModeDecision(result.getText());
             if (normalized.startsWith(WorkflowConfig.INPUT_MODE_PROBLEM)) {
                 log.info("Auto mode classified by LLM as problem");
                 return WorkflowConfig.INPUT_MODE_PROBLEM;
@@ -595,7 +595,7 @@ public class ExplorationNode extends PocketFlow.Node<ProblemBundle, KnowledgeGra
                 return WorkflowConfig.INPUT_MODE_CONCEPT;
             }
 
-            log.warn("LLM returned unexpected input mode classification text: {}", extractedText);
+            log.warn("LLM returned unexpected input mode classification text: {}", result.getText());
             return "";
         } catch (CompletionException e) {
             Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);

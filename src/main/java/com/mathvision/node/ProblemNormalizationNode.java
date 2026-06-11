@@ -4,10 +4,12 @@ import com.mathvision.config.ModelConfig;
 import com.mathvision.config.WorkflowConfig;
 import com.mathvision.model.AiContentPart;
 import com.mathvision.model.AiMessage;
+import com.mathvision.model.AiRequest;
 import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.ProblemSource;
 import com.mathvision.model.SourceAsset;
 import com.mathvision.model.WorkflowKeys;
+import com.mathvision.node.support.NodeSupport;
 import com.mathvision.prompt.ProblemNormalizationPrompts;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
@@ -102,15 +104,14 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
 
         String userPrompt = ProblemNormalizationPrompts.buildUserPrompt(rawText, outputTarget);
 
-        return AiRequestUtils.requestJsonObjectAsync(
+        AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
                 aiClient,
                 log,
                 rawText.length() > 60 ? rawText.substring(0, 60) : rawText,
-                context,
-                userPrompt,
-                ToolSchemas.PROBLEM_BUNDLE,
-                () -> apiCalls.incrementAndGet()
+                NodeSupport.buildAiRequest(context, userPrompt, ToolSchemas.PROBLEM_BUNDLE),
+                AiRequestUtils.JsonRequestOptions.of(() -> apiCalls.incrementAndGet())
         ).join();
+        return result.getPayload();
     }
 
     private JsonNode requestMultimodal(ProblemSource source, String rawText) {
@@ -127,22 +128,14 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
                 AiMessage.user(userParts)
         );
 
-        apiCalls.incrementAndGet();
-        JsonNode rawResponse = aiClient.chatMultimodalWithToolsRawAsync(
-                messages, ToolSchemas.PROBLEM_BUNDLE).join();
-        JsonNode payload = JsonUtils.extractToolCallPayload(rawResponse);
-        if (payload != null && payload.isObject() && payload.size() > 0) {
-            return payload;
-        }
-
-        String textContent = JsonUtils.extractBestEffortTextFromResponse(rawResponse);
-        JsonNode parsed = JsonUtils.parseTreeBestEffort(textContent);
-        if (parsed != null && parsed.isObject() && parsed.size() > 0) {
-            return parsed;
-        }
-
-        log.warn("Multimodal normalization response did not contain a usable ProblemBundle payload");
-        return rawResponse;
+        AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
+                aiClient,
+                log,
+                "ProblemBundle multimodal normalization",
+                AiRequest.withTools(messages, ToolSchemas.PROBLEM_BUNDLE),
+                AiRequestUtils.JsonRequestOptions.of(() -> apiCalls.incrementAndGet())
+        ).join();
+        return result.getPayload();
     }
 
     private ProblemBundle reviewProblemBundle(ProblemSource source,
@@ -179,15 +172,14 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
                 0,
                 JsonUtils.toPrettyJson(generatedBundle));
 
-        return AiRequestUtils.requestJsonObjectAsync(
+        AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
                 aiClient,
                 log,
                 "ProblemBundle review",
-                context,
-                userPrompt,
-                ToolSchemas.PROBLEM_BUNDLE,
-                () -> apiCalls.incrementAndGet()
+                NodeSupport.buildAiRequest(context, userPrompt, ToolSchemas.PROBLEM_BUNDLE),
+                AiRequestUtils.JsonRequestOptions.of(() -> apiCalls.incrementAndGet())
         ).join();
+        return result.getPayload();
     }
 
     private JsonNode requestMultimodalReview(ProblemSource source, String rawText, ProblemBundle generatedBundle) {
@@ -208,22 +200,14 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
                 AiMessage.user(userParts)
         );
 
-        apiCalls.incrementAndGet();
-        JsonNode rawResponse = aiClient.chatMultimodalWithToolsRawAsync(
-                messages, ToolSchemas.PROBLEM_BUNDLE).join();
-        JsonNode payload = JsonUtils.extractToolCallPayload(rawResponse);
-        if (payload != null && payload.isObject() && payload.size() > 0) {
-            return payload;
-        }
-
-        String textContent = JsonUtils.extractBestEffortTextFromResponse(rawResponse);
-        JsonNode parsed = JsonUtils.parseTreeBestEffort(textContent);
-        if (parsed != null && parsed.isObject() && parsed.size() > 0) {
-            return parsed;
-        }
-
-        log.warn("Multimodal ProblemBundle review response did not contain a usable payload");
-        return rawResponse;
+        AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
+                aiClient,
+                log,
+                "ProblemBundle multimodal review",
+                AiRequest.withTools(messages, ToolSchemas.PROBLEM_BUNDLE),
+                AiRequestUtils.JsonRequestOptions.of(() -> apiCalls.incrementAndGet())
+        ).join();
+        return result.getPayload();
     }
 
     private ImageAttachmentPayload buildImageAttachmentPayload(ProblemSource source) {

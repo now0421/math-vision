@@ -14,6 +14,9 @@ public class ModelConfig {
     public static final int DEFAULT_MAX_INPUT_TOKENS = 131072;
     public static final int DEFAULT_REQUEST_TIMEOUT_SECONDS = 300;
     public static final int DEFAULT_TRANSIENT_FAILURE_RETRIES = 2;
+    public static final int DEFAULT_RATE_LIMIT_RETRIES = 8;
+    public static final long DEFAULT_RATE_LIMIT_BASE_DELAY_MILLIS = 5_000L;
+    public static final long DEFAULT_RATE_LIMIT_MAX_DELAY_MILLIS = 120_000L;
 
     private String model;
     private String provider;
@@ -33,6 +36,9 @@ public class ModelConfig {
     private double timeoutRetryMultiplier = 2.0;
     private int maxRequestTimeoutSeconds = DEFAULT_REQUEST_TIMEOUT_SECONDS;
     private int transientFailureRetries = DEFAULT_TRANSIENT_FAILURE_RETRIES;
+    private int rateLimitRetries = DEFAULT_RATE_LIMIT_RETRIES;
+    private long rateLimitBaseDelayMillis = DEFAULT_RATE_LIMIT_BASE_DELAY_MILLIS;
+    private long rateLimitMaxDelayMillis = DEFAULT_RATE_LIMIT_MAX_DELAY_MILLIS;
 
     public ModelConfig copyWithModel(String modelName) {
         ModelConfig copy = new ModelConfig();
@@ -54,6 +60,9 @@ public class ModelConfig {
         copy.timeoutRetryMultiplier = timeoutRetryMultiplier;
         copy.maxRequestTimeoutSeconds = maxRequestTimeoutSeconds;
         copy.transientFailureRetries = transientFailureRetries;
+        copy.rateLimitRetries = rateLimitRetries;
+        copy.rateLimitBaseDelayMillis = rateLimitBaseDelayMillis;
+        copy.rateLimitMaxDelayMillis = rateLimitMaxDelayMillis;
         return copy;
     }
 
@@ -141,6 +150,15 @@ public class ModelConfig {
         }
         if (transientFailureRetries < 0) {
             throw new IllegalStateException("transient_failure_retries must be >= 0 for model '" + modelName + "'");
+        }
+        if (rateLimitRetries < 0) {
+            throw new IllegalStateException("rate_limit_retries must be >= 0 for model '" + modelName + "'");
+        }
+        if (rateLimitBaseDelayMillis <= 0) {
+            throw new IllegalStateException("rate_limit_base_delay_millis must be > 0 for model '" + modelName + "'");
+        }
+        if (rateLimitMaxDelayMillis < rateLimitBaseDelayMillis) {
+            throw new IllegalStateException("rate_limit_max_delay_millis must be >= rate_limit_base_delay_millis for model '" + modelName + "'");
         }
     }
 
@@ -286,6 +304,30 @@ public class ModelConfig {
 
     public void setTransientFailureRetries(int transientFailureRetries) {
         this.transientFailureRetries = transientFailureRetries;
+    }
+
+    public int getRateLimitRetries() {
+        return rateLimitRetries;
+    }
+
+    public void setRateLimitRetries(int rateLimitRetries) {
+        this.rateLimitRetries = rateLimitRetries;
+    }
+
+    public long getRateLimitBaseDelayMillis() {
+        return rateLimitBaseDelayMillis;
+    }
+
+    public void setRateLimitBaseDelayMillis(long rateLimitBaseDelayMillis) {
+        this.rateLimitBaseDelayMillis = rateLimitBaseDelayMillis;
+    }
+
+    public long getRateLimitMaxDelayMillis() {
+        return rateLimitMaxDelayMillis;
+    }
+
+    public void setRateLimitMaxDelayMillis(long rateLimitMaxDelayMillis) {
+        this.rateLimitMaxDelayMillis = rateLimitMaxDelayMillis;
     }
 
     private static boolean isBlank(String value) {

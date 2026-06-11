@@ -19,9 +19,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mathvision.config.ModelConfig;
+import com.mathvision.model.AiContentPart;
+import com.mathvision.model.AiError;
+import com.mathvision.model.AiMessage;
+import com.mathvision.model.AiRequest;
+import com.mathvision.model.AiResponse;
+import com.mathvision.model.AiToolCall;
 import com.mathvision.util.ConcurrencyUtils;
 import com.mathvision.util.JsonUtils;
-import com.mathvision.util.NodeConversationContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,7 +38,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
@@ -56,69 +60,47 @@ public class AnthropicAiClient implements AiClient {
     AnthropicAiClient(ModelConfig modelConfig, AnthropicClient client) {
         this.modelConfig = modelConfig;
         this.client = client;
-        this.clientName = modelConfig.resolveProvider() + ":" + modelConfig.getModel();
+        this.clientName = AiClientSupport.clientName(modelConfig);
     }
 
     @Override
-    public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
+    public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
         try {
-            MessageCreateParams params = buildMessageCreateParams(snapshot, null, null);
-            return createMessageWithRetry(params, false,
-                            AiRetryPolicy.initialTimeoutSeconds(modelConfig), 0, 0)
-                    .thenApply(AnthropicAiClient::extractTextContent)
-                    .handle((result, error) -> {
-                        if (error == null) {
-                            return result;
-                        }
-                        Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
-                        log.error("{} chat failed: {}", clientName, describeError(cause), cause);
-                        throw new CompletionException(new RuntimeException(
-                                "AI chat failed: " + describeError(cause), cause));
-                    });
+            PreparedMessageRequest preparedRequest = prepareMessageRequest(request);
+            return createMessageWithRetry(preparedRequest.params, preparedRequest.withTools,
+                            AiRetryPolicy.initialTimeoutSeconds(modelConfig), 0, 0, 0)
+                    .thenApply(AnthropicAiClient::toAiResponse)
+                    .handle(this::handleChatCompletion);
         } catch (Exception e) {
             log.error("{} chat failed: {}", clientName, describeError(e), e);
-            return CompletableFuture.failedFuture(new RuntimeException(
-                    "AI chat failed: " + describeError(e), e));
+            return CompletableFuture.completedFuture(AiResponse.failure(buildError(e)));
         }
     }
 
-    @Override
-    public CompletableFuture<JsonNode> chatWithToolsRawAsync(
-            List<NodeConversationContext.Message> snapshot, String toolsJson) {
-        try {
-            List<Tool> tools = convertOpenAiFunctionTools(toolsJson);
-            ToolChoiceTool toolChoice = tools.size() == 1
-                    ? ToolChoiceTool.builder().name(tools.get(0).name()).build()
-                    : null;
-            MessageCreateParams params = buildMessageCreateParams(snapshot, tools, toolChoice);
-            return createMessageWithRetry(params, true,
-                            AiRetryPolicy.initialTimeoutSeconds(modelConfig), 0, 0)
-                    .thenApply(AnthropicAiClient::wrapResponseAsOpenAiShape)
-                    .handle((result, error) -> {
-                        if (error == null) {
-                            return result;
-                        }
-                        Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
-                        log.error("{} chat (with tools) failed: {}", clientName, describeError(cause), cause);
-                        throw new CompletionException(new RuntimeException(
-                                "AI chat with tools failed: " + describeError(cause), cause));
-                    });
-        } catch (Exception e) {
-            log.error("{} chat (with tools) failed: {}", clientName, describeError(e), e);
-            return CompletableFuture.failedFuture(new RuntimeException(
-                    "AI chat with tools failed: " + describeError(e), e));
-        }
+    private PreparedMessageRequest prepareMessageRequest(AiRequest request) {
+        ensureTextOnly(request);
+        List<Tool> tools = convertOpenAiFunctionTools(request != null ? request.getToolsJson() : null);
+        MessageCreateParams params = buildMessageCreateParams(
+                request != null ? request.getMessages() : List.of(),
+                tools,
+                buildToolChoice(tools));
+        return new PreparedMessageRequest(params, !tools.isEmpty());
     }
 
-    @Override
-    public String providerName() {
-        return clientName;
+    private AiResponse handleChatCompletion(AiResponse result, Throwable error) {
+        if (error == null) {
+            return result;
+        }
+        Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
+        log.error("{} chat failed: {}", clientName, describeError(cause), cause);
+        return AiResponse.failure(buildError(cause));
     }
 
     private CompletableFuture<Message> createMessageWithRetry(MessageCreateParams params,
                                                               boolean withTools,
                                                               int timeoutSeconds,
                                                               int transientAttempt,
+                                                              int rateLimitAttempt,
                                                               int timeoutAttempt) {
         AnthropicClient requestClient = timeoutSeconds == AiRetryPolicy.initialTimeoutSeconds(modelConfig)
                 ? client
@@ -135,15 +117,20 @@ public class AnthropicAiClient implements AiClient {
                             AiRetryPolicy.logTimeoutRetry(log, clientName, timeoutSeconds,
                                     timeoutAttempt, AiRetryPolicy.timeoutRetryAttempts(modelConfig), nextTimeoutSeconds);
                             return createMessageWithRetry(params, withTools, nextTimeoutSeconds,
-                                    transientAttempt, timeoutAttempt + 1);
+                                    transientAttempt, rateLimitAttempt, timeoutAttempt + 1);
                         }
                         AiRetryPolicy.logTimeoutExhausted(log, clientName, timeoutSeconds);
                         return CompletableFuture.<Message>failedFuture(cause);
                     }
+                    if (isRateLimitAnthropicFailure(cause)
+                            && rateLimitAttempt < AiRetryPolicy.rateLimitRetries(modelConfig)) {
+                        return scheduleRateLimitMessageRetry(params, withTools, timeoutSeconds,
+                                transientAttempt, rateLimitAttempt, timeoutAttempt, cause);
+                    }
                     if (transientAttempt < AiRetryPolicy.transientFailureRetries(modelConfig)
                             && isRetryableAnthropicFailure(cause)) {
                         return scheduleMessageRetry(params, withTools, timeoutSeconds,
-                                transientAttempt, timeoutAttempt, cause);
+                                transientAttempt, rateLimitAttempt, timeoutAttempt, cause);
                     }
                     return CompletableFuture.<Message>failedFuture(cause);
                 })
@@ -154,6 +141,7 @@ public class AnthropicAiClient implements AiClient {
                                                             boolean withTools,
                                                             int timeoutSeconds,
                                                             int transientAttempt,
+                                                            int rateLimitAttempt,
                                                             int timeoutAttempt,
                                                             Throwable cause) {
         long delayMillis = AiRetryPolicy.retryDelayMillis(transientAttempt);
@@ -168,7 +156,29 @@ public class AnthropicAiClient implements AiClient {
                         () -> { },
                         CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS))
                 .thenCompose(ignored -> createMessageWithRetry(params, withTools, timeoutSeconds,
-                        transientAttempt + 1, timeoutAttempt));
+                        transientAttempt + 1, rateLimitAttempt, timeoutAttempt));
+    }
+
+    private CompletableFuture<Message> scheduleRateLimitMessageRetry(MessageCreateParams params,
+                                                                     boolean withTools,
+                                                                     int timeoutSeconds,
+                                                                     int transientAttempt,
+                                                                     int rateLimitAttempt,
+                                                                     int timeoutAttempt,
+                                                                     Throwable cause) {
+        long delayMillis = AiRetryPolicy.rateLimitDelayMillis(modelConfig, rateLimitAttempt);
+        log.warn("Rate limit from {}{} (attempt {}/{}), retrying in {} ms: {}",
+                clientName,
+                withTools ? " with tools" : "",
+                rateLimitAttempt + 1,
+                AiRetryPolicy.rateLimitRetries(modelConfig) + 1,
+                delayMillis,
+                describeError(cause));
+        return CompletableFuture.runAsync(
+                        () -> { },
+                        CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS))
+                .thenCompose(ignored -> createMessageWithRetry(params, withTools, timeoutSeconds,
+                        transientAttempt, rateLimitAttempt + 1, timeoutAttempt));
     }
 
     private static boolean isRetryableAnthropicFailure(Throwable error) {
@@ -178,19 +188,36 @@ public class AnthropicAiClient implements AiClient {
         return AiRetryPolicy.isRetryableTransportFailure(error);
     }
 
+    private static boolean isRateLimitAnthropicFailure(Throwable error) {
+        if (error instanceof AnthropicServiceException) {
+            return AiRetryPolicy.isRateLimitStatusCode(((AnthropicServiceException) error).statusCode());
+        }
+        return AiRetryPolicy.isRateLimitFailure(error);
+    }
+
     MessageCreateParams buildMessageCreateParams(
-            List<NodeConversationContext.Message> snapshot,
+            List<AiMessage> messages,
             List<Tool> tools,
             ToolChoiceTool toolChoice) {
         MessageCreateParams.Builder builder = MessageCreateParams.builder()
                 .model(modelConfig.getModel())
                 .maxTokens(modelConfig.getMaxOutputTokens())
-                .messages(toAnthropicMessages(snapshot));
+                .messages(toAnthropicMessages(messages));
 
-        String system = collectSystemMessages(snapshot);
+        applySystemPrompt(builder, messages);
+        applyModelOptions(builder);
+        applyTools(builder, tools, toolChoice);
+        return builder.build();
+    }
+
+    private void applySystemPrompt(MessageCreateParams.Builder builder, List<AiMessage> messages) {
+        String system = collectSystemMessages(messages);
         if (system != null && !system.isBlank()) {
             builder.system(system);
         }
+    }
+
+    private void applyModelOptions(MessageCreateParams.Builder builder) {
         if (modelConfig.isAdaptiveThinking()) {
             builder.thinking(ThinkingConfigAdaptive.builder().build());
         }
@@ -198,25 +225,36 @@ public class AnthropicAiClient implements AiClient {
         if (effort != null) {
             builder.outputConfig(OutputConfig.builder().effort(effort).build());
         }
-        if (tools != null && !tools.isEmpty()) {
-            List<ToolUnion> toolUnions = new ArrayList<>(tools.size());
-            for (Tool tool : tools) {
-                toolUnions.add(ToolUnion.ofTool(tool));
-            }
-            builder.tools(toolUnions);
-            if (toolChoice != null) {
-                builder.toolChoice(toolChoice);
-            }
-        }
-        return builder.build();
     }
 
-    static List<MessageParam> toAnthropicMessages(List<NodeConversationContext.Message> snapshot) {
+    private void applyTools(MessageCreateParams.Builder builder,
+                            List<Tool> tools,
+                            ToolChoiceTool toolChoice) {
+        if (tools == null || tools.isEmpty()) {
+            return;
+        }
+        List<ToolUnion> toolUnions = new ArrayList<>(tools.size());
+        for (Tool tool : tools) {
+            toolUnions.add(ToolUnion.ofTool(tool));
+        }
+        builder.tools(toolUnions);
+        if (toolChoice != null) {
+            builder.toolChoice(toolChoice);
+        }
+    }
+
+    private static ToolChoiceTool buildToolChoice(List<Tool> tools) {
+        return tools != null && tools.size() == 1
+                ? ToolChoiceTool.builder().name(tools.get(0).name()).build()
+                : null;
+    }
+
+    static List<MessageParam> toAnthropicMessages(List<AiMessage> sourceMessages) {
         List<MessageParam> messages = new ArrayList<>();
-        if (snapshot == null) {
+        if (sourceMessages == null) {
             return messages;
         }
-        for (NodeConversationContext.Message source : snapshot) {
+        for (AiMessage source : sourceMessages) {
             String role = source.getRole();
             if ("system".equals(role)) {
                 continue;
@@ -226,28 +264,29 @@ public class AnthropicAiClient implements AiClient {
                     : MessageParam.Role.USER;
             messages.add(MessageParam.builder()
                     .role(anthropicRole)
-                    .content(source.getContent() == null ? "" : source.getContent())
+                    .content(AiClientSupport.textContent(source))
                     .build());
         }
         return messages;
     }
 
-    static String collectSystemMessages(List<NodeConversationContext.Message> snapshot) {
-        if (snapshot == null || snapshot.isEmpty()) {
+    static String collectSystemMessages(List<AiMessage> sourceMessages) {
+        if (sourceMessages == null || sourceMessages.isEmpty()) {
             return null;
         }
         StringBuilder system = new StringBuilder();
-        for (NodeConversationContext.Message message : snapshot) {
+        for (AiMessage message : sourceMessages) {
             if (!"system".equals(message.getRole())) {
                 continue;
             }
-            if (message.getContent() == null || message.getContent().isBlank()) {
+            String content = AiClientSupport.textContent(message);
+            if (content.isBlank()) {
                 continue;
             }
             if (system.length() > 0) {
                 system.append("\n\n");
             }
-            system.append(message.getContent());
+            system.append(content);
         }
         return system.length() > 0 ? system.toString() : null;
     }
@@ -332,6 +371,10 @@ public class AnthropicAiClient implements AiClient {
     }
 
     static JsonNode wrapResponseAsOpenAiShape(Message message) {
+        return toOpenAiCompatibleRaw(message);
+    }
+
+    static JsonNode toOpenAiCompatibleRaw(Message message) {
         ObjectNode root = JsonUtils.mapper().createObjectNode();
         ObjectNode choice = root.putArray("choices").addObject();
         ObjectNode wrappedMessage = choice.putObject("message");
@@ -379,6 +422,50 @@ public class AnthropicAiClient implements AiClient {
         return JsonUtils.mapper().valueToTree(value.convert(Object.class));
     }
 
+    private static AiResponse toAiResponse(Message message) {
+        JsonNode raw = toOpenAiCompatibleRaw(message);
+        return AiResponse.success(extractTextContent(message), extractToolCalls(message), raw);
+    }
+
+    private static List<AiToolCall> extractToolCalls(Message message) {
+        List<AiToolCall> toolCalls = new ArrayList<>();
+        for (ContentBlock block : message.content()) {
+            Optional<ToolUseBlock> toolUse = block.toolUse();
+            if (toolUse.isEmpty()) {
+                continue;
+            }
+            toolCalls.add(toAiToolCall(toolUse.get()));
+        }
+        return toolCalls;
+    }
+
+    private static AiToolCall toAiToolCall(ToolUseBlock toolUse) {
+        JsonNode arguments = toJacksonNode(toolUse._input());
+        AiToolCall call = new AiToolCall();
+        call.setId(toolUse.id());
+        call.setName(toolUse.name());
+        call.setArguments(arguments);
+        call.setArgumentsText(arguments != null ? arguments.toString() : "");
+        call.setRaw(arguments);
+        return call;
+    }
+
+    private static void ensureTextOnly(AiRequest request) {
+        if (request == null || request.getMessages() == null) {
+            return;
+        }
+        for (AiMessage message : request.getMessages()) {
+            if (message.getParts() == null) {
+                continue;
+            }
+            for (AiContentPart part : message.getParts()) {
+                if ("image".equals(part.getType())) {
+                    throw new UnsupportedOperationException("Anthropic image inputs are not supported by this client yet");
+                }
+            }
+        }
+    }
+
     private static OutputConfig.Effort parseEffort(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -406,7 +493,7 @@ public class AnthropicAiClient implements AiClient {
 
     private static AnthropicClient buildClient(ModelConfig modelConfig, int timeoutSeconds) {
         AnthropicOkHttpClient.Builder builder = AnthropicOkHttpClient.builder()
-                .apiKey(requireEnv(modelConfig.getApiKeyEnv()))
+                .apiKey(AiClientSupport.requireEnv(modelConfig.getApiKeyEnv()))
                 .timeout(Duration.ofSeconds(timeoutSeconds));
         String baseUrl = modelConfig.resolveBaseUrl();
         if (baseUrl != null && !baseUrl.isBlank() && !DEFAULT_BASE_URL.equals(baseUrl.trim())) {
@@ -415,12 +502,24 @@ public class AnthropicAiClient implements AiClient {
         return builder.build();
     }
 
-    private static String requireEnv(String key) {
-        String value = System.getenv(key);
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException("Environment variable " + key + " is required");
+    private AiError buildError(Throwable cause) {
+        AiError error = AiClientSupport.buildBaseError(cause, modelConfig);
+        if (cause instanceof AnthropicServiceException) {
+            error.setHttpStatus(((AnthropicServiceException) cause).statusCode());
         }
-        return value;
+        error.setRateLimited(error.isRateLimited() || isRateLimitAnthropicFailure(cause));
+        error.setTransientFailure(error.isTransientFailure() || isRetryableAnthropicFailure(cause));
+        return error;
+    }
+
+    private static final class PreparedMessageRequest {
+        private final MessageCreateParams params;
+        private final boolean withTools;
+
+        private PreparedMessageRequest(MessageCreateParams params, boolean withTools) {
+            this.params = params;
+            this.withTools = withTools;
+        }
     }
 
     private static String describeError(Throwable error) {

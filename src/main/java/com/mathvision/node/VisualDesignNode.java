@@ -12,6 +12,7 @@ import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.Narrative.StoryboardScene;
 import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.WorkflowKeys;
+import com.mathvision.node.support.NodeSupport;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.prompt.VisualDesignPrompts;
 import com.mathvision.prompt.SystemPrompts;
@@ -240,15 +241,16 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         }
         String userPromptText = SystemPrompts.buildCurrentRequestSection(userPrompt.toString());
 
-        return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonObjectResultAsync(
+        return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonAsync(
                         aiClient,
                         log,
                         node.getStep(),
-                        conversationSnapshot,
-                        conversationContext.getMaxInputTokens(),
-                        userPromptText,
-                        sceneDesignSchema,
-                        () -> toolCalls.incrementAndGet()
+                        NodeSupport.buildAiRequest(
+                                conversationSnapshot,
+                                conversationContext.getMaxInputTokens(),
+                                userPromptText,
+                                sceneDesignSchema),
+                        AiRequestUtils.JsonRequestOptions.of(() -> toolCalls.incrementAndGet())
                 ))
                 .thenApply(result -> {
                     SceneDesignResult designResult = parseSceneDesign(

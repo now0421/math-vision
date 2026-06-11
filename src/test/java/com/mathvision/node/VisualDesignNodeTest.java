@@ -1,14 +1,16 @@
 package com.mathvision.node;
 
 import com.mathvision.config.WorkflowConfig;
+import com.mathvision.model.AiRequest;
+import com.mathvision.model.AiResponse;
 import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
 import com.mathvision.model.Narrative;
 import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.service.AiClient;
+import com.mathvision.support.AiClientTestSupport;
 import com.mathvision.util.JsonUtils;
-import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -479,23 +481,16 @@ class VisualDesignNodeTest {
         }
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            return CompletableFuture.completedFuture("{}");
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
-                                                                 String toolsJson) {
-            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            if (request.getToolsJson() == null || request.getToolsJson().isBlank()) {
+                return CompletableFuture.completedFuture(AiClientTestSupport.textResponse("{}"));
+            }
+            String userMessage = AiClientTestSupport.lastUserContent(request);
             userMessages.add(userMessage);
             calls++;
             boolean valid = !alwaysInvalid && calls > 1;
-            return CompletableFuture.completedFuture(markerSceneDesignResponse(valid));
-        }
-
-        @Override
-        public String providerName() {
-            return "retry-marker-test";
+            return CompletableFuture.completedFuture(
+                    AiClientTestSupport.rawResponse(markerSceneDesignResponse(valid)));
         }
     }
 
@@ -741,22 +736,16 @@ class VisualDesignNodeTest {
         }
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            String userMessage = AiClientTestSupport.lastUserContent(request);
             userMessages.add(userMessage);
             lastUserMessage = userMessage;
-            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
-            return CompletableFuture.completedFuture("{\"layout\":\"fallback\",\"motion_plan\":\"fallback\",\"color_scheme\":\"fallback\"}");
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
-                                                                 String toolsJson) {
-            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
-            userMessages.add(userMessage);
-            lastUserMessage = userMessage;
-            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
-            return CompletableFuture.completedFuture(rawResponse);
+            lastSystemPrompt = AiClientTestSupport.systemContent(request);
+            if (request.getToolsJson() == null || request.getToolsJson().isBlank()) {
+                return CompletableFuture.completedFuture(AiClientTestSupport.textResponse(
+                        "{\"layout\":\"fallback\",\"motion_plan\":\"fallback\",\"color_scheme\":\"fallback\"}"));
+            }
+            return CompletableFuture.completedFuture(AiClientTestSupport.rawResponse(rawResponse));
         }
 
         private String findUserMessageContaining(String snippet) {
@@ -768,29 +757,21 @@ class VisualDesignNodeTest {
             return null;
         }
 
-        @Override
-        public String providerName() {
-            return "test";
-        }
     }
 
     private static final class SnapshotRecordingAiClient implements AiClient {
         private final List<String> userMessages = new ArrayList<>();
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            String userMessage = AiClientTestSupport.lastUserContent(request);
             userMessages.add(userMessage);
-            return CompletableFuture.completedFuture("{\"scene\":{\"title\":\"fallback\"},\"new_objects\":[]}");
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(
-                List<com.mathvision.util.NodeConversationContext.Message> snapshot,
-                String toolsJson) {
-            String currentUserMessage = snapshot.get(snapshot.size() - 1).getContent();
-            userMessages.add(currentUserMessage);
-            return CompletableFuture.completedFuture(validSceneDesignResponseFor(currentUserMessage));
+            if (request.getToolsJson() == null || request.getToolsJson().isBlank()) {
+                return CompletableFuture.completedFuture(
+                        AiClientTestSupport.textResponse("{\"scene\":{\"title\":\"fallback\"},\"new_objects\":[]}"));
+            }
+            return CompletableFuture.completedFuture(
+                    AiClientTestSupport.rawResponse(validSceneDesignResponseFor(userMessage)));
         }
 
         private String findUserMessageContaining(String snippet) {
@@ -802,10 +783,6 @@ class VisualDesignNodeTest {
             return null;
         }
 
-        @Override
-        public String providerName() {
-            return "snapshot-test";
-        }
     }
 
     private static JsonNode validSceneDesignResponseFor(String userPrompt) {
@@ -869,18 +846,15 @@ class VisualDesignNodeTest {
         private final List<String> userMessages = new ArrayList<>();
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            String userMessage = AiClientTestSupport.lastUserContent(request);
             userMessages.add(userMessage);
-            return CompletableFuture.completedFuture("{\"scene\":{\"title\":\"fallback\"},\"new_objects\":[]}");
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
-                                                                 String toolsJson) {
-            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
-            userMessages.add(userMessage);
-            return CompletableFuture.completedFuture(visibilityLifecycleResponseFor(userMessage));
+            if (request.getToolsJson() == null || request.getToolsJson().isBlank()) {
+                return CompletableFuture.completedFuture(
+                        AiClientTestSupport.textResponse("{\"scene\":{\"title\":\"fallback\"},\"new_objects\":[]}"));
+            }
+            return CompletableFuture.completedFuture(
+                    AiClientTestSupport.rawResponse(visibilityLifecycleResponseFor(userMessage)));
         }
 
         private String findUserMessageContaining(String snippet) {
@@ -892,10 +866,6 @@ class VisualDesignNodeTest {
             return null;
         }
 
-        @Override
-        public String providerName() {
-            return "visibility-lifecycle-test";
-        }
     }
 
     private static JsonNode visibilityLifecycleResponseFor(String userPrompt) {

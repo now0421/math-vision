@@ -1,10 +1,13 @@
 package com.mathvision.node;
 
 import com.mathvision.config.WorkflowConfig;
+import com.mathvision.model.AiRequest;
+import com.mathvision.model.AiResponse;
 import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.service.AiClient;
+import com.mathvision.support.AiClientTestSupport;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -240,22 +243,16 @@ class MathEnrichmentNodeTest {
         }
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            String userMessage = AiClientTestSupport.lastUserContent(request);
             userMessages.add(userMessage);
             lastUserMessage = userMessage;
-            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
-            return CompletableFuture.completedFuture("{\"equations\":[],\"definitions\":{}}");
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
-                                                                 String toolsJson) {
-            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
-            userMessages.add(userMessage);
-            lastUserMessage = userMessage;
-            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
-            return CompletableFuture.completedFuture(rawResponse);
+            lastSystemPrompt = AiClientTestSupport.systemContent(request);
+            if (request.getToolsJson() == null || request.getToolsJson().isBlank()) {
+                return CompletableFuture.completedFuture(
+                        AiClientTestSupport.textResponse("{\"equations\":[],\"definitions\":{}}"));
+            }
+            return CompletableFuture.completedFuture(AiClientTestSupport.rawResponse(rawResponse));
         }
 
         private String findUserMessageContaining(String snippet) {
@@ -267,10 +264,6 @@ class MathEnrichmentNodeTest {
             return null;
         }
 
-        @Override
-        public String providerName() {
-            return "test";
-        }
     }
 
     private static final class SnapshotRecordingAiClient implements AiClient {
@@ -278,18 +271,15 @@ class MathEnrichmentNodeTest {
         private final Map<String, String> snapshotsByPrompt = new LinkedHashMap<>();
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            String userMessage = snapshot.get(snapshot.size() - 1).getContent();
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            List<NodeConversationContext.Message> snapshot = AiClientTestSupport.snapshot(request);
+            String userMessage = AiClientTestSupport.lastUserContent(request);
             userMessages.add(userMessage);
-            return CompletableFuture.completedFuture("{\"equations\":[],\"definitions\":{}}");
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(
-                List<com.mathvision.util.NodeConversationContext.Message> snapshot,
-                String toolsJson) {
-            String currentUserMessage = snapshot.get(snapshot.size() - 1).getContent();
-            userMessages.add(currentUserMessage);
+            if (request.getToolsJson() == null || request.getToolsJson().isBlank()) {
+                return CompletableFuture.completedFuture(
+                        AiClientTestSupport.textResponse("{\"equations\":[],\"definitions\":{}}"));
+            }
+            String currentUserMessage = userMessage;
             snapshotsByPrompt.put(currentUserMessage, snapshotSummary(snapshot));
             System.err.println("[SNAP-" + snapshot.size() + "] lastUser=" + currentUserMessage.substring(0, Math.min(60, currentUserMessage.length())).replace('\n', '|') + " hasEqStart=" + snapshotSummary(snapshot).contains("eq-start") + " roles=" + snapshot.stream().map(m -> m.getRole().substring(0,3)).collect(java.util.stream.Collectors.joining(",")));
             for (int i = 0; i < snapshot.size(); i++) {
@@ -297,7 +287,8 @@ class MathEnrichmentNodeTest {
                 String preview = c.length() > 80 ? c.substring(0, 80).replace('\n', '|') : c.replace('\n', '|');
                 System.err.println("  [" + i + "] " + snapshot.get(i).getRole() + ": " + preview + (c.contains("eq-start") ? " ***HAS_EQ_START***" : ""));
             }
-            return CompletableFuture.completedFuture(validEnrichmentResponseFor(currentUserMessage));
+            return CompletableFuture.completedFuture(
+                    AiClientTestSupport.rawResponse(validEnrichmentResponseFor(currentUserMessage)));
         }
 
         private String findUserMessageContaining(String snippet) {
@@ -318,10 +309,6 @@ class MathEnrichmentNodeTest {
             return null;
         }
 
-        @Override
-        public String providerName() {
-            return "snapshot-test";
-        }
     }
 
     private static JsonNode validEnrichmentResponseFor(String userPrompt) {

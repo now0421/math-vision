@@ -1,6 +1,8 @@
 package com.mathvision.node;
 
 import com.mathvision.config.WorkflowConfig;
+import com.mathvision.model.AiRequest;
+import com.mathvision.model.AiResponse;
 import com.mathvision.model.Narrative;
 import com.mathvision.model.Narrative.Storyboard;
 import com.mathvision.model.Narrative.StoryboardConstraint;
@@ -11,6 +13,7 @@ import com.mathvision.model.Narrative.StoryboardScene;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.service.AiClient;
 import com.mathvision.service.FileOutputService;
+import com.mathvision.support.AiClientTestSupport;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -739,6 +742,50 @@ class StoryboardValidationNodeTest {
     }
 
     @Test
+    void placementEnrichmentUsesCompactPatchesForLayoutValidationOnly() {
+        StoryboardValidationNode node = new StoryboardValidationNode();
+        WorkflowConfig config = new WorkflowConfig();
+        config.setOutputTarget(WorkflowConfig.OUTPUT_TARGET_MANIM);
+        config.setStoryboardValidationMaxRetries(0);
+        config.setPlacementEnrichmentMaxRetries(0);
+
+        Storyboard storyboard = buildSingleSceneStoryboard(
+                List.of(
+                        registryObject("title", "text", "Title", null),
+                        registryObject("derivedLabel", "text", "Derived", null)),
+                List.of(scenePatch("title", valuePlacement("world", 0.0, 2.0))));
+        storyboard.getScenes().get(0).getEnteringObjects().add(idOnlyPatch("derivedLabel"));
+        PlacementPatchAiClient aiClient = new PlacementPatchAiClient(
+                List.of(placementPatch("scene_1", "derivedLabel", valuePlacement("world", 0.0, 2.0))));
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.CONFIG, config);
+        ctx.put(WorkflowKeys.NARRATIVE, new Narrative("Demo concept", "Demo description", storyboard));
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+
+        Narrative prepNarrative = node.prep(ctx);
+        Narrative resultNarrative = node.exec(prepNarrative);
+
+        assertEquals(1, aiClient.toolCalls.get());
+        assertTrue(aiClient.lastToolsJson.contains("write_placement_patches"));
+        assertFalse(aiClient.lastToolsJson.contains("write_storyboard"));
+        assertTrue(aiClient.lastSnapshotText.contains("placement_patches"));
+        assertTrue(aiClient.lastSnapshotText.contains("do not return the full storyboard JSON"));
+
+        StoryboardObject originalDerivedPatch = resultNarrative.getStoryboard()
+                .getScenes().get(0).getEnteringObjects().stream()
+                .filter(object -> "derivedLabel".equals(object.getId()))
+                .findFirst()
+                .orElseThrow();
+        assertFalse(originalDerivedPatch.getPlacement() != null && originalDerivedPatch.getPlacement().hasData());
+
+        List<String> issues = node.validate(resultNarrative.getStoryboard());
+        assertTrue(issues.stream().anyMatch(issue ->
+                        issue.contains("text objects 'title' and 'derivedLabel' overlap")),
+                () -> String.join("\n", issues));
+    }
+
+    @Test
     void reportsScenePatchAndActionTargetsMissingFromRegistry() {
         StoryboardValidationNode node = prepareNode(WorkflowConfig.OUTPUT_TARGET_MANIM);
         Storyboard storyboard = buildSingleSceneStoryboard(
@@ -1072,6 +1119,14 @@ class StoryboardValidationNodeTest {
         return object;
     }
 
+    private ObjectNode placementPatch(String sceneId, String objectId, StoryboardPlacement placement) {
+        ObjectNode patch = JsonUtils.mapper().createObjectNode();
+        patch.put("scene_id", sceneId);
+        patch.put("object_id", objectId);
+        patch.set("placement", JsonUtils.mapper().valueToTree(placement));
+        return patch;
+    }
+
     private Narrative.StoryboardStyle fontStyle(double fontSize) {
         Narrative.StoryboardStyle style = new Narrative.StoryboardStyle();
         style.setColor("#FFFFFF");
@@ -1169,13 +1224,11 @@ class StoryboardValidationNodeTest {
         }
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            return CompletableFuture.completedFuture("{}");
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
-                                                                 String toolsJson) {
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            if (request.getToolsJson() == null || request.getToolsJson().isBlank()) {
+                return CompletableFuture.completedFuture(AiClientTestSupport.textResponse("{}"));
+            }
+            List<NodeConversationContext.Message> snapshot = AiClientTestSupport.snapshot(request);
             toolCalls.incrementAndGet();
             lastSnapshotSize = snapshot.size();
             snapshotSizes.add(snapshot.size());
@@ -1187,12 +1240,39 @@ class StoryboardValidationNodeTest {
                     .reduce("", (left, right) -> left + "\n" + right);
             ObjectNode arguments = JsonUtils.mapper().createObjectNode();
             arguments.set("storyboard", JsonUtils.mapper().valueToTree(storyboard));
-            return CompletableFuture.completedFuture(wrapToolResponse(arguments));
+            return CompletableFuture.completedFuture(
+                    AiClientTestSupport.rawResponse(wrapToolResponse(arguments)));
+        }
+    }
+
+    private static final class PlacementPatchAiClient implements AiClient {
+        private final List<ObjectNode> patches;
+        private final AtomicInteger toolCalls = new AtomicInteger();
+        private String lastToolsJson = "";
+        private String lastSnapshotText = "";
+
+        private PlacementPatchAiClient(List<ObjectNode> patches) {
+            this.patches = patches;
         }
 
         @Override
-        public String providerName() {
-            return "repeating-storyboard";
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            if (request.getToolsJson() == null || request.getToolsJson().isBlank()) {
+                return CompletableFuture.completedFuture(AiClientTestSupport.textResponse("{}"));
+            }
+            List<NodeConversationContext.Message> snapshot = AiClientTestSupport.snapshot(request);
+            toolCalls.incrementAndGet();
+            lastToolsJson = request.getToolsJson() != null ? request.getToolsJson() : "";
+            lastSnapshotText = snapshot.stream()
+                    .map(NodeConversationContext.Message::getContent)
+                    .reduce("", (left, right) -> left + "\n" + right);
+            ObjectNode arguments = JsonUtils.mapper().createObjectNode();
+            ArrayNode patchArray = arguments.putArray("placement_patches");
+            for (ObjectNode patch : patches) {
+                patchArray.add(patch);
+            }
+            return CompletableFuture.completedFuture(
+                    AiClientTestSupport.rawResponse(wrapToolResponse(arguments)));
         }
     }
 }

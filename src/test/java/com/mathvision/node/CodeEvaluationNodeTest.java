@@ -1,6 +1,8 @@
 package com.mathvision.node;
 
 import com.mathvision.config.WorkflowConfig;
+import com.mathvision.model.AiRequest;
+import com.mathvision.model.AiResponse;
 import com.mathvision.model.CodeResult;
 import com.mathvision.model.Narrative;
 import com.mathvision.model.CodeEvaluationResult;
@@ -9,8 +11,8 @@ import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.prompt.CodeEvaluationPrompts;
 import com.mathvision.service.AiClient;
+import com.mathvision.support.AiClientTestSupport;
 import com.mathvision.util.JsonUtils;
-import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -760,46 +762,31 @@ class CodeEvaluationNodeTest {
         private int lastSnapshotSize;
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            lastSnapshotSize = snapshot.size();
-            lastUserMessage = snapshot.get(snapshot.size() - 1).getContent();
-            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
-            return CompletableFuture.completedFuture(chatResponses.removeFirst());
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
-                                                                 String toolsJson) {
-            lastSnapshotSize = snapshot.size();
-            lastUserMessage = snapshot.get(snapshot.size() - 1).getContent();
-            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
-            if (!com.mathvision.prompt.ToolSchemas.CODE_REVIEW.equals(toolsJson)) {
-                return CompletableFuture.failedFuture(new RuntimeException("tools not used"));
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            lastSnapshotSize = request.getMessages().size();
+            lastUserMessage = AiClientTestSupport.lastUserContent(request);
+            lastSystemPrompt = AiClientTestSupport.systemContent(request);
+            String toolsJson = request.getToolsJson();
+            if (toolsJson == null || toolsJson.isBlank()) {
+                return CompletableFuture.completedFuture(
+                        AiClientTestSupport.textResponse(chatResponses.removeFirst()));
             }
-            return CompletableFuture.completedFuture(toolResponses.removeFirst());
-        }
-
-        @Override
-        public String providerName() {
-            return "test";
+            if (!com.mathvision.prompt.ToolSchemas.CODE_REVIEW.equals(toolsJson)) {
+                return CompletableFuture.completedFuture(
+                        AiClientTestSupport.textResponse(chatResponses.removeFirst()));
+            }
+            return CompletableFuture.completedFuture(
+                    AiClientTestSupport.rawResponse(toolResponses.removeFirst()));
         }
     }
 
     private static final class FailingReviewAiClient implements AiClient {
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            return CompletableFuture.completedFuture("");
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
-                                                                 String toolsJson) {
-            return CompletableFuture.failedFuture(new RuntimeException("review unavailable"));
-        }
-
-        @Override
-        public String providerName() {
-            return "test";
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            if (request.getToolsJson() != null && !request.getToolsJson().isBlank()) {
+                return CompletableFuture.failedFuture(new RuntimeException("review unavailable"));
+            }
+            return CompletableFuture.completedFuture(AiClientTestSupport.textResponse(""));
         }
     }
 }

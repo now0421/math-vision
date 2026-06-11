@@ -1,6 +1,8 @@
 package com.mathvision.node;
 
 import com.mathvision.config.WorkflowConfig;
+import com.mathvision.model.AiRequest;
+import com.mathvision.model.AiResponse;
 import com.mathvision.model.CodeResult;
 import com.mathvision.model.Narrative;
 import com.mathvision.model.Narrative.Storyboard;
@@ -13,9 +15,9 @@ import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
+import com.mathvision.support.AiClientTestSupport;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.util.JsonUtils;
-import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -151,7 +153,7 @@ class CodeGenerationNodeRoutingTest {
     @Test
     void fallsBackWhenToolPayloadOmitsCode() {
         QueueAiClient aiClient = new QueueAiClient();
-        aiClient.toolResponses.add(codegenMetadataOnlyResponse("DemoScene"));
+        aiClient.toolResponses.add(codegenMetadataOnlyResponse("DemoScene", ""));
         aiClient.chatResponses.add(wrapCodeResponse(String.join("\n",
                 "from manim import *",
                 "",
@@ -424,10 +426,11 @@ class CodeGenerationNodeRoutingTest {
         return response;
     }
 
-    private static JsonNode codegenMetadataOnlyResponse(String sceneName) {
+    private static JsonNode codegenMetadataOnlyResponse(String sceneName, String content) {
         ObjectNode response = com.mathvision.util.JsonUtils.mapper().createObjectNode();
         ArrayNode choices = response.putArray("choices");
         ObjectNode message = choices.addObject().putObject("message");
+        message.put("content", content);
         ArrayNode toolCalls = message.putArray("tool_calls");
         ObjectNode function = toolCalls.addObject().putObject("function");
         function.put("name", "write_manim_code");
@@ -480,27 +483,19 @@ class CodeGenerationNodeRoutingTest {
         private String lastToolsJson;
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            lastUserMessage = snapshot.get(snapshot.size() - 1).getContent();
-            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
-            return CompletableFuture.completedFuture(chatResponses.removeFirst());
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
-                                                                 String toolsJson) {
-            lastUserMessage = snapshot.get(snapshot.size() - 1).getContent();
-            lastSystemPrompt = NodeConversationContext.getSystemContent(snapshot);
-            lastToolsJson = toolsJson;
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            lastUserMessage = AiClientTestSupport.lastUserContent(request);
+            lastSystemPrompt = AiClientTestSupport.systemContent(request);
+            lastToolsJson = request.getToolsJson();
+            if (lastToolsJson == null || lastToolsJson.isBlank()) {
+                return CompletableFuture.completedFuture(
+                        AiClientTestSupport.textResponse(chatResponses.removeFirst()));
+            }
             if (toolResponses.isEmpty()) {
                 return CompletableFuture.failedFuture(new RuntimeException("tools not queued"));
             }
-            return CompletableFuture.completedFuture(toolResponses.removeFirst());
-        }
-
-        @Override
-        public String providerName() {
-            return "test";
+            return CompletableFuture.completedFuture(
+                    AiClientTestSupport.rawResponse(toolResponses.removeFirst()));
         }
     }
 }

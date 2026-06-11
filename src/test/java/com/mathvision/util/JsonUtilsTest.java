@@ -139,4 +139,28 @@ class JsonUtilsTest {
         JsonNode parsed = JsonUtils.parseTreeBestEffort("{\"scenes\": [ this is not json ]");
         assertNull(parsed);
     }
+
+    @Test
+    void extractJsonObjectResultReturnsDetailedFailureReason() {
+        JsonUtils.JsonObjectExtractionResult result = JsonUtils.extractJsonObjectResult(
+                "message.content",
+                "```json\n{\"note\":\"C\\' is invalid json\"}\n```");
+
+        assertNull(result.getPayload());
+        assertTrue(result.getFailureReason().contains("message.content code block JSON parse failed"));
+        assertTrue(result.getFailureReason().contains("Unrecognized character escape"));
+        assertTrue(result.getFailureReason().contains("near"));
+    }
+
+    @Test
+    void extractJsonObjectResultReturnsParsedPayload() {
+        JsonUtils.JsonObjectExtractionResult result = JsonUtils.extractJsonObjectResult(
+                "message.content",
+                "prefix\n```json\n{\"ok\":true}\n```");
+
+        assertNotNull(result.getPayload());
+        assertTrue(result.getPayload().get("ok").asBoolean());
+        assertEquals("{\"ok\":true}", result.getJsonText());
+        assertEquals("", result.getFailureReason());
+    }
 }

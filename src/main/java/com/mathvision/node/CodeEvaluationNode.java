@@ -318,16 +318,18 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                 sceneName, storyboardJson, staticAnalysisJson, generatedCode, outputTarget);
 
         try {
-            JsonNode payload = AiRequestUtils.requestJsonObjectAsync(
+            AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
                     aiClient,
                     log,
                     sceneName,
-                    reviewConversationContext.getPinnedMessages(),
-                    reviewConversationContext.getMaxInputTokens(),
-                    userPrompt,
-                    ToolSchemas.CODE_REVIEW,
-                    () -> toolCalls++
+                    NodeSupport.buildAiRequest(
+                            reviewConversationContext.getPinnedMessages(),
+                            reviewConversationContext.getMaxInputTokens(),
+                            userPrompt,
+                            ToolSchemas.CODE_REVIEW),
+                    AiRequestUtils.JsonRequestOptions.of(() -> toolCalls++)
             ).join();
+            JsonNode payload = result.getPayload();
             ReviewSnapshot parsed = parseReviewSnapshot(payload);
             if (parsed != null) {
                 return normalizeReview(parsed);

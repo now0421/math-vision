@@ -1,15 +1,18 @@
 package com.mathvision.service;
 
-import com.mathvision.config.ModelConfig;
-import com.mathvision.model.AiContentPart;
-import com.mathvision.model.AiMessage;
-import com.mathvision.util.ConcurrencyUtils;
-import com.mathvision.util.JsonUtils;
-import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.mathvision.config.ModelConfig;
+import com.mathvision.model.AiContentPart;
+import com.mathvision.model.AiError;
+import com.mathvision.model.AiMessage;
+import com.mathvision.model.AiRequest;
+import com.mathvision.model.AiResponse;
+import com.mathvision.model.AiToolCall;
+import com.mathvision.util.ConcurrencyUtils;
+import com.mathvision.util.JsonUtils;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -18,9 +21,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
@@ -45,8 +48,8 @@ public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
     ) {
         this.log = log;
         this.modelConfig = modelConfig;
-        this.clientName = modelConfig.resolveProvider() + ":" + modelConfig.getModel();
-        this.apiKey = requireEnv(modelConfig.getApiKeyEnv());
+        this.clientName = AiClientSupport.clientName(modelConfig);
+        this.apiKey = AiClientSupport.requireEnv(modelConfig.getApiKeyEnv());
         this.baseUrl = modelConfig.resolveBaseUrl();
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
@@ -55,82 +58,94 @@ public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
     }
 
     @Override
-    public String providerName() {
-        return clientName;
-    }
-
-    @Override
-    public CompletableFuture<String> chatAsync(
-            java.util.List<NodeConversationContext.Message> snapshot) {
+    public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
         try {
-            ObjectNode body = buildRequestBody(snapshot, null);
-            return sendRequestWithRetryAsync(body).handle((result, error) -> {
-                if (error == null) {
-                    return result;
-                }
-                Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
-                log.error("{} chat failed: {}", clientName, cause.getMessage(), cause);
-                throw new CompletionException(new RuntimeException(
-                        "AI chat failed: " + cause.getMessage(), cause
-                ));
-            });
+            ObjectNode body = buildRequestBody(request);
+            boolean allowToolOnlyResponse = AiClientSupport.hasToolSchema(request);
+            return sendAiResponseWithRetryAsync(body, allowToolOnlyResponse)
+                    .handle(this::handleChatCompletion);
         } catch (Exception e) {
             log.error("{} chat failed: {}", clientName, e.getMessage(), e);
-            return CompletableFuture.failedFuture(new RuntimeException(
-                    "AI chat failed: " + e.getMessage(), e
-            ));
+            return CompletableFuture.completedFuture(AiResponse.failure(buildError(e)));
         }
     }
 
-    @Override
-    public CompletableFuture<JsonNode> chatWithToolsRawAsync(
-            java.util.List<NodeConversationContext.Message> snapshot, String toolsJson) {
-        try {
-            ArrayNode tools = toolsJson != null
-                    ? (ArrayNode) MAPPER.readTree(toolsJson) : null;
-            ObjectNode body = buildRequestBody(snapshot, tools);
-            return sendRawRequestAsync(body).handle((result, error) -> {
-                if (error == null) {
-                    return result;
-                }
-                Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
-                log.error("{} chat (with tools) failed: {}", clientName, cause.getMessage(), cause);
-                throw new CompletionException(new RuntimeException(
-                        "AI chat with tools failed: " + cause.getMessage(), cause
-                ));
-            });
-        } catch (Exception e) {
-            log.error("{} chat (with tools) failed: {}", clientName, e.getMessage(), e);
-            return CompletableFuture.failedFuture(new RuntimeException(
-                    "AI chat with tools failed: " + e.getMessage(), e
-            ));
+    private AiResponse handleChatCompletion(AiResponse result, Throwable error) {
+        if (error == null) {
+            return result;
         }
+        Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
+        log.error("{} chat failed: {}", clientName, cause.getMessage(), cause);
+        return AiResponse.failure(buildError(cause));
     }
 
-    private ObjectNode buildRequestBody(
-            java.util.List<NodeConversationContext.Message> snapshot, ArrayNode tools) {
+    private ObjectNode buildRequestBody(AiRequest request) throws IOException {
         ObjectNode body = MAPPER.createObjectNode();
         body.put("model", modelConfig.getModel());
         body.put("temperature", modelConfig.getTemperature());
-        body.put("max_tokens", modelConfig.getMaxOutputTokens());
         addThinking(body);
-        body.set("messages", NodeConversationContext.buildOpenAiMessages(snapshot));
-        addTools(body, tools);
+        body.set("messages", buildMessages(request != null ? request.getMessages() : List.of()));
+        addTools(body, parseTools(request != null ? request.getToolsJson() : null));
         return body;
     }
 
-    private CompletableFuture<JsonNode> sendRawRequestAsync(ObjectNode body) throws Exception {
+    private static ArrayNode buildMessages(List<AiMessage> messages) {
+        ArrayNode messagesArray = MAPPER.createArrayNode();
+        if (messages == null) {
+            return messagesArray;
+        }
+        for (AiMessage msg : messages) {
+            ObjectNode msgNode = messagesArray.addObject();
+            msgNode.put("role", msg.getRole());
+            List<AiContentPart> parts = msg.getParts() != null ? msg.getParts() : List.of();
+            if (AiClientSupport.isTextOnly(parts)) {
+                msgNode.put("content", AiClientSupport.textContent(parts));
+                continue;
+            }
+            msgNode.set("content", buildContentParts(parts));
+        }
+        return messagesArray;
+    }
+
+    private static ArrayNode buildContentParts(List<AiContentPart> parts) {
+        ArrayNode content = MAPPER.createArrayNode();
+        for (AiContentPart part : parts) {
+            if (part == null) {
+                continue;
+            }
+            if ("text".equals(part.getType())) {
+                content.addObject().put("type", "text").put("text", part.getText());
+            } else if ("image".equals(part.getType())) {
+                ObjectNode imgPart = content.addObject();
+                imgPart.put("type", "image_url");
+                imgPart.putObject("image_url")
+                        .put("url", "data:" + part.getMimeType()
+                                + ";base64," + part.getDataBase64());
+            }
+        }
+        return content;
+    }
+
+    private ArrayNode parseTools(String toolsJson) throws IOException {
+        if (toolsJson == null || toolsJson.isBlank()) {
+            return null;
+        }
+        return (ArrayNode) MAPPER.readTree(toolsJson);
+    }
+
+    private CompletableFuture<JsonNode> sendJsonWithRetryAsync(ObjectNode body) throws Exception {
         String url = baseUrl.replaceAll("/+$", "") + "/chat/completions";
         String jsonBody = MAPPER.writeValueAsString(body);
-        return sendRawRequestAsync(body, url, jsonBody, 0, 0,
+        return sendJsonWithRetryAsync(body, url, jsonBody, 0, 0, 0,
                 AiRetryPolicy.initialTimeoutSeconds(modelConfig));
     }
 
-    private CompletableFuture<JsonNode> sendRawRequestAsync(
+    private CompletableFuture<JsonNode> sendJsonWithRetryAsync(
             ObjectNode body,
             String url,
             String jsonBody,
             int transientAttempt,
+            int rateLimitAttempt,
             int timeoutAttempt,
             int timeoutSeconds
     ) {
@@ -142,75 +157,128 @@ public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
                 .timeout(Duration.ofSeconds(timeoutSeconds))
                 .build();
 
-        logRequest(body, url, transientAttempt + timeoutAttempt, timeoutSeconds);
+        logRequest(body, url, transientAttempt + rateLimitAttempt + timeoutAttempt, timeoutSeconds);
         return http.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .<CompletableFuture<JsonNode>>handle((response, error) -> {
                     if (error != null) {
-                        Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
-                        if (AiRetryPolicy.isTimeoutFailure(cause)) {
-                            if (timeoutAttempt < AiRetryPolicy.timeoutRetryAttempts(modelConfig)) {
-                                int nextTimeoutSeconds = AiRetryPolicy.nextTimeoutSeconds(modelConfig, timeoutSeconds);
-                                AiRetryPolicy.logTimeoutRetry(log, clientName, timeoutSeconds,
-                                        timeoutAttempt, AiRetryPolicy.timeoutRetryAttempts(modelConfig), nextTimeoutSeconds);
-                                return sendRawRequestAsync(body, url, jsonBody,
-                                        transientAttempt, timeoutAttempt + 1, nextTimeoutSeconds);
-                            }
-                            AiRetryPolicy.logTimeoutExhausted(log, clientName, timeoutSeconds);
-                            return CompletableFuture.<JsonNode>failedFuture(cause);
-                        }
-                        if (transientAttempt < AiRetryPolicy.transientFailureRetries(modelConfig)
-                                && isRetryableFailure(cause)) {
-                            return scheduleRetry(body, url, jsonBody, transientAttempt, timeoutAttempt,
-                                    timeoutSeconds, cause.getMessage());
-                        }
-                        return CompletableFuture.<JsonNode>failedFuture(cause);
+                        return handleTransportFailure(body, url, jsonBody, transientAttempt,
+                                rateLimitAttempt, timeoutAttempt, timeoutSeconds, error);
                     }
-
-                    logResponse(response);
-                    if (response.statusCode() != 200) {
-                        String message = clientName + " API returned HTTP " + response.statusCode()
-                                + ": " + response.body();
-                        if (transientAttempt < AiRetryPolicy.transientFailureRetries(modelConfig)
-                                && isRetryableStatusCode(response.statusCode())) {
-                            return scheduleRetry(body, url, jsonBody, transientAttempt, timeoutAttempt,
-                                    timeoutSeconds, message);
-                        }
-                        return CompletableFuture.failedFuture(new RuntimeException(message));
-                    }
-
-                    try {
-                        return CompletableFuture.completedFuture(MAPPER.readTree(response.body()));
-                    } catch (Exception e) {
-                        return CompletableFuture.<JsonNode>failedFuture(e);
-                    }
+                    return handleHttpResponse(body, url, jsonBody, transientAttempt,
+                            rateLimitAttempt, timeoutAttempt, timeoutSeconds, response);
                 })
                 .thenCompose(Function.identity());
     }
 
-    private CompletableFuture<String> sendRequestWithRetryAsync(ObjectNode body) {
-        return sendRequestWithRetryAsync(body, 0);
+    private CompletableFuture<JsonNode> handleTransportFailure(
+            ObjectNode body,
+            String url,
+            String jsonBody,
+            int transientAttempt,
+            int rateLimitAttempt,
+            int timeoutAttempt,
+            int timeoutSeconds,
+            Throwable error) {
+        Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
+        if (AiRetryPolicy.isTimeoutFailure(cause)) {
+            if (timeoutAttempt < AiRetryPolicy.timeoutRetryAttempts(modelConfig)) {
+                int nextTimeoutSeconds = AiRetryPolicy.nextTimeoutSeconds(modelConfig, timeoutSeconds);
+                AiRetryPolicy.logTimeoutRetry(log, clientName, timeoutSeconds,
+                        timeoutAttempt, AiRetryPolicy.timeoutRetryAttempts(modelConfig), nextTimeoutSeconds);
+                return sendJsonWithRetryAsync(body, url, jsonBody,
+                        transientAttempt, rateLimitAttempt,
+                        timeoutAttempt + 1, nextTimeoutSeconds);
+            }
+            AiRetryPolicy.logTimeoutExhausted(log, clientName, timeoutSeconds);
+            return CompletableFuture.failedFuture(cause);
+        }
+        if (AiRetryPolicy.isRateLimitFailure(cause)
+                && rateLimitAttempt < AiRetryPolicy.rateLimitRetries(modelConfig)) {
+            return scheduleRateLimitRetry(body, url, jsonBody, transientAttempt,
+                    rateLimitAttempt, timeoutAttempt, timeoutSeconds, cause.getMessage(),
+                    java.util.Optional.empty());
+        }
+        if (transientAttempt < AiRetryPolicy.transientFailureRetries(modelConfig)
+                && isRetryableFailure(cause)) {
+            return scheduleTransientRetry(body, url, jsonBody, transientAttempt,
+                    rateLimitAttempt, timeoutAttempt, timeoutSeconds, cause.getMessage());
+        }
+        return CompletableFuture.failedFuture(cause);
     }
 
-    private CompletableFuture<String> sendRequestWithRetryAsync(ObjectNode body, int attempt) {
+    private CompletableFuture<JsonNode> handleHttpResponse(
+            ObjectNode body,
+            String url,
+            String jsonBody,
+            int transientAttempt,
+            int rateLimitAttempt,
+            int timeoutAttempt,
+            int timeoutSeconds,
+            HttpResponse<String> response) {
+        logResponse(response);
+        if (response.statusCode() == 200) {
+            return parseResponseBody(response.body());
+        }
+
+        String message = clientName + " API returned HTTP " + response.statusCode()
+                + ": " + response.body();
+        if (AiRetryPolicy.isRateLimitStatusCode(response.statusCode())) {
+            if (rateLimitAttempt < AiRetryPolicy.rateLimitRetries(modelConfig)) {
+                return scheduleRateLimitRetry(body, url, jsonBody, transientAttempt,
+                        rateLimitAttempt, timeoutAttempt, timeoutSeconds, message,
+                        AiRetryPolicy.retryAfterHeader(response.headers()));
+            }
+            return CompletableFuture.failedFuture(new RuntimeException(message));
+        }
+        if (transientAttempt < AiRetryPolicy.transientFailureRetries(modelConfig)
+                && isRetryableStatusCode(response.statusCode())) {
+            return scheduleTransientRetry(body, url, jsonBody, transientAttempt,
+                    rateLimitAttempt, timeoutAttempt, timeoutSeconds, message);
+        }
+        return CompletableFuture.failedFuture(new RuntimeException(message));
+    }
+
+    private CompletableFuture<JsonNode> parseResponseBody(String body) {
         try {
-            return sendRawRequestAsync(body).thenCompose(root -> {
-                String content = extractTextContent(root);
-                if (content != null && !content.isBlank()) {
-                    return CompletableFuture.completedFuture(content);
+            return CompletableFuture.completedFuture(MAPPER.readTree(body));
+        } catch (Exception e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    private CompletableFuture<AiResponse> sendAiResponseWithRetryAsync(
+            ObjectNode body,
+            boolean allowToolOnlyResponse) {
+        return sendAiResponseWithRetryAsync(body, allowToolOnlyResponse, 0);
+    }
+
+    private CompletableFuture<AiResponse> sendAiResponseWithRetryAsync(
+            ObjectNode body,
+            boolean allowToolOnlyResponse,
+            int attempt) {
+        try {
+            return sendJsonWithRetryAsync(body).thenCompose(root -> {
+                AiResponse response = parseResponse(root);
+                if (response.getContent() != null && !response.getContent().isBlank()) {
+                    return CompletableFuture.completedFuture(response);
+                }
+                if (!response.getToolCalls().isEmpty() || allowToolOnlyResponse) {
+                    return CompletableFuture.completedFuture(response);
                 }
 
                 if (modelConfig.isReasoningContentFallback()) {
                     String reasoningContent = extractReasoningContent(root);
                     if (reasoningContent != null && !reasoningContent.isBlank()) {
                         log.info("Using reasoning_content as fallback for {}", clientName);
-                        return CompletableFuture.completedFuture(reasoningContent);
+                        response.setContent(reasoningContent);
+                        return CompletableFuture.completedFuture(response);
                     }
                 }
 
                 if (attempt < EMPTY_RESPONSE_RETRIES) {
                     log.warn("Empty response from {} (attempt {}/{}), retrying...",
                             clientName, attempt + 1, EMPTY_RESPONSE_RETRIES + 1);
-                    return sendRequestWithRetryAsync(body, attempt + 1);
+                    return sendAiResponseWithRetryAsync(body, false, attempt + 1);
                 }
 
                 return CompletableFuture.failedFuture(new RuntimeException(
@@ -233,14 +301,6 @@ public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
         String reasoning = JsonUtils.extractReasoningTextFromResponse(root);
         AiTraceLogger.logTextSample("ai-response", "reasoning_text", reasoning);
         return reasoning == null || reasoning.isBlank() ? null : reasoning;
-    }
-
-    protected static String requireEnv(String key) {
-        String val = System.getenv(key);
-        if (val == null || val.isBlank()) {
-            throw new IllegalStateException("Environment variable " + key + " is required");
-        }
-        return val;
     }
 
     static boolean isRetryableFailure(Throwable error) {
@@ -271,11 +331,12 @@ public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
                 || statusCode >= 500;
     }
 
-    private CompletableFuture<JsonNode> scheduleRetry(
+    private CompletableFuture<JsonNode> scheduleTransientRetry(
             ObjectNode body,
             String url,
             String jsonBody,
             int transientAttempt,
+            int rateLimitAttempt,
             int timeoutAttempt,
             int timeoutSeconds,
             String reason
@@ -290,8 +351,33 @@ public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
         return CompletableFuture.runAsync(
                         () -> { },
                         CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS))
-                .thenCompose(ignored -> sendRawRequestAsync(body, url, jsonBody,
-                        transientAttempt + 1, timeoutAttempt, timeoutSeconds));
+                .thenCompose(ignored -> sendJsonWithRetryAsync(body, url, jsonBody,
+                        transientAttempt + 1, rateLimitAttempt, timeoutAttempt, timeoutSeconds));
+    }
+
+    private CompletableFuture<JsonNode> scheduleRateLimitRetry(
+            ObjectNode body,
+            String url,
+            String jsonBody,
+            int transientAttempt,
+            int rateLimitAttempt,
+            int timeoutAttempt,
+            int timeoutSeconds,
+            String reason,
+            java.util.Optional<String> retryAfterHeader
+    ) {
+        long delayMillis = AiRetryPolicy.rateLimitDelayMillis(modelConfig, rateLimitAttempt, retryAfterHeader);
+        log.warn("Rate limit from {} (attempt {}/{}), retrying in {} ms: {}",
+                clientName,
+                rateLimitAttempt + 1,
+                AiRetryPolicy.rateLimitRetries(modelConfig) + 1,
+                delayMillis,
+                reason);
+        return CompletableFuture.runAsync(
+                        () -> { },
+                        CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS))
+                .thenCompose(ignored -> sendJsonWithRetryAsync(body, url, jsonBody,
+                        transientAttempt, rateLimitAttempt + 1, timeoutAttempt, timeoutSeconds));
     }
 
     private void logRequest(ObjectNode body, String url, int attempt, int timeoutSeconds) {
@@ -320,59 +406,6 @@ public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
 
     private void logResponse(HttpResponse<String> response) {
         AiTraceLogger.logResponse(clientName, response);
-    }
-
-    @Override
-    public CompletableFuture<String> chatMultimodalAsync(List<AiMessage> messages) {
-        try {
-            ObjectNode body = buildMultimodalRequestBody(messages, null);
-            return sendRequestWithRetryAsync(body);
-        } catch (Exception e) {
-            return CompletableFuture.failedFuture(new RuntimeException(
-                    "AI multimodal chat failed: " + e.getMessage(), e));
-        }
-    }
-
-    @Override
-    public CompletableFuture<JsonNode> chatMultimodalWithToolsRawAsync(
-            List<AiMessage> messages, String toolsJson) {
-        try {
-            ArrayNode tools = toolsJson != null
-                    ? (ArrayNode) MAPPER.readTree(toolsJson) : null;
-            ObjectNode body = buildMultimodalRequestBody(messages, tools);
-            return sendRawRequestAsync(body);
-        } catch (Exception e) {
-            return CompletableFuture.failedFuture(new RuntimeException(
-                    "AI multimodal chat with tools failed: " + e.getMessage(), e));
-        }
-    }
-
-    private ObjectNode buildMultimodalRequestBody(List<AiMessage> messages, ArrayNode tools) {
-        ObjectNode body = MAPPER.createObjectNode();
-        body.put("model", modelConfig.getModel());
-        body.put("temperature", modelConfig.getTemperature());
-        body.put("max_tokens", modelConfig.getMaxOutputTokens());
-        addThinking(body);
-
-        ArrayNode messagesArray = body.putArray("messages");
-        for (AiMessage msg : messages) {
-            ObjectNode msgNode = messagesArray.addObject();
-            msgNode.put("role", msg.getRole());
-            ArrayNode content = msgNode.putArray("content");
-            for (AiContentPart part : msg.getParts()) {
-                if ("text".equals(part.getType())) {
-                    content.addObject().put("type", "text").put("text", part.getText());
-                } else if ("image".equals(part.getType())) {
-                    ObjectNode imgPart = content.addObject();
-                    imgPart.put("type", "image_url");
-                    imgPart.putObject("image_url")
-                            .put("url", "data:" + part.getMimeType()
-                                    + ";base64," + part.getDataBase64());
-                }
-            }
-        }
-        addTools(body, tools);
-        return body;
     }
 
     private void addThinking(ObjectNode body) {
@@ -419,4 +452,51 @@ public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
         return true;
     }
 
+    private AiResponse parseResponse(JsonNode root) {
+        return AiResponse.success(extractTextContent(root), parseToolCalls(root), root);
+    }
+
+    private static List<AiToolCall> parseToolCalls(JsonNode root) {
+        List<AiToolCall> calls = new ArrayList<>();
+        JsonNode choices = root != null ? root.get("choices") : null;
+        if (choices == null || choices.isEmpty()) {
+            return calls;
+        }
+        JsonNode message = choices.get(0).get("message");
+        JsonNode toolCalls = message != null ? message.get("tool_calls") : null;
+        if (toolCalls == null || !toolCalls.isArray()) {
+            return calls;
+        }
+        for (JsonNode rawCall : toolCalls) {
+            JsonNode function = rawCall.path("function");
+            AiToolCall call = new AiToolCall();
+            call.setId(rawCall.path("id").asText(null));
+            call.setName(function.path("name").asText(""));
+            call.setRaw(rawCall);
+
+            applyToolArguments(call, function.get("arguments"));
+            calls.add(call);
+        }
+        return calls;
+    }
+
+    private static void applyToolArguments(AiToolCall call, JsonNode arguments) {
+        if (arguments == null || arguments.isNull()) {
+            return;
+        }
+        if (arguments.isObject() || arguments.isArray()) {
+            call.setArguments(arguments);
+            call.setArgumentsText(arguments.toString());
+            return;
+        }
+        String argumentsText = arguments.asText("");
+        call.setArgumentsText(argumentsText);
+        call.setArguments(JsonUtils.parseTreeBestEffort(argumentsText));
+    }
+
+    private AiError buildError(Throwable cause) {
+        AiError error = AiClientSupport.buildBaseError(cause, modelConfig);
+        error.setTransientFailure(error.isTransientFailure() || isRetryableFailure(cause));
+        return error;
+    }
 }

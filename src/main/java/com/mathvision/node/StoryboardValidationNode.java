@@ -13,6 +13,7 @@ import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.StoryboardValidationReport;
 import com.mathvision.model.StoryboardValidationTraceEntry;
 import com.mathvision.model.WorkflowKeys;
+import com.mathvision.node.support.NodeSupport;
 import com.mathvision.prompt.NarrativePrompts;
 import com.mathvision.prompt.SystemPrompts;
 import com.mathvision.prompt.ToolSchemas;
@@ -2415,7 +2416,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
      * objects whose positions are determined by structured constraints rather
      * than explicit placement fields.
      *
-     * <p>The returned storyboard is <strong>only</strong> used for
+     * <p>The merged validation-only storyboard is <strong>only</strong> used for
      * {@code validateSceneLayout}; the original storyboard is retained for
      * all other checks and for the final output.
      */
@@ -2447,43 +2448,41 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             List<String> lastIssues = List.of();
 
             for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-                JsonNode enrichedData = AiRequestUtils.requestJsonObjectAsync(
-                                aiClient,
-                                log,
-                                "placement-enrichment",
-                                conversationContext,
-                                SystemPrompts.buildCurrentRequestSection(userPrompt),
-                                ToolSchemas.storyboard(outputTarget, sceneMode),
-                                () -> toolCalls++)
+                AiRequestUtils.JsonObjectResult enrichmentResult = AiRequestUtils.requestJsonAsync(
+                            aiClient,
+                            log,
+                            "placement-enrichment",
+                            NodeSupport.buildAiRequest(
+                                    conversationContext,
+                                    SystemPrompts.buildCurrentRequestSection(userPrompt),
+                                    ToolSchemas.placementPatches(sceneMode)),
+                            AiRequestUtils.JsonRequestOptions.of(() -> toolCalls++))
                         .join();
+                if (enrichmentResult != null && !enrichmentResult.getAssistantTranscript().isBlank()) {
+                    conversationContext.appendTurn(
+                            SystemPrompts.buildCurrentRequestSection(userPrompt),
+                            enrichmentResult.getAssistantTranscript());
+                }
+                JsonNode enrichedData = enrichmentResult != null ? enrichmentResult.getPayload() : null;
 
                 if (enrichedData == null) {
-                    lastIssues = List.of("placement enrichment returned no data");
+                    lastIssues = List.of(placementEnrichmentNoDataIssue(enrichmentResult));
                     log.debug("Placement enrichment returned no data on attempt {}/{}",
                             attempt, maxAttempts);
                 } else {
-                    JsonNode storyboardNode = enrichedData.has("storyboard")
-                            ? enrichedData.get("storyboard") : enrichedData;
-                    if (storyboardNode == null || !storyboardNode.has("scenes")) {
-                        lastIssues = List.of("placement enrichment returned invalid storyboard structure");
-                        log.debug("Placement enrichment returned invalid storyboard structure on attempt {}/{}",
-                                attempt, maxAttempts);
-                    } else {
-                        Storyboard enrichedStoryboard =
-                                JsonUtils.mapper().treeToValue(storyboardNode, Storyboard.class);
-                        enrichedStoryboard = StoryboardNormalizer.normalize(enrichedStoryboard);
-                        lastIssues = validatePlacementEnrichmentScenePatches(enrichedStoryboard);
-                        if (lastIssues.isEmpty()) {
-                            // Verify existing placements are preserved: compare object counts with placements
-                            int originalWithPlacement = countObjectsWithPlacement(storyboard);
-                            int enrichedWithPlacement = countObjectsWithPlacement(enrichedStoryboard);
-                            log.info("Placement enrichment accepted on attempt {}/{}: objects with placement {} -> {}",
-                                    attempt, maxAttempts, originalWithPlacement, enrichedWithPlacement);
-                            return enrichedStoryboard;
-                        }
-                        log.warn("Placement enrichment attempt {}/{} was rejected: {}",
-                                attempt, maxAttempts, summarizePlacementEnrichmentIssues(lastIssues));
+                    PlacementPatchMergeResult mergeResult =
+                            applyPlacementEnrichmentPatches(storyboard, enrichedData);
+                    lastIssues = mergeResult.issues;
+                    if (lastIssues.isEmpty() && mergeResult.storyboard != null) {
+                        int originalWithPlacement = countObjectsWithPlacement(storyboard);
+                        int enrichedWithPlacement = countObjectsWithPlacement(mergeResult.storyboard);
+                        log.info("Placement enrichment patch accepted on attempt {}/{}: patches {}, objects with placement {} -> {}",
+                                attempt, maxAttempts, mergeResult.patchCount,
+                                originalWithPlacement, enrichedWithPlacement);
+                        return mergeResult.storyboard;
                     }
+                    log.warn("Placement enrichment patch attempt {}/{} was rejected: {}",
+                            attempt, maxAttempts, summarizePlacementEnrichmentIssues(lastIssues));
                 }
 
                 if (attempt < maxAttempts) {
@@ -2503,6 +2502,14 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         }
     }
 
+    private String placementEnrichmentNoDataIssue(AiRequestUtils.JsonObjectResult result) {
+        String reason = result != null ? result.getFailureReason() : "";
+        if (reason == null || reason.isBlank()) {
+            return "placement enrichment returned no data";
+        }
+        return "placement enrichment returned no parseable JSON data: " + reason;
+    }
+
     private int resolvePlacementEnrichmentMaxRetries() {
         if (workflowConfig == null) {
             return 3;
@@ -2510,63 +2517,166 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
         return Math.max(workflowConfig.getPlacementEnrichmentMaxRetries(), 0);
     }
 
-    private List<String> validatePlacementEnrichmentScenePatches(Storyboard storyboard) {
+    private PlacementPatchMergeResult applyPlacementEnrichmentPatches(Storyboard sourceStoryboard,
+                                                                      JsonNode enrichedData) throws Exception {
         List<String> issues = new ArrayList<>();
-        if (storyboard == null || storyboard.getScenes() == null) {
-            issues.add("placement enrichment response has no scenes");
-            return issues;
+        JsonNode patches = enrichedData != null ? enrichedData.get("placement_patches") : null;
+        if (patches == null || !patches.isArray()) {
+            issues.add("placement enrichment response must contain array `placement_patches`");
+            return PlacementPatchMergeResult.rejected(issues);
         }
 
-        Set<String> registryPlacementIds = new LinkedHashSet<>();
-        if (storyboard.getObjectRegistry() != null) {
-            for (StoryboardObject object : storyboard.getObjectRegistry()) {
-                String id = StoryboardPatchResolver.objectId(object);
-                if (id != null && hasPlacement(object)) {
-                    registryPlacementIds.add(id);
-                }
-            }
-        }
+        Storyboard enrichedStoryboard = JsonUtils.mapper()
+                .treeToValue(JsonUtils.mapper().valueToTree(sourceStoryboard), Storyboard.class);
+        enrichedStoryboard = StoryboardNormalizer.normalize(enrichedStoryboard);
+        Map<String, StoryboardScene> scenesById = scenesById(enrichedStoryboard);
+        Set<String> patchedOccurrences = new LinkedHashSet<>();
+        int applied = 0;
 
-        for (int sceneIndex = 0; sceneIndex < storyboard.getScenes().size(); sceneIndex++) {
-            StoryboardScene scene = storyboard.getScenes().get(sceneIndex);
-            String sceneLabel = "scene " + (sceneIndex + 1)
-                    + (scene != null && scene.getSceneId() != null
-                    ? " (" + scene.getSceneId() + ")" : "");
-            if (scene == null) {
-                issues.add(sceneLabel + ": missing scene");
+        for (int i = 0; i < patches.size(); i++) {
+            JsonNode patchNode = patches.get(i);
+            String patchLabel = "placement_patches[" + i + "]";
+            if (patchNode == null || !patchNode.isObject()) {
+                issues.add(patchLabel + ": patch must be an object");
                 continue;
             }
-            validatePlacementEnrichmentPatchList(
-                    sceneLabel, "entering_objects", scene.getEnteringObjects(), registryPlacementIds, issues);
-            validatePlacementEnrichmentPatchList(
-                    sceneLabel, "persistent_objects", scene.getPersistentObjects(), registryPlacementIds, issues);
+            String sceneId = textField(patchNode, "scene_id");
+            String objectId = textField(patchNode, "object_id");
+            if (sceneId == null) {
+                issues.add(patchLabel + ": missing scene_id");
+                continue;
+            }
+            if (objectId == null) {
+                issues.add(patchLabel + ": missing object_id");
+                continue;
+            }
+            String occurrenceKey = sceneId + "\n" + objectId;
+            if (!patchedOccurrences.add(occurrenceKey)) {
+                issues.add(patchLabel + ": duplicate patch for scene '" + sceneId
+                        + "' object '" + objectId + "'");
+                continue;
+            }
+            StoryboardScene scene = scenesById.get(sceneId);
+            if (scene == null) {
+                issues.add(patchLabel + ": unknown scene_id '" + sceneId + "'");
+                continue;
+            }
+            StoryboardObject target = findPlacementPatchTarget(scene, objectId);
+            if (target == null) {
+                issues.add(patchLabel + ": object '" + objectId
+                        + "' is not a visible entering/persistent object in scene '" + sceneId + "'");
+                continue;
+            }
+            if (hasPlacement(target)) {
+                issues.add(patchLabel + ": object '" + objectId
+                        + "' in scene '" + sceneId + "' already has placement; patch must not overwrite it");
+                continue;
+            }
+            JsonNode placementNode = patchNode.get("placement");
+            if (placementNode == null || !placementNode.isObject()) {
+                issues.add(patchLabel + ": missing placement object");
+                continue;
+            }
+            StoryboardPlacement placement = JsonUtils.mapper().treeToValue(placementNode, StoryboardPlacement.class);
+            List<String> placementIssues = validatePlacementPatchPlacement(
+                    patchLabel, sceneId, objectId, placement);
+            if (!placementIssues.isEmpty()) {
+                issues.addAll(placementIssues);
+                continue;
+            }
+            target.setPlacement(StoryboardPatchResolver.copyObject(scenePatch(objectId, placement)).getPlacement());
+            applied++;
+        }
+
+        if (!issues.isEmpty()) {
+            return PlacementPatchMergeResult.rejected(issues);
+        }
+        if (applied == 0) {
+            return PlacementPatchMergeResult.rejected(
+                    List.of("placement enrichment response contained no usable placement patches"));
+        }
+        return PlacementPatchMergeResult.accepted(enrichedStoryboard, applied);
+    }
+
+    private Map<String, StoryboardScene> scenesById(Storyboard storyboard) {
+        Map<String, StoryboardScene> scenesById = new LinkedHashMap<>();
+        if (storyboard == null || storyboard.getScenes() == null) {
+            return scenesById;
+        }
+        for (StoryboardScene scene : storyboard.getScenes()) {
+            if (scene == null || scene.getSceneId() == null || scene.getSceneId().isBlank()) {
+                continue;
+            }
+            scenesById.put(scene.getSceneId().trim(), scene);
+        }
+        return scenesById;
+    }
+
+    private StoryboardObject findPlacementPatchTarget(StoryboardScene scene, String objectId) {
+        StoryboardObject target = findObjectById(scene != null ? scene.getEnteringObjects() : null, objectId);
+        if (target != null) {
+            return target;
+        }
+        return findObjectById(scene != null ? scene.getPersistentObjects() : null, objectId);
+    }
+
+    private StoryboardObject findObjectById(List<StoryboardObject> objects, String objectId) {
+        if (objects == null || objectId == null || objectId.isBlank()) {
+            return null;
+        }
+        for (StoryboardObject object : objects) {
+            if (objectId.equals(StoryboardPatchResolver.objectId(object))) {
+                return object;
+            }
+        }
+        return null;
+    }
+
+    private List<String> validatePlacementPatchPlacement(String patchLabel,
+                                                         String sceneId,
+                                                         String objectId,
+                                                         StoryboardPlacement placement) {
+        List<String> issues = new ArrayList<>();
+        if (placement == null || !placement.hasData()) {
+            issues.add(patchLabel + ": object '" + objectId + "' in scene '" + sceneId
+                    + "' placement has no data");
+            return issues;
+        }
+        String positioning = placement.getPositioning();
+        if (positioning != null && !positioning.isBlank()
+                && !StoryboardPlacement.POSITIONING_ABSOLUTE.equalsIgnoreCase(positioning)
+                && !StoryboardPlacement.POSITIONING_RELATIVE.equalsIgnoreCase(positioning)) {
+            issues.add(patchLabel + ": object '" + objectId + "' in scene '" + sceneId
+                    + "' placement.positioning must be absolute or relative");
+        }
+        if (placement.getX() == null || !placement.getX().hasData()) {
+            issues.add(patchLabel + ": object '" + objectId + "' in scene '" + sceneId
+                    + "' placement.x is required");
+        }
+        if (placement.getY() == null || !placement.getY().hasData()) {
+            issues.add(patchLabel + ": object '" + objectId + "' in scene '" + sceneId
+                    + "' placement.y is required");
+        }
+        if (!SceneModeUtils.isThreeD(sceneMode) && placement.getZ() != null && placement.getZ().hasData()) {
+            issues.add(patchLabel + ": object '" + objectId + "' in scene '" + sceneId
+                    + "' placement.z is forbidden for 2D scene_mode");
         }
         return issues;
     }
 
-    private void validatePlacementEnrichmentPatchList(String sceneLabel,
-                                                      String fieldName,
-                                                      List<StoryboardObject> objects,
-                                                      Set<String> registryPlacementIds,
-                                                      List<String> issues) {
-        if (objects == null) {
-            return;
+    private String textField(JsonNode node, String fieldName) {
+        JsonNode value = node != null ? node.get(fieldName) : null;
+        if (value == null || !value.isTextual() || value.asText().isBlank()) {
+            return null;
         }
-        for (int i = 0; i < objects.size(); i++) {
-            StoryboardObject object = objects.get(i);
-            String id = StoryboardPatchResolver.objectId(object);
-            if (id == null) {
-                continue;
-            }
-            if (!hasPlacement(object)) {
-                String message = sceneLabel + "." + fieldName + "[" + i + "] object '" + id
-                        + "': missing scene-level placement";
-                if (registryPlacementIds != null && registryPlacementIds.contains(id)) {
-                    message += "; placement appears in object_registry, but it must be copied to this scene patch";
-                }
-                issues.add(message);
-            }
-        }
+        return value.asText().trim();
+    }
+
+    private StoryboardObject scenePatch(String id, StoryboardPlacement placement) {
+        StoryboardObject object = new StoryboardObject();
+        object.setId(id);
+        object.setPlacement(placement);
+        return object;
     }
 
     private boolean hasPlacement(StoryboardObject object) {
@@ -2576,11 +2686,10 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
     private String buildPlacementEnrichmentRetryPrompt(List<String> issues) {
         StringBuilder sb = new StringBuilder();
         sb.append("The previous placement-enrichment response was rejected.\n")
-                .append("Every visible scene patch object in `scenes[].entering_objects` and ")
-                .append("`scenes[].persistent_objects` must include a `placement` with data.\n")
-                .append("Do not put computed placements only in `object_registry`; copy each computed placement ")
-                .append("onto every scene-level patch where that object appears.\n")
-                .append("Preserve the full storyboard structure and return the complete storyboard JSON.\n\n")
+                .append("Return only compact JSON with top-level `placement_patches`.\n")
+                .append("Each patch must include `scene_id`, `object_id`, and a complete `placement` with x/y data.\n")
+                .append("Do not return full storyboard JSON, object_registry, scenes, titles, narration, content, actions, or explanatory prose.\n")
+                .append("Only patch visible entering/persistent scene objects that currently lack placement.\n\n")
                 .append("Issues to fix:\n");
         appendIssueList(sb, issues, 40);
         return sb.toString();
@@ -2687,15 +2796,22 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             NodeConversationContext conversationContext = fixConversationContext(narrative);
             String userPrompt = NarrativePrompts.buildCleanupUserPrompt(storyboardJson, issues);
 
-            JsonNode fixedData = AiRequestUtils.requestJsonObjectAsync(
+            AiRequestUtils.JsonObjectResult fixResult = AiRequestUtils.requestJsonAsync(
                             aiClient,
                             log,
                             "storyboard-fix",
-                            conversationContext,
-                            SystemPrompts.buildCurrentRequestSection(userPrompt),
-                            ToolSchemas.storyboard(outputTarget, sceneMode),
-                            () -> toolCalls++)
+                            NodeSupport.buildAiRequest(
+                                    conversationContext,
+                                    SystemPrompts.buildCurrentRequestSection(userPrompt),
+                                    ToolSchemas.storyboard(outputTarget, sceneMode)),
+                            AiRequestUtils.JsonRequestOptions.of(() -> toolCalls++))
                     .join();
+            if (fixResult != null && !fixResult.getAssistantTranscript().isBlank()) {
+                conversationContext.appendTurn(
+                        SystemPrompts.buildCurrentRequestSection(userPrompt),
+                        fixResult.getAssistantTranscript());
+            }
+            JsonNode fixedData = fixResult != null ? fixResult.getPayload() : null;
 
             if (fixedData == null) {
                 return null;
@@ -2839,6 +2955,26 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             this.objectId = objectId;
             this.object = object;
             this.bounds = bounds;
+        }
+    }
+
+    private static final class PlacementPatchMergeResult {
+        private final Storyboard storyboard;
+        private final List<String> issues;
+        private final int patchCount;
+
+        private PlacementPatchMergeResult(Storyboard storyboard, List<String> issues, int patchCount) {
+            this.storyboard = storyboard;
+            this.issues = issues != null ? issues : List.of();
+            this.patchCount = patchCount;
+        }
+
+        private static PlacementPatchMergeResult accepted(Storyboard storyboard, int patchCount) {
+            return new PlacementPatchMergeResult(storyboard, List.of(), patchCount);
+        }
+
+        private static PlacementPatchMergeResult rejected(List<String> issues) {
+            return new PlacementPatchMergeResult(null, issues, 0);
         }
     }
 

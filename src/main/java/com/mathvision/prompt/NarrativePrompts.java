@@ -150,10 +150,9 @@ public final class NarrativePrompts {
                     + "- For objects without placement, compute a reasonable world-space coordinate "
                     + "based on their structured constraints, kind, content, and any available source placements.\n"
                     + "- Use placement.positioning = \"absolute\" for computed placements, or \"relative\" when x/y are offsets from an anchor object.\n"
-                    + "- Write computed placements on the visible scene object patch in entering_objects or persistent_objects where the object appears; do not rely on object_registry-only placements for computed coordinates.\n"
-                    + "- If the same object appears in multiple scenes without placement, add the computed placement to each visible scene patch that needs layout validation.\n"
-                    + "- Return the complete storyboard JSON with placements added for objects that lacked them. "
-                    + "Every other field must remain identical to the input.\n"
+                    + "- Return only `placement_patches`: one patch per visible scene object in entering_objects or persistent_objects that needs a computed placement.\n"
+                    + "- Each patch must identify the target by `scene_id` and `object_id`; do not return object_registry, scene titles, narration, actions, content, styles, constraints, or full storyboard JSON.\n"
+                    + "- If the same object appears in multiple scenes without placement, return one patch for each visible scene occurrence that needs layout validation.\n"
                     + "- Use top-level `coordinate_bounds` as the storyboard world-coordinate validation window when present. Keep computed placements strictly inside it; equality with a min/max boundary is out of bounds.";
 
     /**
@@ -165,11 +164,12 @@ public final class NarrativePrompts {
     public static String buildPlacementEnrichmentUserPrompt(String storyboardJson) {
         return "Compute placement coordinates for all visible storyboard objects that lack a `placement` field.\n"
                 + "Preserve every existing placement exactly as-is; only add new placements where none exists.\n"
-                + "Add each computed placement to the object's scene-level patch in `entering_objects` or `persistent_objects`, not only to `object_registry`, because layout validation consumes visible scene patches.\n"
-                + "If an object is visible in multiple scenes without placement, add the placement to every such scene patch.\n"
+                + "Return only compact patches in `placement_patches`; do not return the full storyboard JSON.\n"
+                + "For each computed placement, include the scene-level target as `scene_id` and `object_id`.\n"
+                + "If an object is visible in multiple scenes without placement, include a patch for every such scene occurrence.\n"
                 + "Use the object's structured constraints, kind, content, and any available source placements to infer its position.\n\n"
                 + "Storyboard:\n```json\n" + storyboardJson + "\n```\n\n"
-                + "Return the full storyboard JSON with the missing visible scene patch placements filled in.";
+                + "Return JSON matching this shape exactly: {\"placement_patches\":[{\"scene_id\":\"scene_1\",\"object_id\":\"A\",\"placement\":{\"positioning\":\"absolute\",\"x\":{\"value\":0},\"y\":{\"value\":0}}}]}";
     }
 
     // ========================================================================

@@ -28,6 +28,7 @@ public final class JsonUtils {
     private static final Pattern STANDALONE_LANGUAGE_LABEL_PATTERN =
             Pattern.compile("^(?i:python|py)\\s*$");
     private static final Set<String> JSON_KEYWORDS = Set.of("true", "false", "null");
+    private static final int PARSE_FAILURE_SNIPPET_RADIUS = 80;
 
     private JsonUtils() {}
 
@@ -96,6 +97,75 @@ public final class JsonUtils {
         }
     }
 
+    public static JsonObjectExtractionResult extractJsonObjectResult(String text) {
+        return extractJsonObjectResult("input", text);
+    }
+
+    public static JsonObjectExtractionResult extractJsonObjectResult(String source, String text) {
+        String label = (source == null || source.isBlank()) ? "input" : source;
+        if (text == null || text.isBlank()) {
+            return JsonObjectExtractionResult.failure(label + " was empty");
+        }
+
+        String trimmed = text.trim();
+        JsonObjectExtractionResult direct = parseJsonObjectCandidate(label, trimmed);
+        if (direct.getPayload() != null) {
+            return direct;
+        }
+
+        JsonObjectExtractionResult repairedDirect = null;
+        if (trimmed.startsWith("{")) {
+            RepairSummary repair = repairJsonLikeObjectWithSummary(trimmed);
+            repairedDirect = parseJsonObjectCandidate(label + " repaired JSON", repair.repairedText);
+            if (repairedDirect.getPayload() != null) {
+                log.warn("Recovered JSON object via direct repair: {}", repair.summary());
+                return JsonObjectExtractionResult.success(
+                        repairedDirect.getPayload(),
+                        repairedDirect.getJsonText());
+            }
+        }
+
+        String fromBlock = extractFromCodeBlock(text, "{");
+        JsonObjectExtractionResult codeBlock = null;
+        JsonObjectExtractionResult repairedCodeBlock = null;
+        if (fromBlock != null && !fromBlock.isBlank()) {
+            codeBlock = parseJsonObjectCandidate(label + " code block", fromBlock);
+            if (codeBlock.getPayload() != null) {
+                return codeBlock;
+            }
+
+            RepairSummary repair = repairJsonLikeObjectWithSummary(fromBlock);
+            repairedCodeBlock = parseJsonObjectCandidate(
+                    label + " repaired code block JSON",
+                    repair.repairedText);
+            if (repairedCodeBlock.getPayload() != null) {
+                log.warn("Recovered JSON object via repaired code block: {}", repair.summary());
+                return JsonObjectExtractionResult.success(
+                        repairedCodeBlock.getPayload(),
+                        repairedCodeBlock.getJsonText());
+            }
+        }
+
+        String scanned = scanForJsonObject(text);
+        if (scanned != null) {
+            return parseJsonObjectCandidate(label + " scanned JSON object", scanned);
+        }
+
+        String scannedWithRepair = scanForJsonObjectWithRepair(text);
+        if (scannedWithRepair != null) {
+            return parseJsonObjectCandidate(label + " repaired scanned JSON object", scannedWithRepair);
+        }
+
+        return JsonObjectExtractionResult.failure(firstNonBlankText(
+                codeBlock != null ? codeBlock.getFailureReason() : null,
+                repairedCodeBlock != null ? repairedCodeBlock.getFailureReason() : null,
+                startsWithJsonObject(trimmed) ? direct.getFailureReason() : null,
+                repairedDirect != null ? repairedDirect.getFailureReason() : null,
+                trimmed.contains("{")
+                        ? label + " did not contain a parseable JSON object"
+                        : label + " did not contain a JSON object"));
+    }
+
     public static String extractJsonArray(String text) {
         if (text == null || text.isBlank()) return "[]";
 
@@ -143,55 +213,12 @@ public final class JsonUtils {
     }
 
     public static String extractJsonObject(String text) {
-        if (text == null || text.isBlank()) return null;
-
-        // Layer 1: Direct parse
-        String trimmed = text.trim();
-        String direct = validateJsonObjectCandidate(trimmed);
-        if (direct != null) {
-            return direct;
+        JsonObjectExtractionResult result = extractJsonObjectResult(text);
+        if (result.getJsonText() != null) {
+            return result.getJsonText();
         }
 
-        // Layer 1b: Direct repair parse for object-looking payloads
-        if (trimmed.startsWith("{")) {
-            RepairSummary repair = repairJsonLikeObjectWithSummary(trimmed);
-            String repairedDirect = validateJsonObjectCandidate(repair.repairedText);
-            if (repairedDirect != null) {
-                log.warn("Recovered JSON object via direct repair: {}", repair.summary());
-                return repairedDirect;
-            }
-        }
-
-        // Layer 2: Code blocks
-        String fromBlock = extractFromCodeBlock(text, "{");
-        String validatedBlock = validateJsonObjectCandidate(fromBlock);
-        if (validatedBlock != null) {
-            return validatedBlock;
-        }
-
-        // Layer 2b: Repaired code block
-        if (fromBlock != null && !fromBlock.isBlank()) {
-            RepairSummary repair = repairJsonLikeObjectWithSummary(fromBlock);
-            String repairedBlock = validateJsonObjectCandidate(repair.repairedText);
-            if (repairedBlock != null) {
-                log.warn("Recovered JSON object via repaired code block: {}", repair.summary());
-                return repairedBlock;
-            }
-        }
-
-        // Layer 3: scan for the first balanced, parseable JSON object.
-        String scanned = scanForJsonObject(text);
-        if (scanned != null) {
-            return scanned;
-        }
-
-        // Layer 4: scan for balanced object, then repair and validate.
-        String scannedWithRepair = scanForJsonObjectWithRepair(text);
-        if (scannedWithRepair != null) {
-            return scannedWithRepair;
-        }
-
-        log.warn("Could not extract JSON object from response");
+        log.warn("Could not extract JSON object from response: {}", result.getFailureReason());
         return null;
     }
 
@@ -405,6 +432,81 @@ public final class JsonUtils {
         } catch (JsonProcessingException ignored) {
             return null;
         }
+    }
+
+    private static JsonObjectExtractionResult parseJsonObjectCandidate(String source, String candidate) {
+        String label = (source == null || source.isBlank()) ? "input" : source;
+        if (candidate == null || candidate.isBlank()) {
+            return JsonObjectExtractionResult.failure(label + " was empty");
+        }
+
+        String trimmed = candidate.trim();
+        if (!startsWithJsonObject(trimmed)) {
+            return JsonObjectExtractionResult.failure(label + " did not start with a JSON object");
+        }
+
+        try {
+            JsonNode parsed = MAPPER.readTree(trimmed);
+            if (parsed != null && parsed.isObject()) {
+                return JsonObjectExtractionResult.success(parsed, trimmed);
+            }
+            return JsonObjectExtractionResult.failure(label + " parsed as "
+                    + describeJsonNode(parsed)
+                    + ", expected JSON object");
+        } catch (JsonProcessingException e) {
+            return JsonObjectExtractionResult.failure(
+                    label + " JSON parse failed: " + summarizeJsonParseFailure(e, trimmed));
+        }
+    }
+
+    private static boolean startsWithJsonObject(String text) {
+        return text != null && text.trim().startsWith("{");
+    }
+
+    private static String describeJsonNode(JsonNode node) {
+        if (node == null) {
+            return "null";
+        }
+        if (node.isArray()) {
+            return "JSON array";
+        }
+        if (node.isTextual()) {
+            return "JSON string";
+        }
+        if (node.isNumber()) {
+            return "JSON number";
+        }
+        if (node.isBoolean()) {
+            return "JSON boolean";
+        }
+        if (node.isNull()) {
+            return "JSON null";
+        }
+        return node.getNodeType().toString().toLowerCase();
+    }
+
+    private static String summarizeJsonParseFailure(JsonProcessingException error, String candidate) {
+        String message = error.getOriginalMessage() != null
+                ? error.getOriginalMessage()
+                : error.getMessage();
+        int offset = (int) error.getLocation().getCharOffset();
+        if (offset >= 0) {
+            message += " near " + snippetAround(candidate, offset);
+        }
+        return message;
+    }
+
+    private static String snippetAround(String text, int offset) {
+        if (text == null || text.isBlank()) {
+            return "<empty>";
+        }
+        int start = Math.max(0, offset - PARSE_FAILURE_SNIPPET_RADIUS);
+        int end = Math.min(text.length(), offset + PARSE_FAILURE_SNIPPET_RADIUS);
+        String snippet = text.substring(start, end)
+                .replace('\n', ' ')
+                .replace('\r', ' ')
+                .replace('\t', ' ');
+        return "'" + snippet + "'";
     }
 
     private static String scanForJsonObject(String text) {
@@ -828,6 +930,38 @@ public final class JsonUtils {
                     quotedBareIdentifiers,
                     removedTrailingCommas
             );
+        }
+    }
+
+    public static final class JsonObjectExtractionResult {
+        private final JsonNode payload;
+        private final String jsonText;
+        private final String failureReason;
+
+        private JsonObjectExtractionResult(JsonNode payload, String jsonText, String failureReason) {
+            this.payload = payload;
+            this.jsonText = jsonText;
+            this.failureReason = failureReason == null ? "" : failureReason;
+        }
+
+        private static JsonObjectExtractionResult success(JsonNode payload, String jsonText) {
+            return new JsonObjectExtractionResult(payload, jsonText, "");
+        }
+
+        private static JsonObjectExtractionResult failure(String failureReason) {
+            return new JsonObjectExtractionResult(null, null, failureReason);
+        }
+
+        public JsonNode getPayload() {
+            return payload;
+        }
+
+        public String getJsonText() {
+            return jsonText;
+        }
+
+        public String getFailureReason() {
+            return failureReason;
         }
     }
 

@@ -50,6 +50,15 @@ class ToolSchemasTest {
     }
 
     @Test
+    void placementPatchTool_isValidJson() {
+        assertDoesNotThrow(() -> {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            mapper.readTree(ToolSchemas.placementPatches("2d"));
+            mapper.readTree(ToolSchemas.placementPatches("3d"));
+        });
+    }
+
+    @Test
     void sceneDesignTool_isValidJson() {
         assertDoesNotThrow(() -> {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -255,6 +264,42 @@ class ToolSchemasTest {
         assertFalse(geoGebraSceneDesign.contains("voiceover_text"));
         assertFalse(geoGebraSceneDesign.contains("expected_seconds"));
         assertFalse(geoGebraSceneDesign.contains("manim_voiceover"));
+    }
+
+    @Test
+    void placementPatchSchemaIsCompactAndSceneModeAware() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.JsonNode twoD = mapper.readTree(ToolSchemas.placementPatches("2d"));
+        com.fasterxml.jackson.databind.JsonNode threeD = mapper.readTree(ToolSchemas.placementPatches("3d"));
+
+        assertTrue(ToolSchemas.placementPatches("2d").contains("write_placement_patches"));
+        assertTrue(ToolSchemas.placementPatches("2d").contains("placement_patches"));
+        assertFalse(ToolSchemas.placementPatches("2d").contains("object_registry"));
+        assertFalse(ToolSchemas.placementPatches("2d").contains("narration"));
+
+        com.fasterxml.jackson.databind.JsonNode twoDPlacementProperties = twoD.get(0)
+                .path("function")
+                .path("parameters")
+                .path("properties")
+                .path("placement_patches")
+                .path("items")
+                .path("properties")
+                .path("placement")
+                .path("properties");
+        com.fasterxml.jackson.databind.JsonNode threeDPlacementProperties = threeD.get(0)
+                .path("function")
+                .path("parameters")
+                .path("properties")
+                .path("placement_patches")
+                .path("items")
+                .path("properties")
+                .path("placement")
+                .path("properties");
+
+        assertTrue(twoDPlacementProperties.has("x"));
+        assertTrue(twoDPlacementProperties.has("y"));
+        assertFalse(twoDPlacementProperties.has("z"));
+        assertTrue(threeDPlacementProperties.has("z"));
     }
 
     @Test

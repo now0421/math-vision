@@ -2,14 +2,15 @@ package com.mathvision.node;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.mathvision.config.WorkflowConfig;
-import com.mathvision.model.AiMessage;
+import com.mathvision.model.AiRequest;
+import com.mathvision.model.AiResponse;
 import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.ProblemSource;
 import com.mathvision.model.SourceAsset;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.service.AiClient;
+import com.mathvision.support.AiClientTestSupport;
 import com.mathvision.util.JsonUtils;
-import com.mathvision.util.NodeConversationContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -111,25 +112,8 @@ class ProblemNormalizationNodeTest {
 
     private static final class ToolPayloadAiClient implements AiClient {
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            return CompletableFuture.failedFuture(new UnsupportedOperationException());
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(
-                List<NodeConversationContext.Message> snapshot, String toolsJson) {
-            return CompletableFuture.failedFuture(new UnsupportedOperationException());
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatMultimodalWithToolsRawAsync(
-                List<AiMessage> messages, String toolsJson) {
-            return CompletableFuture.completedFuture(rawToolResponse());
-        }
-
-        @Override
-        public String providerName() {
-            return "fake";
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            return CompletableFuture.completedFuture(AiClientTestSupport.rawResponse(rawToolResponse()));
         }
 
         private JsonNode rawToolResponse() {
@@ -150,21 +134,11 @@ class ProblemNormalizationNodeTest {
         }
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            return CompletableFuture.failedFuture(new UnsupportedOperationException());
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(
-                List<NodeConversationContext.Message> snapshot, String toolsJson) {
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
             toolCallCount++;
             String payload = payloads.remove();
-            return CompletableFuture.completedFuture(rawToolResponse(payload));
-        }
-
-        @Override
-        public String providerName() {
-            return "fake";
+            return CompletableFuture.completedFuture(
+                    AiClientTestSupport.rawResponse(rawToolResponse(payload)));
         }
     }
 

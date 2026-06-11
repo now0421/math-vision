@@ -1,12 +1,15 @@
 package com.mathvision.node;
 
 import com.mathvision.config.WorkflowConfig;
+import com.mathvision.model.AiRequest;
+import com.mathvision.model.AiResponse;
 import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
 import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
+import com.mathvision.support.AiClientTestSupport;
 import com.mathvision.util.JsonUtils;
 import com.mathvision.util.NodeConversationContext;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -378,23 +381,17 @@ class ExplorationNodeTest {
         private int chatCallCount = 0;
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            chatCallCount++;
-            return CompletableFuture.completedFuture("{}");
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
-                                                                 String toolsJson) {
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            String toolsJson = request.getToolsJson();
+            if (toolsJson == null || toolsJson.isBlank()) {
+                chatCallCount++;
+                return CompletableFuture.completedFuture(AiClientTestSupport.textResponse("{}"));
+            }
             toolCallCount++;
             requestedTools.add(toolsJson);
-            toolSnapshots.add(new ArrayList<>(snapshot));
-            return CompletableFuture.completedFuture(toolResponses.removeFirst());
-        }
-
-        @Override
-        public String providerName() {
-            return "test";
+            toolSnapshots.add(new ArrayList<>(AiClientTestSupport.snapshot(request)));
+            return CompletableFuture.completedFuture(
+                    AiClientTestSupport.rawResponse(toolResponses.removeFirst()));
         }
 
         private String lastToolUserMessage() {

@@ -126,6 +126,51 @@ public final class ToolSchemas {
         return isManim(outputTarget) ? withoutLabelVisible(schema) : schema;
     }
 
+    public static String placementPatches(String sceneMode) {
+        String placementProperties = "                        \"positioning\": { \"type\": \"string\", \"enum\": [\"absolute\", \"relative\"] },"
+                + "                        \"x\": { \"type\": \"object\", \"properties\": { \"value\": { \"type\": \"number\" }, \"min\": { \"type\": \"number\" }, \"max\": { \"type\": \"number\" } }, \"additionalProperties\": false },"
+                + "                        \"y\": { \"type\": \"object\", \"properties\": { \"value\": { \"type\": \"number\" }, \"min\": { \"type\": \"number\" }, \"max\": { \"type\": \"number\" } }, \"additionalProperties\": false }";
+        if (SceneModeUtils.isThreeD(sceneMode)) {
+            placementProperties += ","
+                    + "                        \"z\": { \"type\": \"object\", \"properties\": { \"value\": { \"type\": \"number\" }, \"min\": { \"type\": \"number\" }, \"max\": { \"type\": \"number\" } }, \"additionalProperties\": false }";
+        }
+
+        return "["
+                + "{"
+                + "  \"type\": \"function\","
+                + "  \"function\": {"
+                + "    \"name\": \"write_placement_patches\","
+                + "    \"parameters\": {"
+                + "      \"type\": \"object\","
+                + "      \"properties\": {"
+                + "        \"placement_patches\": {"
+                + "          \"type\": \"array\","
+                + "          \"items\": {"
+                + "            \"type\": \"object\","
+                + "            \"properties\": {"
+                + "              \"scene_id\": { \"type\": \"string\" },"
+                + "              \"object_id\": { \"type\": \"string\" },"
+                + "              \"placement\": {"
+                + "                \"type\": \"object\","
+                + "                \"properties\": {"
+                + placementProperties
+                + "                },"
+                + "                \"additionalProperties\": false"
+                + "              }"
+                + "            },"
+                + "            \"additionalProperties\": false,"
+                + "            \"required\": [\"scene_id\", \"object_id\", \"placement\"]"
+                + "          }"
+                + "        }"
+                + "      },"
+                + "      \"additionalProperties\": false,"
+                + "      \"required\": [\"placement_patches\"]"
+                + "    }"
+                + "  }"
+                + "}"
+                + "]";
+    }
+
     private static String applySceneModeSchema(String schema, String sceneMode) {
         if (schema == null || SceneModeUtils.isThreeD(sceneMode)) {
             return schema;

@@ -223,22 +223,27 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     }
 
     private CompletableFuture<CodeDraft> requestCodeAsync(String userPrompt, String expectedArtifactName) {
-        return AiRequestUtils.requestExtractedTextResultAsync(
+        return AiRequestUtils.requestCodeAsync(
                         aiClient,
                         log,
                         expectedArtifactName,
-                        conversationContext,
-                        userPrompt,
-                        resolveToolSchema(),
-                        () -> toolCalls++,
-                        List.of(resolveGeneratedCodeFieldName()),
-                        this::extractCodeFromText,
-                        text -> text != null && !text.isBlank()
+                        NodeSupport.buildAiRequest(conversationContext, userPrompt, resolveToolSchema()),
+                        AiRequestUtils.CodeRequestOptions.builder()
+                                .onApiCall(() -> toolCalls++)
+                                .preferredPayloadFields(List.of(resolveGeneratedCodeFieldName()))
+                                .codeExtractor(this::extractCodeFromText)
+                                .codeValidator(text -> text != null && !text.isBlank())
+                                .build()
                 )
-                .thenApply(result -> toCodeDraft(
-                        result != null ? result.getPayload() : null,
-                        result != null ? result.getExtractedText() : null,
-                        expectedArtifactName));
+                .thenApply(result -> {
+                    if (result != null && !result.getAssistantTranscript().isBlank()) {
+                        conversationContext.appendTurn(userPrompt, result.getAssistantTranscript());
+                    }
+                    return toCodeDraft(
+                            result != null ? result.getPayload() : null,
+                            result != null ? result.getCode() : null,
+                            expectedArtifactName);
+                });
     }
 
     private CodeResult generatePerScene(Narrative narrative, String artifactName) {
@@ -275,15 +280,22 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                 ? CodeGenerationPrompts.geoGebraSkeletonUserPrompt(storyboardJson, sceneNames)
                 : CodeGenerationPrompts.manimSkeletonUserPrompt(storyboardJson, sceneNames);
         skeletonPrompt += coordinateBoundsBlock;
-        AiRequestUtils.ExtractedTextResult skeletonResult = AiRequestUtils.requestExtractedTextResultAsync(
-                aiClient, log, "skeleton", conversationContext,
-                skeletonPrompt, ToolSchemas.CODE_SKELETON, () -> toolCalls++,
-                List.of("headerCode"),
-                this::extractCodeFromText,
-                text -> text != null && !text.isBlank()
+        AiRequestUtils.CodeResult skeletonResult = AiRequestUtils.requestCodeAsync(
+                aiClient, log, "skeleton",
+                NodeSupport.buildAiRequest(conversationContext, skeletonPrompt, ToolSchemas.CODE_SKELETON),
+                AiRequestUtils.CodeRequestOptions.builder()
+                        .onApiCall(() -> toolCalls++)
+                        .preferredPayloadFields(List.of("headerCode"))
+                        .codeExtractor(this::extractCodeFromText)
+                        .codeValidator(text -> text != null && !text.isBlank())
+                        .build()
         ).join();
 
-        String headerCode = skeletonResult != null ? skeletonResult.getExtractedText() : "";
+        if (skeletonResult != null && !skeletonResult.getAssistantTranscript().isBlank()) {
+            conversationContext.appendTurn(skeletonPrompt, skeletonResult.getAssistantTranscript());
+        }
+
+        String headerCode = skeletonResult != null ? skeletonResult.getCode() : "";
         log.info("  Skeleton generated: {} lines", headerCode.lines().count());
 
         // 2. Generate each scene sequentially
@@ -314,13 +326,20 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                     + sceneRegistryBlock
                     + runtimeStateBlock
                     + constraintSummaryBlock;
-            AiRequestUtils.ExtractedTextResult sceneResult = AiRequestUtils.requestExtractedTextResultAsync(
-                    aiClient, log, sceneName, conversationContext,
-                    scenePrompt, ToolSchemas.SCENE_CODE, () -> toolCalls++,
-                    List.of("sceneCode"),
-                    this::extractCodeFromText,
-                    text -> text != null && !text.isBlank()
+            AiRequestUtils.CodeResult sceneResult = AiRequestUtils.requestCodeAsync(
+                    aiClient, log, sceneName,
+                    NodeSupport.buildAiRequest(conversationContext, scenePrompt, ToolSchemas.SCENE_CODE),
+                    AiRequestUtils.CodeRequestOptions.builder()
+                            .onApiCall(() -> toolCalls++)
+                            .preferredPayloadFields(List.of("sceneCode"))
+                            .codeExtractor(this::extractCodeFromText)
+                            .codeValidator(text -> text != null && !text.isBlank())
+                            .build()
             ).join();
+
+            if (sceneResult != null && !sceneResult.getAssistantTranscript().isBlank()) {
+                conversationContext.appendTurn(scenePrompt, sceneResult.getAssistantTranscript());
+            }
 
             // Apply this scene's patches after code generation (for next scene's context)
             updateRuntimeObjectState(createdRuntimeObjects, visibleRuntimeObjects, scene, enrichedRegistry);
@@ -328,7 +347,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                 applyScenePatches(enrichedRegistry, scene);
             }
 
-            String sceneCode = sceneResult != null ? sceneResult.getExtractedText() : "";
+            String sceneCode = sceneResult != null ? sceneResult.getCode() : "";
             JsonNode scenePayload = sceneResult != null ? sceneResult.getPayload() : null;
             if (scenePayload != null && !isGeoGebra && scenePayload.has("sceneMethodName")) {
                 String returnedName = scenePayload.get("sceneMethodName").asText("");
@@ -554,9 +573,9 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     private CodeDraft toCodeDraft(JsonNode payload, String generatedCode, String expectedArtifactName) {
         String artifactName = expectedArtifactName;
 
-        if (payload != null && payload.has("scene_name")) {
+        if (payload != null && payload.has("scene_name") && payload.hasNonNull(resolveGeneratedCodeFieldName())) {
             artifactName = payload.get("scene_name").asText(expectedArtifactName);
-        } else if (payload != null && payload.has("figure_name")) {
+        } else if (payload != null && payload.has("figure_name") && payload.hasNonNull(resolveGeneratedCodeFieldName())) {
             artifactName = payload.get("figure_name").asText(expectedArtifactName);
         }
 

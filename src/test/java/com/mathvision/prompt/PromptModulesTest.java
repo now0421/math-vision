@@ -392,12 +392,16 @@ class PromptModulesTest {
         String userPrompt = NarrativePrompts.buildPlacementEnrichmentUserPrompt(
                 "{\"object_registry\":[{\"id\":\"Bprime\"}],\"scenes\":[{\"entering_objects\":[{\"id\":\"Bprime\"}]}]}");
 
-        assertTrue(systemPrompt.contains("visible scene object patch"));
+        assertTrue(systemPrompt.contains("placement_patches"));
+        assertTrue(systemPrompt.contains("scene_id"));
+        assertTrue(systemPrompt.contains("object_id"));
         assertTrue(systemPrompt.contains("entering_objects or persistent_objects"));
-        assertTrue(systemPrompt.contains("do not rely on object_registry-only placements"));
-        assertTrue(userPrompt.contains("scene-level patch"));
-        assertTrue(userPrompt.contains("not only to `object_registry`"));
-        assertTrue(userPrompt.contains("layout validation consumes visible scene patches"));
+        assertTrue(systemPrompt.contains("do not return object_registry"));
+        assertTrue(userPrompt.contains("Return only compact patches"));
+        assertTrue(userPrompt.contains("do not return the full storyboard JSON"));
+        assertTrue(userPrompt.contains("scene_id"));
+        assertTrue(userPrompt.contains("object_id"));
+        assertFalse(userPrompt.contains("Return the full storyboard JSON"));
     }
 
     @Test

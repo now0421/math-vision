@@ -4,15 +4,15 @@ import com.mathvision.model.CodeFixRequest;
 import com.mathvision.model.CodeFixResult;
 import com.mathvision.model.CodeFixSource;
 import com.mathvision.model.CodeResult;
+import com.mathvision.model.AiRequest;
+import com.mathvision.model.AiResponse;
 import com.mathvision.model.WorkflowActions;
 import com.mathvision.model.WorkflowKeys;
 import com.mathvision.service.AiClient;
-import com.mathvision.util.NodeConversationContext;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.mathvision.support.AiClientTestSupport;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -103,19 +103,8 @@ class CodeFixNodeTest {
         }
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            return CompletableFuture.completedFuture(response);
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
-                                                                 String toolsJson) {
-            return CompletableFuture.failedFuture(new UnsupportedOperationException("Tools are not used in this test"));
-        }
-
-        @Override
-        public String providerName() {
-            return "stub";
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            return CompletableFuture.completedFuture(AiClientTestSupport.textResponse(response));
         }
     }
 }

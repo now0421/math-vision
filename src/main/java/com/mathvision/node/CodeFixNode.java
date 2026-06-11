@@ -109,18 +109,22 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
 
         try {
             log.info("=== Shared Code Fix: {} ===", request.getSource());
-            String fixedCode = AiRequestUtils.requestExtractedTextAsync(
+            AiRequestUtils.CodeResult codeResponse = AiRequestUtils.requestCodeAsync(
                             aiClient,
                             log,
                             "code-fix",
-                            conversationContext,
-                            currentRequestPrompt,
-                            resolveToolSchema(),
-                            () -> toolCalls++,
-                            List.of(resolveGeneratedCodeFieldName()),
-                            this::extractCodeFromText,
-                            text -> text != null && !text.isBlank())
+                            NodeSupport.buildAiRequest(conversationContext, currentRequestPrompt, resolveToolSchema()),
+                            AiRequestUtils.CodeRequestOptions.builder()
+                                    .onApiCall(() -> toolCalls++)
+                                    .preferredPayloadFields(List.of(resolveGeneratedCodeFieldName()))
+                                    .codeExtractor(this::extractCodeFromText)
+                                    .codeValidator(text -> text != null && !text.isBlank())
+                                    .build())
                     .join();
+            if (codeResponse != null && !codeResponse.getAssistantTranscript().isBlank()) {
+                conversationContext.appendTurn(currentRequestPrompt, codeResponse.getAssistantTranscript());
+            }
+            String fixedCode = codeResponse != null ? codeResponse.getCode() : null;
             if (fixedCode == null || fixedCode.isBlank()) {
                 result.setFailureReason("Code fix returned no parseable "
                         + (isGeoGebraTarget(request) ? "GeoGebra code" : "Python code"));

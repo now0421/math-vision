@@ -1,19 +1,27 @@
 package com.mathvision.util;
 
-import com.mathvision.service.AiClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.mathvision.model.AiError;
+import com.mathvision.model.AiMessage;
+import com.mathvision.model.AiRequest;
+import com.mathvision.model.AiResponse;
+import com.mathvision.model.AiToolCall;
+import com.mathvision.node.support.NodeSupport;
+import com.mathvision.service.AiClient;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
 import java.net.http.HttpTimeoutException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -23,48 +31,45 @@ class AiRequestUtilsTest {
     void usesCustomPlainTextParserForToolTextResponses() {
         FakeAiClient aiClient = new FakeAiClient(wrapTextResponse("problem"), "{\"ignored\":true}");
 
-        JsonNode result = AiRequestUtils.requestJsonObjectAsync(
+        AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
                 aiClient,
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "input mode",
-                createContext("system"),
-                "user",
-                "[]",
-                () -> { },
-                text -> {
-                    ObjectNode payload = JsonUtils.mapper().createObjectNode();
-                    payload.put("input_mode", text.trim());
-                    return payload;
-                }
+                request(createContext("system"), "user", "[]"),
+                AiRequestUtils.JsonRequestOptions.builder()
+                        .plainTextParser(text -> {
+                            ObjectNode payload = JsonUtils.mapper().createObjectNode();
+                            payload.put("input_mode", text.trim());
+                            return payload;
+                        })
+                        .build()
         ).join();
 
-        assertEquals("problem", result.get("input_mode").asText());
-        assertEquals(0, aiClient.chatCalls.get());
+        assertEquals("problem", result.getPayload().get("input_mode").asText());
+        assertEquals(0, aiClient.plainChatCalls.get());
     }
 
     @Test
-    void fallsBackToPlainChatWhenToolTextResponseHasNoJson() {
+    void jsonFallsBackToPlainChatWhenToolResponseHasNoJson() {
         FakeAiClient aiClient = new FakeAiClient(
                 wrapTextResponse("not json at all"),
                 "{\"ok\":true}"
         );
 
-        JsonNode result = AiRequestUtils.requestJsonObjectAsync(
+        AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
                 aiClient,
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "visual design",
-                createContext("system"),
-                "user",
-                "[]",
-                () -> { }
+                request(createContext("system"), "user", "[]"),
+                AiRequestUtils.JsonRequestOptions.defaults()
         ).join();
 
-        assertTrue(result.get("ok").asBoolean());
-        assertEquals(1, aiClient.chatCalls.get());
+        assertTrue(result.getPayload().get("ok").asBoolean());
+        assertEquals(1, aiClient.plainChatCalls.get());
     }
 
     @Test
-    void fallsBackWhenCustomValidatorRejectsToolPayload() {
+    void customValidatorRejectsToolPayloadAndFallsBackToPlainChat() {
         ObjectNode toolArguments = JsonUtils.mapper().createObjectNode();
         toolArguments.put("scene_name", "DemoScene");
 
@@ -73,22 +78,21 @@ class AiRequestUtilsTest {
                 "{\"manimCode\":\"print('ok')\"}"
         );
 
-        JsonNode result = AiRequestUtils.requestJsonObjectAsync(
+        AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
                 aiClient,
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "code generation",
-                createContext("system"),
-                "user",
-                "[]",
-                () -> { },
-                JsonUtils::parseTree,
-                payload -> payload != null
-                        && payload.has("manimCode")
-                        && !payload.get("manimCode").asText("").isBlank()
+                request(createContext("system"), "user", "[]"),
+                AiRequestUtils.JsonRequestOptions.builder()
+                        .plainTextParser(JsonUtils::parseTree)
+                        .payloadValidator(payload -> payload != null
+                                && payload.has("manimCode")
+                                && !payload.get("manimCode").asText("").isBlank())
+                        .build()
         ).join();
 
-        assertEquals("print('ok')", result.get("manimCode").asText());
-        assertEquals(1, aiClient.chatCalls.get());
+        assertEquals("print('ok')", result.getPayload().get("manimCode").asText());
+        assertEquals(1, aiClient.plainChatCalls.get());
     }
 
     @Test
@@ -97,19 +101,20 @@ class AiRequestUtilsTest {
                 JsonUtils.parseTree("{\"equations\":[\"x=1\"],\"definitions\":{}}")
         ));
 
-        AiRequestUtils.JsonObjectResult response = AiRequestUtils.requestJsonObjectResultAsync(
+        AiRequestUtils.JsonObjectResult response = AiRequestUtils.requestJsonAsync(
                 aiClient,
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "math enrichment",
-                List.of(
-                        new NodeConversationContext.Message("system", "system prompt"),
-                        new NodeConversationContext.Message("user", "older user"),
-                        new NodeConversationContext.Message("assistant", "older assistant")
-                ),
-                1000,
-                "current user",
-                "[]",
-                () -> { }
+                NodeSupport.buildAiRequest(
+                        List.of(
+                                new NodeConversationContext.Message("system", "system prompt"),
+                                new NodeConversationContext.Message("user", "older user"),
+                                new NodeConversationContext.Message("assistant", "older assistant")
+                        ),
+                        1000,
+                        "current user",
+                        "[]"),
+                AiRequestUtils.JsonRequestOptions.defaults()
         ).join();
 
         assertEquals("x=1", response.getPayload().get("equations").get(0).asText());
@@ -119,132 +124,361 @@ class AiRequestUtilsTest {
     }
 
     @Test
-    void extractedTextPrefersConfiguredPayloadField() {
+    void jsonObjectResultIncludesPlainTextParseFailureReason() {
+        FakeAiClient aiClient = new FakeAiClient(
+                wrapTextResponse("```json\n{\"note\":\"C\\' is invalid json\"}\n```"),
+                "```json\n{\"note\":\"C\\' is still invalid\"}\n```"
+        );
+
+        AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
+                aiClient,
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "placement-enrichment",
+                request(createContext("system"), "user", "[]"),
+                AiRequestUtils.JsonRequestOptions.defaults()
+        ).join();
+
+        assertNull(result.getPayload());
+        assertTrue(result.getFailureReason().contains("JSON parse failed"));
+        assertTrue(result.getFailureReason().contains("message.content code block JSON parse failed"));
+        assertTrue(result.getFailureReason().contains("plain-text retry failed"));
+        assertEquals(1, aiClient.plainChatCalls.get());
+    }
+
+    @Test
+    void codePrefersConfiguredPayloadField() {
         ObjectNode arguments = JsonUtils.mapper().createObjectNode();
         arguments.put("manimCode", "from manim import *\nclass MainScene(Scene):\n    pass");
 
-        AiRequestUtils.ExtractedTextResult result = AiRequestUtils.requestExtractedTextResultAsync(
+        AiRequestUtils.CodeResult result = AiRequestUtils.requestCodeAsync(
                 new FakeAiClient(wrapToolResponse(arguments), "ignored"),
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "codegen",
-                createContext("system"),
-                "user",
-                "[]",
-                () -> { },
-                List.of("manimCode"),
-                text -> text == null ? null : text.trim(),
-                text -> text != null && !text.isBlank()
+                request(createContext("system"), "user", "[]"),
+                codeOptions(List.of("manimCode"))
         ).join();
 
-        assertEquals("from manim import *\nclass MainScene(Scene):\n    pass", result.getExtractedText());
+        assertEquals("from manim import *\nclass MainScene(Scene):\n    pass", result.getCode());
         assertTrue(result.getAssistantTranscript().contains("[tool_call]"));
         assertTrue(result.getAssistantTranscript().contains("\"manimCode\""));
         assertEquals("from manim import *\nclass MainScene(Scene):\n    pass", result.getPayload().get("manimCode").asText());
     }
 
     @Test
-    void extractedTextFallsBackToCodeBlockWhenPayloadFieldMissing() {
+    void codeFallsBackToCodeBlockWhenPayloadFieldMissing() {
         String responseText = "```python\nfrom manim import *\nclass MainScene(Scene):\n    pass\n```";
 
-        String extractedText = AiRequestUtils.requestExtractedTextAsync(
+        AiRequestUtils.CodeResult result = AiRequestUtils.requestCodeAsync(
                 new FakeAiClient(wrapTextResponse(responseText), "ignored"),
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "codegen",
-                createContext("system"),
-                "user",
-                "[]",
-                () -> { },
-                List.of("manimCode"),
-                text -> text == null ? null : text.trim(),
-                text -> text != null && !text.isBlank()
+                request(createContext("system"), "user", "[]"),
+                codeOptions(List.of("manimCode"))
         ).join();
 
-        assertEquals("from manim import *\nclass MainScene(Scene):\n    pass", extractedText);
+        assertEquals("from manim import *\nclass MainScene(Scene):\n    pass", result.getCode());
     }
 
     @Test
-    void extractedTextFallsBackToWholeResponseWhenNoCodeBlockExists() {
-        String extractedText = AiRequestUtils.requestExtractedTextAsync(
+    void textReturnsWholeResponseWhenNoToolPayloadFieldExists() {
+        AiRequestUtils.TextResult result = AiRequestUtils.requestTextAsync(
                 new FakeAiClient(wrapTextResponse("problem"), "ignored"),
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "classification",
-                createContext("system"),
-                "user",
-                "[]",
-                () -> { },
-                List.of("input_mode"),
-                text -> text == null ? null : text.trim(),
-                text -> text != null && !text.isBlank()
+                request(createContext("system"), "user", "[]"),
+                AiRequestUtils.TextRequestOptions.builder()
+                        .preferredPayloadFields(List.of("input_mode"))
+                        .textExtractor(text -> text == null ? null : text.trim())
+                        .textValidator(text -> text != null && !text.isBlank())
+                        .build()
         ).join();
 
-        assertEquals("problem", extractedText);
+        assertEquals("problem", result.getText());
     }
 
     @Test
-    void extractedTextReturnsNullWhenNothingUsableIsFound() {
-        String extractedText = AiRequestUtils.requestExtractedTextAsync(
+    void textReturnsFailureWhenNothingUsableIsFound() {
+        AiRequestUtils.TextResult result = AiRequestUtils.requestTextAsync(
                 new FakeAiClient(wrapTextResponse("   "), "   "),
                 LoggerFactory.getLogger(AiRequestUtilsTest.class),
                 "empty",
-                createContext("system"),
-                "user",
-                "[]",
-                () -> { },
-                List.of("sceneCode"),
-                text -> text == null ? null : text.trim(),
-                text -> text != null && !text.isBlank()
+                request(createContext("system"), "user", "[]"),
+                AiRequestUtils.TextRequestOptions.builder()
+                        .preferredPayloadFields(List.of("sceneCode"))
+                        .textExtractor(text -> text == null ? null : text.trim())
+                        .textValidator(text -> text != null && !text.isBlank())
+                        .build()
         ).join();
 
-        assertNull(extractedText);
+        assertNull(result.getText());
+        assertTrue(result.getFailureReason().contains("message.content was empty"));
+        assertTrue(result.getFailureReason().contains("plain-text retry failed"));
     }
 
     @Test
-    void doesNotFallBackToPlainChatWhenToolCallTimesOut() {
+    void codeFallsBackToPlainChatWhenToolResponseHasNoUsableCode() {
+        ObjectNode arguments = JsonUtils.mapper().createObjectNode();
+        arguments.put("scene_name", "DemoScene");
+
+        AiRequestUtils.CodeResult result = AiRequestUtils.requestCodeAsync(
+                new FakeAiClient(
+                        wrapToolResponse(arguments),
+                        "```python\nfrom manim import *\nclass MainScene(Scene):\n    pass\n```"),
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "codegen",
+                request(createContext("system"), "user", "[]"),
+                codeOptions(List.of("manimCode"))
+        ).join();
+
+        assertEquals("from manim import *\nclass MainScene(Scene):\n    pass", result.getCode());
+    }
+
+    @Test
+    void codeFailureReasonIdentifiesRejectedPayloadFieldAndContent() {
+        ObjectNode arguments = JsonUtils.mapper().createObjectNode();
+        arguments.put("manimCode", "not a scene");
+
+        AiRequestUtils.CodeResult result = AiRequestUtils.requestCodeAsync(
+                new FakeAiClient(wrapToolResponse(arguments), "also not a scene"),
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "codegen",
+                request(createContext("system"), "user", "[]"),
+                AiRequestUtils.CodeRequestOptions.builder()
+                        .preferredPayloadFields(List.of("manimCode", "sceneCode"))
+                        .codeExtractor(text -> text == null ? null : text.trim())
+                        .codeValidator(text -> text != null && text.contains("class MainScene"))
+                        .build()
+        ).join();
+
+        assertNull(result.getCode());
+        assertTrue(result.getFailureReason().contains("Tool-call payload field 'manimCode'"));
+        assertTrue(result.getFailureReason().contains("code validator rejected extracted code"));
+        assertTrue(result.getFailureReason().contains("missing fields: sceneCode"));
+        assertTrue(result.getFailureReason().contains("message.content code validator rejected extracted code"));
+        assertTrue(result.getFailureReason().contains("plain-text retry failed"));
+    }
+
+    @Test
+    void textFailureReasonIncludesExtractorException() {
+        AiRequestUtils.TextResult result = AiRequestUtils.requestTextAsync(
+                new FakeAiClient(wrapTextResponse("boom"), "boom again"),
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "classification",
+                request(createContext("system"), "user", "[]"),
+                AiRequestUtils.TextRequestOptions.builder()
+                        .preferredPayloadFields(List.of("input_mode"))
+                        .textExtractor(text -> {
+                            throw new IllegalArgumentException("cannot normalize text");
+                        })
+                        .textValidator(text -> text != null && !text.isBlank())
+                        .build()
+        ).join();
+
+        assertNull(result.getText());
+        assertTrue(result.getFailureReason().contains("message.content text extractor failed"));
+        assertTrue(result.getFailureReason().contains("cannot normalize text"));
+        assertTrue(result.getFailureReason().contains("plain-text retry failed"));
+    }
+
+    @Test
+    void jsonErrorResponseReturnsFailureReason() {
         FakeAiClient aiClient = new FakeAiClient(
                 CompletableFuture.<JsonNode>failedFuture(new HttpTimeoutException("request timed out")),
                 "{\"ok\":true}"
         );
 
-        RuntimeException error = org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class, () ->
-                AiRequestUtils.requestJsonObjectAsync(
-                        aiClient,
-                        LoggerFactory.getLogger(AiRequestUtilsTest.class),
-                        "placement-enrichment",
-                        createContext("system"),
-                        "user",
-                        "[]",
-                        () -> { }
-                ).join());
+        AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
+                aiClient,
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "placement-enrichment",
+                request(createContext("system"), "user", "[]"),
+                AiRequestUtils.JsonRequestOptions.defaults()
+        ).join();
 
-        assertTrue(error.getMessage().contains("request timed out")
-                || error.getCause().getMessage().contains("request timed out"));
-        assertEquals(0, aiClient.chatCalls.get());
+        assertNull(result.getPayload());
+        assertTrue(result.getFailureReason().contains("request timed out"));
+        assertEquals(0, aiClient.plainChatCalls.get());
     }
 
     @Test
-    void extractedTextDoesNotFallBackToPlainChatWhenToolCallTimesOut() {
+    void codeErrorResponseReturnsFailureReason() {
         FakeAiClient aiClient = new FakeAiClient(
                 CompletableFuture.<JsonNode>failedFuture(new HttpTimeoutException("request timed out")),
                 "fallback text"
         );
 
-        RuntimeException error = org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class, () ->
-                AiRequestUtils.requestExtractedTextAsync(
-                        aiClient,
-                        LoggerFactory.getLogger(AiRequestUtilsTest.class),
-                        "codegen",
-                        createContext("system"),
-                        "user",
-                        "[]",
-                        () -> { },
-                        List.of("manimCode"),
-                        text -> text,
-                        text -> text != null && !text.isBlank()
-                ).join());
+        AiRequestUtils.CodeResult result = AiRequestUtils.requestCodeAsync(
+                aiClient,
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "codegen",
+                request(createContext("system"), "user", "[]"),
+                codeOptions(List.of("manimCode"))
+        ).join();
 
-        assertTrue(error.getMessage().contains("request timed out")
-                || error.getCause().getMessage().contains("request timed out"));
-        assertEquals(0, aiClient.chatCalls.get());
+        assertNull(result.getCode());
+        assertTrue(result.getFailureReason().contains("request timed out"));
+        assertEquals(0, aiClient.plainChatCalls.get());
+    }
+
+    @Test
+    void jsonReturnsDetailedAiResponseError() {
+        AiError error = detailedAiError();
+        ResponseAiClient aiClient = new ResponseAiClient(AiResponse.failure(error));
+
+        AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
+                aiClient,
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "json",
+                request(createContext("system"), "user", "[]"),
+                AiRequestUtils.JsonRequestOptions.defaults()
+        ).join();
+
+        assertNull(result.getPayload());
+        assertSame(error, result.getError());
+        assertDetailedFailureReason(result.getFailureReason());
+        assertEquals(1, aiClient.calls.get());
+    }
+
+    @Test
+    void codeReturnsDetailedAiResponseError() {
+        AiError error = detailedAiError();
+        ResponseAiClient aiClient = new ResponseAiClient(AiResponse.failure(error));
+
+        AiRequestUtils.CodeResult result = AiRequestUtils.requestCodeAsync(
+                aiClient,
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "code",
+                request(createContext("system"), "user", "[]"),
+                codeOptions(List.of("manimCode"))
+        ).join();
+
+        assertNull(result.getCode());
+        assertSame(error, result.getError());
+        assertDetailedFailureReason(result.getFailureReason());
+        assertEquals(1, aiClient.calls.get());
+    }
+
+    @Test
+    void textReturnsDetailedAiResponseError() {
+        AiError error = detailedAiError();
+        ResponseAiClient aiClient = new ResponseAiClient(AiResponse.failure(error));
+
+        AiRequestUtils.TextResult result = AiRequestUtils.requestTextAsync(
+                aiClient,
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "text",
+                request(createContext("system"), "user", "[]"),
+                AiRequestUtils.TextRequestOptions.defaults()
+        ).join();
+
+        assertNull(result.getText());
+        assertSame(error, result.getError());
+        assertDetailedFailureReason(result.getFailureReason());
+        assertEquals(1, aiClient.calls.get());
+    }
+
+    @Test
+    void jsonSuccessDoesNotReturnAiResponseError() {
+        AiError error = detailedAiError();
+        ResponseAiClient aiClient = new ResponseAiClient(responseWithError(
+                AiResponse.success("{\"ok\":true}", List.of(), null),
+                error));
+
+        AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
+                aiClient,
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "json",
+                request(createContext("system"), "user", null),
+                AiRequestUtils.JsonRequestOptions.defaults()
+        ).join();
+
+        assertTrue(result.getPayload().get("ok").asBoolean());
+        assertNull(result.getError());
+        assertEquals("", result.getFailureReason());
+    }
+
+    @Test
+    void codeSuccessDoesNotReturnAiResponseError() {
+        AiError error = detailedAiError();
+        ResponseAiClient aiClient = new ResponseAiClient(responseWithError(
+                AiResponse.success("```python\nclass MainScene(Scene):\n    pass\n```", List.of(), null),
+                error));
+
+        AiRequestUtils.CodeResult result = AiRequestUtils.requestCodeAsync(
+                aiClient,
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "code",
+                request(createContext("system"), "user", null),
+                codeOptions(List.of("manimCode"))
+        ).join();
+
+        assertTrue(result.getCode().contains("class MainScene"));
+        assertNull(result.getError());
+        assertEquals("", result.getFailureReason());
+    }
+
+    @Test
+    void textSuccessDoesNotReturnAiResponseError() {
+        AiError error = detailedAiError();
+        ResponseAiClient aiClient = new ResponseAiClient(responseWithError(
+                AiResponse.success("problem", List.of(), null),
+                error));
+
+        AiRequestUtils.TextResult result = AiRequestUtils.requestTextAsync(
+                aiClient,
+                LoggerFactory.getLogger(AiRequestUtilsTest.class),
+                "text",
+                request(createContext("system"), "user", null),
+                AiRequestUtils.TextRequestOptions.defaults()
+        ).join();
+
+        assertEquals("problem", result.getText());
+        assertNull(result.getError());
+        assertEquals("", result.getFailureReason());
+    }
+
+    private static AiRequestUtils.CodeRequestOptions codeOptions(List<String> fields) {
+        return AiRequestUtils.CodeRequestOptions.builder()
+                .preferredPayloadFields(fields)
+                .codeExtractor(text -> text == null ? null : text.trim())
+                .codeValidator(text -> text != null && !text.isBlank())
+                .build();
+    }
+
+    private static AiRequest request(NodeConversationContext context, String userPrompt, String toolsJson) {
+        return NodeSupport.buildAiRequest(context, userPrompt, toolsJson);
+    }
+
+    private static AiError detailedAiError() {
+        AiError error = new AiError();
+        error.setProvider("openai");
+        error.setModel("gpt-test");
+        error.setHttpStatus(429);
+        error.setRequestId("req-123");
+        error.setMessage("rate limited");
+        error.setExceptionClass("com.example.RateLimitException");
+        error.setRateLimited(true);
+        error.setTransientFailure(true);
+        error.setResponseBody("{\"error\":\"slow down\"}");
+        return error;
+    }
+
+    private static AiResponse responseWithError(AiResponse response, AiError error) {
+        response.setError(error);
+        return response;
+    }
+
+    private static void assertDetailedFailureReason(String failureReason) {
+        assertTrue(failureReason.contains("AI request failed"));
+        assertTrue(failureReason.contains("provider=openai"));
+        assertTrue(failureReason.contains("model=gpt-test"));
+        assertTrue(failureReason.contains("http_status=429"));
+        assertTrue(failureReason.contains("request_id=req-123"));
+        assertTrue(failureReason.contains("message=rate limited"));
+        assertTrue(failureReason.contains("exception=com.example.RateLimitException"));
+        assertTrue(failureReason.contains("rate_limited=true"));
+        assertTrue(failureReason.contains("transient=true"));
+        assertTrue(failureReason.contains("response_body={\"error\":\"slow down\"}"));
     }
 
     private static JsonNode wrapTextResponse(String text) {
@@ -276,7 +510,7 @@ class AiRequestUtilsTest {
         private final JsonNode rawResponse;
         private final CompletableFuture<JsonNode> rawResponseFuture;
         private final String plainChatResponse;
-        private final AtomicInteger chatCalls = new AtomicInteger(0);
+        private final AtomicInteger plainChatCalls = new AtomicInteger(0);
 
         private FakeAiClient(JsonNode rawResponse, String plainChatResponse) {
             this.rawResponse = rawResponse;
@@ -291,28 +525,19 @@ class AiRequestUtilsTest {
         }
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            chatCalls.incrementAndGet();
-            return CompletableFuture.completedFuture(plainChatResponse);
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(List<NodeConversationContext.Message> snapshot,
-                                                                 String toolsJson) {
-            return rawResponseFuture != null
-                    ? rawResponseFuture
-                    : CompletableFuture.completedFuture(rawResponse);
-        }
-
-        @Override
-        public String providerName() {
-            return "fake";
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            if (request.getToolsJson() != null && !request.getToolsJson().isBlank()) {
+                return rawResponseFuture != null
+                        ? rawResponseFuture.thenApply(AiRequestUtilsTest::responseFromRaw)
+                        : CompletableFuture.completedFuture(responseFromRaw(rawResponse));
+            }
+            plainChatCalls.incrementAndGet();
+            return CompletableFuture.completedFuture(AiResponse.success(plainChatResponse, List.of(), null));
         }
     }
 
     private static final class SnapshotAwareAiClient implements AiClient {
         private final JsonNode snapshotRawResponse;
-        private final AtomicInteger chatCalls = new AtomicInteger(0);
         private List<String> lastSnapshotRoles = List.of();
         private String lastSnapshotUserContent = "";
 
@@ -321,25 +546,56 @@ class AiRequestUtilsTest {
         }
 
         @Override
-        public CompletableFuture<String> chatAsync(List<NodeConversationContext.Message> snapshot) {
-            chatCalls.incrementAndGet();
-            return CompletableFuture.completedFuture("{\"ok\":true}");
-        }
-
-        @Override
-        public CompletableFuture<JsonNode> chatWithToolsRawAsync(
-                List<NodeConversationContext.Message> snapshot,
-                String toolsJson) {
-            lastSnapshotRoles = snapshot.stream()
-                    .map(NodeConversationContext.Message::getRole)
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            if (request.getToolsJson() == null || request.getToolsJson().isBlank()) {
+                AiError error = AiError.fromException(new AssertionError("toolsJson was expected"));
+                return CompletableFuture.completedFuture(AiResponse.failure(error));
+            }
+            lastSnapshotRoles = request.getMessages().stream()
+                    .map(AiMessage::getRole)
                     .collect(Collectors.toList());
-            lastSnapshotUserContent = snapshot.get(snapshot.size() - 1).getContent();
-            return CompletableFuture.completedFuture(snapshotRawResponse);
+            lastSnapshotUserContent = textContent(request.getMessages().get(request.getMessages().size() - 1));
+            return CompletableFuture.completedFuture(responseFromRaw(snapshotRawResponse));
+        }
+    }
+
+    private static final class ResponseAiClient implements AiClient {
+        private final AiResponse response;
+        private final AtomicInteger calls = new AtomicInteger(0);
+
+        private ResponseAiClient(AiResponse response) {
+            this.response = response;
         }
 
         @Override
-        public String providerName() {
-            return "snapshot-aware";
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            calls.incrementAndGet();
+            return CompletableFuture.completedFuture(response);
         }
+    }
+
+    private static AiResponse responseFromRaw(JsonNode raw) {
+        List<AiToolCall> toolCalls = new ArrayList<>();
+        JsonNode payload = JsonUtils.extractToolCallPayload(raw);
+        String toolName = JsonUtils.extractToolCallName(raw);
+        if (payload != null || (toolName != null && !toolName.isBlank())) {
+            AiToolCall toolCall = new AiToolCall();
+            toolCall.setName(toolName);
+            toolCall.setArguments(payload);
+            toolCall.setArgumentsText(payload != null ? payload.toString() : "");
+            toolCall.setRaw(raw);
+            toolCalls.add(toolCall);
+        }
+        return AiResponse.success(JsonUtils.extractBestEffortTextFromResponse(raw), toolCalls, raw);
+    }
+
+    private static String textContent(AiMessage message) {
+        if (message == null || message.getParts() == null) {
+            return "";
+        }
+        return message.getParts().stream()
+                .filter(part -> "text".equals(part.getType()))
+                .map(part -> part.getText() != null ? part.getText() : "")
+                .collect(Collectors.joining("\n"));
     }
 }
