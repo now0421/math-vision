@@ -697,24 +697,8 @@ public final class ToolSchemas {
             + "]";
 
     // ========================================================================
-    // Stage 5 (scene-level): Skeleton + Per-Scene Code
+    // Stage 5 (scene-level): Per-Scene Code
     // ========================================================================
-
-    public static final String CODE_SKELETON = "["
-            + "{"
-            + "  \"type\": \"function\","
-            + "  \"function\": {"
-            + "    \"name\": \"write_code_skeleton\","
-            + "    \"parameters\": {"
-            + "      \"type\": \"object\","
-            + "      \"properties\": {"
-            + "        \"headerCode\": { \"type\": \"string\" }"
-            + "      },"
-            + "      \"required\": [\"headerCode\"]"
-            + "    }"
-            + "  }"
-            + "}"
-            + "]";
 
     public static final String SCENE_CODE = "["
             + "{"

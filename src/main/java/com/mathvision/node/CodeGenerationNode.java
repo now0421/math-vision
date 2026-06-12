@@ -35,6 +35,8 @@ import com.mathvision.util.StoryboardConstraintUtils;
 import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.the_pocket.PocketFlow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -115,10 +117,8 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         log.info("=== Stage 5: Code Generation ===");
         toolCalls = 0;
 
-        if (this.conversationContext == null) {
-            int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
-            this.conversationContext = new NodeConversationContext(maxInputTokens);
-        }
+        int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
+        this.conversationContext = new NodeConversationContext(maxInputTokens);
 
         Narrative narrative = input.narrative();
 
@@ -135,17 +135,12 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                 : ProblemBundleContextBuilder.workflowTargetDescription(
                         problemBundle, "", "", NodeSupport.resolveOutputTarget(workflowConfig));
 
-        // Build object registry JSON for fixed context (shared across all scene generations)
-        String objectRegistryJson = "";
+        // Build compact object registry JSON for fixed context (shared across all scene generations).
+        String compactObjectRegistryJson = "";
         if (narrative != null && narrative.hasStoryboard()
                 && narrative.getStoryboard().getObjectRegistry() != null
                 && !narrative.getStoryboard().getObjectRegistry().isEmpty()) {
-            try {
-                objectRegistryJson = JsonUtils.mapper().writeValueAsString(
-                        narrative.getStoryboard().getObjectRegistry());
-            } catch (Exception e) {
-                log.warn("Failed to serialize object registry: {}", e.getMessage());
-            }
+            compactObjectRegistryJson = buildCompactObjectRegistryJson(narrative.getStoryboard());
         }
 
         this.conversationContext.setSystemMessage(
@@ -155,7 +150,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         this.conversationContext.setFixedContextMessage(
                 CodeGenerationPrompts.buildFixedContextPrompt(
                         problemBundle, targetDescription,
-                        NodeSupport.resolveOutputTarget(workflowConfig), objectRegistryJson,
+                        NodeSupport.resolveOutputTarget(workflowConfig), compactObjectRegistryJson,
                         SceneModeUtils.normalize(problemBundle != null ? problemBundle.getSceneMode() : null)));
 
         String generatedCode;
@@ -253,9 +248,6 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         List<StoryboardScene> scenes = mergedStoryboard != null && mergedStoryboard.getScenes() != null
                 ? mergedStoryboard.getScenes()
                 : storyboard.getScenes();
-        String storyboardJson = StoryboardJsonBuilder.buildForCodegen(storyboard,
-                isGeoGebra ? WorkflowConfig.OUTPUT_TARGET_GEOGEBRA : WorkflowConfig.OUTPUT_TARGET_MANIM);
-
         // Build scene identifiers
         List<String> sceneNames = new ArrayList<>();
         for (int i = 0; i < scenes.size(); i++) {
@@ -276,38 +268,22 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         Map<String, StoryboardObject> createdRuntimeObjects = new LinkedHashMap<>();
         Map<String, StoryboardObject> visibleRuntimeObjects = new LinkedHashMap<>();
         String coordinateBoundsBlock = coordinateBoundsImplementationBlock(storyboard, isGeoGebra);
-        String skeletonPrompt = isGeoGebra
-                ? CodeGenerationPrompts.geoGebraSkeletonUserPrompt(storyboardJson, sceneNames)
-                : CodeGenerationPrompts.manimSkeletonUserPrompt(storyboardJson, sceneNames);
-        skeletonPrompt += coordinateBoundsBlock;
-        AiRequestUtils.CodeResult skeletonResult = AiRequestUtils.requestCodeAsync(
-                aiClient, log, "skeleton",
-                NodeSupport.buildAiRequest(conversationContext, skeletonPrompt, ToolSchemas.CODE_SKELETON),
-                AiRequestUtils.CodeRequestOptions.builder()
-                        .onApiCall(() -> toolCalls++)
-                        .preferredPayloadFields(List.of("headerCode"))
-                        .codeExtractor(this::extractCodeFromText)
-                        .codeValidator(text -> text != null && !text.isBlank())
-                        .build()
-        ).join();
-
-        if (skeletonResult != null && !skeletonResult.getAssistantTranscript().isBlank()) {
-            conversationContext.appendTurn(skeletonPrompt, skeletonResult.getAssistantTranscript());
-        }
-
-        String headerCode = skeletonResult != null ? skeletonResult.getCode() : "";
-        log.info("  Skeleton generated: {} lines", headerCode.lines().count());
+        String headerCode = isGeoGebra
+                ? staticGeoGebraSkeleton(storyboard, sceneNames)
+                : staticManimSkeleton(scenes, sceneNames,
+                        SceneModeUtils.normalize(problemBundle != null ? problemBundle.getSceneMode() : null));
+        log.info("  Static skeleton generated: {} lines", headerCode.lines().count());
 
         // 2. Generate each scene sequentially
         List<SceneCodeEntry> entries = new ArrayList<>();
+        List<NodeConversationContext.Message> codegenBaseSnapshot = conversationContext.getMessages();
         for (int i = 0; i < scenes.size(); i++) {
             StoryboardScene scene = scenes.get(i);
             String sceneName = sceneNames.get(i);
             String sceneJson;
             try {
-                sceneJson = isGeoGebra
-                        ? StoryboardJsonBuilder.buildSceneForCodegen(scene, WorkflowConfig.OUTPUT_TARGET_GEOGEBRA)
-                        : JsonUtils.mapper().writeValueAsString(scene);
+                sceneJson = StoryboardJsonBuilder.buildSceneForCodegen(scene,
+                        isGeoGebra ? WorkflowConfig.OUTPUT_TARGET_GEOGEBRA : WorkflowConfig.OUTPUT_TARGET_MANIM);
             } catch (Exception e) {
                 sceneJson = "{}";
             }
@@ -315,20 +291,21 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             // Constraint summary: explicit per-object and scene-level hard invariants
             String constraintSummaryBlock = enrichedRegistry != null
                     ? toConstraintBlock(buildSceneConstraintSummary(scene, enrichedRegistry)) : "";
-            String sceneRegistryBlock = enrichedRegistry != null
-                    ? toConstraintBlock(buildSceneRegistryJsonBlock(scene, enrichedRegistry)) : "";
             String runtimeStateBlock = toConstraintBlock(buildRuntimeObjectStateBlock(
                     visibleRuntimeObjects, createdRuntimeObjects, scene, enrichedRegistry, isGeoGebra));
             String scenePrompt = (isGeoGebra
                     ? CodeGenerationPrompts.geoGebraSceneCodeUserPrompt(sceneJson, sceneName, i, scenes.size())
                     : CodeGenerationPrompts.manimSceneCodeUserPrompt(sceneJson, sceneName, i, scenes.size()))
                     + coordinateBoundsBlock
-                    + sceneRegistryBlock
                     + runtimeStateBlock
                     + constraintSummaryBlock;
             AiRequestUtils.CodeResult sceneResult = AiRequestUtils.requestCodeAsync(
                     aiClient, log, sceneName,
-                    NodeSupport.buildAiRequest(conversationContext, scenePrompt, ToolSchemas.SCENE_CODE),
+                    NodeSupport.buildAiRequest(
+                            codegenBaseSnapshot,
+                            conversationContext.getMaxInputTokens(),
+                            scenePrompt,
+                            ToolSchemas.SCENE_CODE),
                     AiRequestUtils.CodeRequestOptions.builder()
                             .onApiCall(() -> toolCalls++)
                             .preferredPayloadFields(List.of("sceneCode"))
@@ -337,17 +314,13 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                             .build()
             ).join();
 
-            if (sceneResult != null && !sceneResult.getAssistantTranscript().isBlank()) {
-                conversationContext.appendTurn(scenePrompt, sceneResult.getAssistantTranscript());
-            }
-
             // Apply this scene's patches after code generation (for next scene's context)
             updateRuntimeObjectState(createdRuntimeObjects, visibleRuntimeObjects, scene, enrichedRegistry);
             if (enrichedRegistry != null) {
                 applyScenePatches(enrichedRegistry, scene);
             }
 
-            String sceneCode = sceneResult != null ? sceneResult.getCode() : "";
+            String sceneCode = requireCode(sceneResult, sceneName);
             JsonNode scenePayload = sceneResult != null ? sceneResult.getPayload() : null;
             if (scenePayload != null && !isGeoGebra && scenePayload.has("sceneMethodName")) {
                 String returnedName = scenePayload.get("sceneMethodName").asText("");
@@ -552,19 +525,17 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             return "";
         }
 
-        String registrySummary = buildEnrichedRegistrySummary(narrative.getStoryboard(), Integer.MAX_VALUE);
-        String registryBlock = registrySummary.isBlank() ? "" : "\n\n" + registrySummary;
         boolean isGeoGebra = workflowConfig != null && workflowConfig.isGeoGebraTarget();
         String coordinateBoundsBlock = coordinateBoundsImplementationBlock(narrative.getStoryboard(), isGeoGebra);
 
         if (isGeoGebra) {
-            return SystemPrompts.buildCurrentRequestSection((basePrompt + registryBlock
+            return SystemPrompts.buildCurrentRequestSection((basePrompt
                     + coordinateBoundsBlock
                     + "\n\nFigure name: " + expectedSceneName
                     + "\nUse this as the primary GeoGebra figure name when naming the construction.").replaceFirst("^\\[CURRENT_REQUEST\\]\\n", ""));
         }
 
-        return SystemPrompts.buildCurrentRequestSection((basePrompt + registryBlock
+        return SystemPrompts.buildCurrentRequestSection((basePrompt
                 + coordinateBoundsBlock
                 + "\n\nScene class name: " + expectedSceneName
                 + "\nUse this exact scene class name verbatim in the generated code.").replaceFirst("^\\[CURRENT_REQUEST\\]\\n", ""));
@@ -584,6 +555,113 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
 
     private static String toConstraintBlock(String constraintSummary) {
         return constraintSummary.isBlank() ? "" : "\n\n" + constraintSummary;
+    }
+
+    static String staticManimSkeleton(List<StoryboardScene> scenes,
+                                      List<String> sceneMethodNames,
+                                      String sceneMode) {
+        boolean useVoiceover = hasVoiceoverText(scenes);
+        boolean useThreeDScene = !useVoiceover && SceneModeUtils.isThreeD(sceneMode);
+        String baseClass = useVoiceover ? "VoiceoverScene" : (useThreeDScene ? "ThreeDScene" : "Scene");
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("from manim import *\n");
+        if (useVoiceover) {
+            sb.append("from manim_voiceover import VoiceoverScene\n");
+            sb.append("from manim_voiceover.services.gtts import GTTSService\n\n");
+            sb.append("VOICEOVER_SPEED = 1.0\n");
+        }
+        sb.append("\n");
+        sb.append("class MainScene(").append(baseClass).append("):\n");
+        sb.append("    def construct(self):\n");
+        if (useVoiceover) {
+            sb.append("        self.set_speech_service(GTTSService(lang=\"zh-CN\", global_speed=VOICEOVER_SPEED))\n");
+        }
+        sb.append("        self.objects = {}\n");
+        if (sceneMethodNames == null || sceneMethodNames.isEmpty()) {
+            sb.append("        self.wait(1)\n");
+        } else {
+            for (String methodName : sceneMethodNames) {
+                String sanitized = sanitizeManimMethodName(methodName);
+                sb.append("        self.").append(sanitized).append("()\n");
+            }
+        }
+        sb.append("\n");
+        sb.append("    ").append(MANIM_SCENE_METHODS_MARKER);
+        return sb.toString();
+    }
+
+    static String staticGeoGebraSkeleton(Storyboard storyboard, List<String> sceneSectionNames) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# GeoGebra command script\n");
+        sb.append(CoordinateBoundsUtils.toGeoGebraSetCoordSystem(
+                storyboard != null ? storyboard.getCoordinateBounds() : null));
+        if (sceneSectionNames != null && !sceneSectionNames.isEmpty()) {
+            sb.append("\n# Scene sequence: ");
+            sb.append(String.join(" | ", sceneSectionNames));
+        }
+        return sb.toString();
+    }
+
+    private static boolean hasVoiceoverText(List<StoryboardScene> scenes) {
+        if (scenes == null) {
+            return false;
+        }
+        for (StoryboardScene scene : scenes) {
+            if (scene == null || scene.getActions() == null) {
+                continue;
+            }
+            for (Narrative.StoryboardAction action : scene.getActions()) {
+                if (action != null
+                        && action.getVoiceoverText() != null
+                        && !action.getVoiceoverText().isBlank()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    static String buildCompactObjectRegistryJson(Storyboard storyboard) {
+        if (storyboard == null || storyboard.getObjectRegistry() == null
+                || storyboard.getObjectRegistry().isEmpty()) {
+            return "";
+        }
+        ArrayNode array = JsonUtils.mapper().createArrayNode();
+        for (StoryboardObject object : storyboard.getObjectRegistry()) {
+            if (object == null || object.getId() == null || object.getId().isBlank()) {
+                continue;
+            }
+            ObjectNode node = array.addObject();
+            node.put("id", object.getId());
+            putNonBlank(node, "kind", object.getKind());
+            putNonBlank(node, "content", object.getContent());
+            if (object.getStyle() != null && object.getStyle().hasData()) {
+                node.set("style", JsonUtils.mapper().valueToTree(object.getStyle()));
+            }
+            if (object.getConstraints() != null && !object.getConstraints().isEmpty()) {
+                node.set("constraints", JsonUtils.mapper().valueToTree(object.getConstraints()));
+            }
+        }
+        return array.isEmpty() ? "" : JsonUtils.toPrettyJson(array);
+    }
+
+    private static void putNonBlank(ObjectNode node, String fieldName, String value) {
+        if (value != null && !value.isBlank()) {
+            node.put(fieldName, value.trim());
+        }
+    }
+
+    private static String requireCode(AiRequestUtils.CodeResult result, String subject) {
+        if (result != null && result.getCode() != null && !result.getCode().isBlank()) {
+            return result.getCode();
+        }
+        String reason = result != null && result.getFailureReason() != null
+                && !result.getFailureReason().isBlank()
+                ? result.getFailureReason()
+                : "AI response did not contain usable scene code";
+        throw new CompletionException(
+                new IllegalStateException("Scene code generation failed for " + subject + ": " + reason));
     }
 
     private static String coordinateBoundsImplementationBlock(Storyboard storyboard, boolean isGeoGebra) {
@@ -662,18 +740,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         if (obj == null) {
             return;
         }
-        sb.append("- id=").append(obj.getId())
-                .append(", kind=").append(obj.getKind())
-                .append(", content=").append(truncate(obj.getContent(), 80));
-        if (obj.getPlacement() != null && obj.getPlacement().hasData()) {
-            sb.append(", placement=").append(formatPlacementSummary(obj.getPlacement()));
-        }
-        if (obj.getStyle() != null && obj.getStyle().hasData()) {
-            sb.append(", style=").append(formatStyleSummary(obj.getStyle()));
-        }
-        if (obj.getConstraints() != null && !obj.getConstraints().isEmpty()) {
-            sb.append(", constraints=").append(truncate(JsonUtils.toJson(obj.getConstraints()), 500));
-        }
+        sb.append("- ").append(obj.getId());
         sb.append("\n");
     }
 

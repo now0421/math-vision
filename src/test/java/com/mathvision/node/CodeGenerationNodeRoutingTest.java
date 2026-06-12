@@ -263,6 +263,36 @@ class CodeGenerationNodeRoutingTest {
     }
 
     @Test
+    void perSceneGenerationUsesStaticSkeletonAndDoesNotRollScenePromptsIntoHistory() {
+        QueueAiClient aiClient = new QueueAiClient();
+        aiClient.toolResponses.add(sceneCodeResponse("label = Text(\"one\")\nself.play(Write(label))"));
+        aiClient.toolResponses.add(sceneCodeResponse("self.wait(1)"));
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.CONFIG, new WorkflowConfig());
+        ctx.put(WorkflowKeys.NARRATIVE, buildTwoSceneNarrativeWithRegistry());
+
+        new CodeGenerationNode().run(ctx);
+
+        CodeResult codeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
+        assertNotNull(codeResult);
+        assertEquals(2, codeResult.getToolCalls());
+        assertTrue(codeResult.getGeneratedCode().contains("class MainScene(Scene):"));
+        assertTrue(codeResult.getGeneratedCode().contains("self.objects = {}"));
+        assertTrue(codeResult.getGeneratedCode().contains("def scene_1_intro"));
+        assertTrue(codeResult.getGeneratedCode().contains("def scene_2_finish"));
+
+        assertEquals(2, aiClient.userMessages.size());
+        assertTrue(aiClient.toolsJsonHistory.stream().allMatch(ToolSchemas.SCENE_CODE::equals));
+        assertFalse(aiClient.userMessages.get(0).contains("write_code_skeleton"));
+        assertFalse(aiClient.userMessages.get(1).contains("label = Text(\"one\")"));
+        assertFalse(aiClient.userMessages.get(1).contains("Object registry (structured JSON for this scene's objects)"));
+        assertTrue(aiClient.systemPrompts.get(0).contains("Object registry (compact JSON"));
+        assertTrue(aiClient.systemPrompts.get(0).contains("\"id\" : \"title_main\""));
+    }
+
+    @Test
     void enrichedRegistrySummaryExposesPlacementForAllObjects() {
         StoryboardObject fixedPoint = new StoryboardObject();
         fixedPoint.setId("A");
@@ -329,6 +359,33 @@ class CodeGenerationNodeRoutingTest {
         bounds.setY(new Narrative.StoryboardCoordinateBoundsAxis(-2.0, 3.0));
         bounds.setPadding(1.0);
         narrative.getStoryboard().setCoordinateBounds(bounds);
+        return narrative;
+    }
+
+    private static Narrative buildTwoSceneNarrativeWithRegistry() {
+        Narrative narrative = buildStoryboardNarrative();
+        Storyboard storyboard = narrative.getStoryboard();
+        StoryboardScene first = storyboard.getScenes().get(0);
+
+        StoryboardScene second = new StoryboardScene();
+        second.setSceneId("scene_2");
+        second.setTitle("Finish");
+        second.setGoal("Finish the idea.");
+        second.setNarration("Pause on the result.");
+        second.setPersistentObjects(first.getPersistentObjects());
+        second.setExitingObjects(new ArrayList<>());
+        StoryboardAction action = new StoryboardAction();
+        action.setOrder(1);
+        action.setType("wait");
+        action.setDescription("Hold the title.");
+        second.setActions(List.of(action));
+
+        StoryboardObject registryObject = new StoryboardObject();
+        registryObject.setId("title_main");
+        registryObject.setKind("text");
+        registryObject.setContent("Demo title");
+        storyboard.setObjectRegistry(List.of(registryObject));
+        storyboard.setScenes(List.of(first, second));
         return narrative;
     }
 
@@ -459,6 +516,20 @@ class CodeGenerationNodeRoutingTest {
         return response;
     }
 
+    private static JsonNode sceneCodeResponse(String code) {
+        ObjectNode response = com.mathvision.util.JsonUtils.mapper().createObjectNode();
+        ArrayNode choices = response.putArray("choices");
+        ObjectNode message = choices.addObject().putObject("message");
+        ArrayNode toolCalls = message.putArray("tool_calls");
+        ObjectNode function = toolCalls.addObject().putObject("function");
+        function.put("name", "write_scene_code");
+
+        ObjectNode arguments = com.mathvision.util.JsonUtils.mapper().createObjectNode();
+        arguments.put("sceneCode", code);
+        function.set("arguments", arguments);
+        return response;
+    }
+
     private static String wrapCodeResponse(String code) {
         return "```python\n" + code + "\n```";
     }
@@ -481,12 +552,18 @@ class CodeGenerationNodeRoutingTest {
         private String lastUserMessage;
         private String lastSystemPrompt;
         private String lastToolsJson;
+        private final List<String> userMessages = new ArrayList<>();
+        private final List<String> systemPrompts = new ArrayList<>();
+        private final List<String> toolsJsonHistory = new ArrayList<>();
 
         @Override
         public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
             lastUserMessage = AiClientTestSupport.lastUserContent(request);
             lastSystemPrompt = AiClientTestSupport.systemContent(request);
             lastToolsJson = request.getToolsJson();
+            userMessages.add(lastUserMessage);
+            systemPrompts.add(lastSystemPrompt);
+            toolsJsonHistory.add(lastToolsJson);
             if (lastToolsJson == null || lastToolsJson.isBlank()) {
                 return CompletableFuture.completedFuture(
                         AiClientTestSupport.textResponse(chatResponses.removeFirst()));

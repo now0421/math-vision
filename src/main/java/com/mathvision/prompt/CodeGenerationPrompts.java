@@ -20,7 +20,8 @@ public final class CodeGenerationPrompts {
 
     private static final String MANIM_CODE_GENERATION_SYSTEM =
             "You are an expert Manim Community engineer and Python programmer.\n"
-                    + "Generate complete, runnable, maintainable Python code that implements the storyboard.\n"
+                    + "Generate maintainable Python code for the exact granularity requested by the current request.\n"
+                    + "In per-scene generation, the application owns imports, MainScene, construct(), and final assembly; return only the requested scene method body.\n"
                     + "Treat the provided storyboard JSON as an execution specification, but distinguish canonical object semantics from per-scene visual-state patches.\n\n"
                     + SystemPrompts.STORYBOARD_AUTHORITY_RULES
                     + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
@@ -83,7 +84,8 @@ public final class CodeGenerationPrompts {
                     + "- Prefer `Group`/`VGroup`, `arrange`, `next_to`, alignment helpers, and anchored groups over brittle hardcoded coordinates everywhere.\n"
                     + "- If problem-level `scene_mode` is `3d`, use `ThreeDScene`, apply the camera plan explicitly, and keep fixed overlays readable in screen space.\n\n"
                     + "Code quality rules:\n"
-                    + "- Return one full runnable file with helper methods when they improve clarity.\n"
+                    + "- When the current request asks for a full file, return one full runnable file with helper methods when they improve clarity.\n"
+                    + "- When the current request asks for a scene method body, do not return imports, class definitions, `construct()`, or scene method signatures; the application will assemble those statically.\n"
                     + "- Use descriptive ASCII variable names derived from storyboard ids or roles.\n"
                     + "- Ensure the generated code clearly reflects the storyboard scene order and action order.\n"
                     + "- When implementing at least one selected important `voiceover_text`, use `VoiceoverScene`, import `manim_voiceover` and `GTTSService`, define `VOICEOVER_SPEED`, call `self.set_speech_service(GTTSService(lang=\"zh-CN\", global_speed=VOICEOVER_SPEED))`, and synchronize selected important narrated beats with `with self.voiceover(text=...) as tracker:`.\n"
@@ -126,7 +128,8 @@ public final class CodeGenerationPrompts {
 
     private static final String GEOGEBRA_CODE_GENERATION_SYSTEM =
             "You are an expert GeoGebra Classic engineer.\n"
-                    + "Generate complete, dependency-safe GeoGebra command code that implements the storyboard for teaching.\n"
+                    + "Generate dependency-safe GeoGebra command code for the exact granularity requested by the current request.\n"
+                    + "In per-scene generation, the application owns global setup and final assembly; return only the requested scene command block.\n"
                     + "Treat object_registry as the semantic authority for object identity, geometry meaning, and dependency relationships; treat scene placement/style as momentary visual-state guidance.\n\n"
                     + SystemPrompts.STORYBOARD_AUTHORITY_RULES
                     + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
@@ -216,7 +219,7 @@ public final class CodeGenerationPrompts {
                                                  String sceneMode) {
         String registrySection = "";
         if (objectRegistryJson != null && !objectRegistryJson.isBlank()) {
-            registrySection = "\n\nObject registry (complete JSON - semantic authority for object identity, geometry meaning, and dependency relationships):\n```json\n"
+            registrySection = "\n\nObject registry (compact JSON - semantic authority for object identity, geometry meaning, and dependency relationships):\n```json\n"
                     + objectRegistryJson + "\n```";
         }
         return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
@@ -322,28 +325,6 @@ public final class CodeGenerationPrompts {
     }
 
     /**
-     * Builds the user prompt for generating the code skeleton
-     * (imports, class, construct() that calls scene methods, shared helpers).
-     */
-    public static String manimSkeletonUserPrompt(String storyboardJson,
-                                            java.util.List<String> sceneMethodNames) {
-        String methodList = String.join(", ", sceneMethodNames);
-        return SystemPrompts.buildCurrentRequestSection(String.format(
-                "Compact storyboard JSON:\n```json\n%s\n```\n\n"
-                        + "Generate ONLY the code skeleton for a single-file Manim animation:\n"
-                        + "- `from manim import *` and any other needed imports; include `manim_voiceover` and `GTTSService` only when you select at least one important `voiceover_text` to implement\n"
-                        + "- Constants and shared helper functions if needed; include `VOICEOVER_SPEED` only when voiceover is implemented\n"
-                        + "- `class MainScene(VoiceoverScene):` when at least one selected action will use `self.voiceover(...)`; otherwise use `Scene` or `ThreeDScene` if needed\n"
-                        + "- When voiceover is implemented, `construct()` must call `self.set_speech_service(GTTSService(lang=\"zh-CN\", global_speed=VOICEOVER_SPEED))` before the first scene method call\n"
-                        + "- `def construct(self):` that initializes `self.objects = {}` before calling these scene methods in order: %s\n"
-                        + "- A single indented placeholder line `# __SCENE_METHODS__` inside `MainScene`, after `construct()`\n\n"
-                        + "Do NOT implement the scene methods yet and do not create `pass` stubs for them.\n"
-                        + "The workflow will insert generated methods at `# __SCENE_METHODS__`.\n"
-                        + "Return the skeleton code via the write_code_skeleton tool.",
-                storyboardJson, methodList));
-    }
-
-    /**
      * Builds the user prompt for generating a single scene method body.
      */
     public static String manimSceneCodeUserPrompt(String sceneJson,
@@ -382,24 +363,6 @@ public final class CodeGenerationPrompts {
                         + "- Return the method body via the write_scene_code tool.",
                 methodName, sceneIndex + 1, totalScenes,
                 sceneJson, methodName, methodName));
-    }
-
-    /**
-     * Builds the user prompt for generating the GeoGebra code skeleton
-     * (global setup commands, shared definitions, coordinate system).
-     */
-    public static String geoGebraSkeletonUserPrompt(String storyboardJson,
-                                                     List<String> sceneSectionNames) {
-        String sectionList = String.join(", ", sceneSectionNames);
-        return SystemPrompts.buildCurrentRequestSection(String.format(
-                "Compact storyboard JSON:\n```json\n%s\n```\n\n"
-                        + "Generate ONLY the GeoGebra code skeleton (setup section):\n"
-                        + "- Global coordinate and view settings, including `SetCoordSystem(x_min, x_max, y_min, y_max)` using storyboard `coordinate_bounds`\n"
-                        + "- Shared base objects that persist across multiple scenes\n"
-                        + "- A section comment header for each scene: %s\n\n"
-                        + "Do NOT implement the scene-specific objects yet - just provide the global setup.\n"
-                        + "Return the skeleton code via the write_code_skeleton tool.",
-                storyboardJson, sectionList));
     }
 
     /**
