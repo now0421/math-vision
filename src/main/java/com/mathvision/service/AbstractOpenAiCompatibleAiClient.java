@@ -83,6 +83,7 @@ public abstract class AbstractOpenAiCompatibleAiClient implements AiClient {
         ObjectNode body = MAPPER.createObjectNode();
         body.put("model", modelConfig.getModel());
         body.put("temperature", modelConfig.getTemperature());
+        body.put("max_tokens", modelConfig.getMaxOutputTokens());
         addThinking(body);
         body.set("messages", buildMessages(request != null ? request.getMessages() : List.of()));
         addTools(body, parseTools(request != null ? request.getToolsJson() : null));

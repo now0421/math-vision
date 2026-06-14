@@ -230,6 +230,17 @@ public class ModelConfig {
         return maxInputTokens;
     }
 
+    /**
+     * Returns the prompt budget used by workflow nodes after reserving space for
+     * the configured completion budget inside the provider context window.
+     */
+    public int resolvePromptInputBudgetTokens() {
+        if (maxOutputTokens <= 0 || maxInputTokens <= maxOutputTokens) {
+            return maxInputTokens;
+        }
+        return maxInputTokens - maxOutputTokens;
+    }
+
     public void setMaxInputTokens(int maxInputTokens) {
         this.maxInputTokens = maxInputTokens;
     }

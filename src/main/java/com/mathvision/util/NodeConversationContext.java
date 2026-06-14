@@ -393,6 +393,15 @@ public class NodeConversationContext {
                 snapshot.remove(firstNonSystem);
             }
         }
+
+        int totalTokens = estimateTokens(snapshot);
+        if (totalTokens > effectiveBudget) {
+            throw new IllegalStateException(String.format(
+                    "Prompt snapshot exceeds input budget after rolling context trim: ~%d tokens > budget %d. "
+                            + "Refusing to truncate the current user prompt; reduce fixed context, scene payload, "
+                            + "manual size, or configured output token reserve.",
+                    totalTokens, effectiveBudget));
+        }
     }
 
     private static int estimateTokens(List<Message> msgs) {

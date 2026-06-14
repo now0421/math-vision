@@ -148,12 +148,12 @@ class AbstractOpenAiCompatibleAiClientTest {
     }
 
     @Test
-    void chatRequestOmitsMaxTokens() throws Exception {
+    void chatRequestIncludesMaxTokens() throws Exception {
         AtomicInteger attempts = new AtomicInteger();
         HttpServer server = startServer(exchange -> {
             attempts.incrementAndGet();
             JsonNode request = JsonUtils.mapper().readTree(exchange.getRequestBody());
-            assertFalse(request.has("max_tokens"));
+            assertEquals(256, request.path("max_tokens").asInt());
             respond(exchange, 200, "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}");
         });
 
@@ -169,12 +169,12 @@ class AbstractOpenAiCompatibleAiClientTest {
     }
 
     @Test
-    void multimodalRequestOmitsMaxTokens() throws Exception {
+    void multimodalRequestIncludesMaxTokens() throws Exception {
         AtomicInteger attempts = new AtomicInteger();
         HttpServer server = startServer(exchange -> {
             attempts.incrementAndGet();
             JsonNode request = JsonUtils.mapper().readTree(exchange.getRequestBody());
-            assertFalse(request.has("max_tokens"));
+            assertEquals(256, request.path("max_tokens").asInt());
             respond(exchange, 200, "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}");
         });
 

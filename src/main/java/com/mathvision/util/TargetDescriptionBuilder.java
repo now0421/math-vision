@@ -115,7 +115,7 @@ public final class TargetDescriptionBuilder {
      */
     public static int resolveMaxInputTokens(com.mathvision.config.WorkflowConfig config) {
         if (config != null && config.getModelConfig() != null) {
-            return config.getModelConfig().getMaxInputTokens();
+            return config.getModelConfig().resolvePromptInputBudgetTokens();
         }
         return ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
     }
