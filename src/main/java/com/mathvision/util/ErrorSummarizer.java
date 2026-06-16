@@ -316,6 +316,41 @@ public final class ErrorSummarizer {
     }
 
     /**
+     * Builds the render-fix error context sent to the LLM.
+     *
+     * <p>This intentionally preserves the complete last Python traceback instead
+     * of compacting it, so Rich traceback frame headers and source context lines
+     * survive exactly as Manim emitted them.</p>
+     */
+    public static String buildFullTracebackRenderFixContext(String stdout, String stderr) {
+        List<String> sections = new ArrayList<>();
+        String combined = combineErrorStreams(stdout, stderr);
+
+        String stdoutSummary = extractStdoutErrors(stdout);
+        if (!stdoutSummary.isBlank()) {
+            sections.add("=== stdout highlights ===\n" + stdoutSummary);
+        }
+
+        String traceback = extractLastTracebackChunk(stderr);
+        if (!traceback.isBlank()) {
+            sections.add("=== stderr traceback (full) ===\n" + traceback);
+        } else if (stderr != null && !stderr.isBlank()) {
+            sections.add("=== stderr ===\n" + stderr.strip());
+        }
+
+        String latexLogContext = extractLatexLogContext(combined);
+        if (!latexLogContext.isBlank()) {
+            sections.add("=== latex log context ===\n" + latexLogContext);
+        }
+
+        if (!sections.isEmpty()) {
+            return String.join("\n\n", sections);
+        }
+
+        return combined.isBlank() ? "" : combined;
+    }
+
+    /**
      * Extracts error-related lines from stdout.
      */
     public static String extractStdoutErrors(String stdout) {

@@ -58,10 +58,67 @@ class CodeGenerationNodeAssemblyTest {
         ));
 
         assertTrue(skeleton.contains("class MainScene(Scene):"));
+        assertTrue(skeleton.contains("import numpy as np"));
         assertTrue(skeleton.contains("self.objects = {}"));
+        assertTrue(skeleton.contains("self.setup_shared_scene()"));
+        assertTrue(skeleton.contains("def register_object(self, object_id, mobject):"));
+        assertTrue(skeleton.contains("def get_object(self, object_id):"));
         assertTrue(skeleton.contains("self.scene_1_intro()"));
         assertTrue(skeleton.contains("self.scene_2_finish()"));
         assertTrue(ManimCodeUtils.validateFull(code).isEmpty());
+    }
+
+    @Test
+    void staticManimSkeletonBuildsSharedCoordinateHelpersFromStoryboardBounds() {
+        Narrative.Storyboard storyboard = new Narrative.Storyboard();
+        Narrative.StoryboardCoordinateBounds bounds = new Narrative.StoryboardCoordinateBounds();
+        bounds.setX(new Narrative.StoryboardCoordinateBoundsAxis(-4.0, 4.0));
+        bounds.setY(new Narrative.StoryboardCoordinateBoundsAxis(-2.0, 3.0));
+        bounds.setPadding(1.0);
+        storyboard.setCoordinateBounds(bounds);
+
+        Narrative.StoryboardScene first = new Narrative.StoryboardScene();
+        first.setSceneId("intro");
+        first.setTitle("Intro");
+
+        String skeleton = CodeGenerationNode.staticManimSkeleton(
+                storyboard,
+                List.of(first),
+                List.of("scene_1_intro"),
+                "2d");
+        String code = CodeGenerationNode.assembleManimPerSceneCode(skeleton, List.of(
+                new SceneCodeEntry(0, "intro", "scene_1_intro",
+                        "point = Dot(self.world_point(0, 0))\nself.register_object(\"origin\", point)\nself.add(point)",
+                        false)
+        ));
+
+        assertTrue(skeleton.contains("self._mv_x_range = [-5.0, 5.0, 2.0]"));
+        assertTrue(skeleton.contains("self._mv_y_range = [-3.0, 4.0, 1.0]"));
+        assertTrue(skeleton.contains("self.axes = Axes("));
+        assertTrue(skeleton.contains("def world_point(self, x, y=0.0, z=0.0):"));
+        assertTrue(skeleton.contains("def c2p(self, x, y=0.0, z=0.0):"));
+        assertTrue(ManimCodeUtils.validateFull(code).isEmpty());
+    }
+
+    @Test
+    void staticManimSkeletonUsesThreeDSceneAndThreeDAxesFor3dModeWithoutVoiceover() {
+        Narrative.Storyboard storyboard = new Narrative.Storyboard();
+        Narrative.StoryboardCoordinateBounds bounds = new Narrative.StoryboardCoordinateBounds();
+        bounds.setX(new Narrative.StoryboardCoordinateBoundsAxis(-2.0, 2.0));
+        bounds.setY(new Narrative.StoryboardCoordinateBoundsAxis(-2.0, 2.0));
+        bounds.setZ(new Narrative.StoryboardCoordinateBoundsAxis(-1.0, 3.0));
+        storyboard.setCoordinateBounds(bounds);
+        Narrative.StoryboardScene scene = new Narrative.StoryboardScene();
+
+        String skeleton = CodeGenerationNode.staticManimSkeleton(
+                storyboard,
+                List.of(scene),
+                List.of("scene_1_intro"),
+                "3d");
+
+        assertTrue(skeleton.contains("class MainScene(ThreeDScene):"));
+        assertTrue(skeleton.contains("self._mv_z_range = [-2.0, 4.0, 1.0]"));
+        assertTrue(skeleton.contains("self.axes = ThreeDAxes("));
     }
 
     @Test

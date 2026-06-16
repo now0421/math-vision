@@ -160,6 +160,9 @@ public class FileOutputService {
                     generatedCode,
                     sceneName,
                     description);
+            String targetConcept = readTextField(metadata, "target_concept");
+            codeResult.setTargetConcept(!targetConcept.isBlank() ? targetConcept : sceneName);
+            codeResult.setTargetDescription(readTextField(metadata, "target_description"));
             codeResult.setOutputTarget(outputTarget);
             codeResult.setArtifactFormat(resolveArtifactFormat(outputTarget, metadata));
             codeResult.setToolCalls(0);

@@ -88,7 +88,7 @@ public class ExplorationNode extends PocketFlow.Node<ProblemBundle, KnowledgeGra
         apiCalls.set(0);
 
         int maxInputTokens = workflowConfig != null
-                ? workflowConfig.resolveMaxInputTokens()
+                ? workflowConfig.resolvePromptInputBudgetTokens()
                 : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
         initializeRoutingContext(maxInputTokens);
         String resolvedMode = resolveInputMode(bundle);

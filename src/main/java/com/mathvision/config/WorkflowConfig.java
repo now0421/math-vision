@@ -139,11 +139,12 @@ public class WorkflowConfig {
     }
 
     /**
-     * Returns the effective prompt budget from the model config, or the default if unavailable.
+     * Returns the effective prompt input budget after reserving output tokens.
      */
-    public int resolveMaxInputTokens() {
+    public int resolvePromptInputBudgetTokens() {
         return modelConfig != null
                 ? modelConfig.resolvePromptInputBudgetTokens()
                 : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
     }
+
 }

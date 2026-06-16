@@ -93,9 +93,6 @@ class RenderNodeGeometryStateTest {
     private static final class StubAiClient implements AiClient {
         @Override
         public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
-            if (request.getToolsJson() != null && !request.getToolsJson().isBlank()) {
-                return CompletableFuture.failedFuture(new UnsupportedOperationException("tools not used"));
-            }
             return CompletableFuture.completedFuture(AiClientTestSupport.textResponse(String.join("\n",
                     "```python",
                     "from manim import *",

@@ -95,7 +95,7 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
 
     private JsonNode requestTextOnly(String rawText) {
         int maxInputTokens = workflowConfig != null
-                ? workflowConfig.resolveMaxInputTokens()
+                ? workflowConfig.resolvePromptInputBudgetTokens()
                 : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
 
         NodeConversationContext context = new NodeConversationContext(maxInputTokens);
@@ -159,7 +159,7 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
 
     private JsonNode requestTextOnlyReview(String rawText, ProblemBundle generatedBundle) {
         int maxInputTokens = workflowConfig != null
-                ? workflowConfig.resolveMaxInputTokens()
+                ? workflowConfig.resolvePromptInputBudgetTokens()
                 : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
 
         NodeConversationContext context = new NodeConversationContext(maxInputTokens);

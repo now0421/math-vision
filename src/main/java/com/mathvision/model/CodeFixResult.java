@@ -10,6 +10,7 @@ public class CodeFixResult {
         APPLIED_WITH_ISSUES, // Code changed, but post-fix audit found issues
         UNCHANGED,           // Code identical to source
         INPUT_CORRUPTED,     // Text health check flagged issues in the error input
+        RATE_LIMIT_BLOCKED,  // Provider rate limit was exhausted before a fix could be produced
         FAILED               // Request failed entirely
     }
 

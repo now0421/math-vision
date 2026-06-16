@@ -197,7 +197,7 @@ public class NodeConversationContext {
         return total;
     }
 
-    public int getMaxInputTokens() {
+    public int getPromptInputBudgetTokens() {
         return maxInputTokens;
     }
 

@@ -78,7 +78,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         aiCallLimiter = new ConcurrencyUtils.AsyncLimiter(concurrency);
         this.graph = graph;
 
-        int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
+        int maxInputTokens = TargetDescriptionBuilder.resolvePromptInputBudgetTokens(workflowConfig);
         this.conversationContext = new NodeConversationContext(maxInputTokens);
         String solutionChain = TargetDescriptionBuilder.buildSolutionChain(graph, null);
         this.conversationContext.setSystemMessage(EnrichmentPrompts.buildRulesPrompt());
@@ -209,7 +209,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
                 node.getStep(),
                 NodeSupport.buildAiRequest(
                         batchConversationSnapshot,
-                        conversationContext.getMaxInputTokens(),
+                        conversationContext.getPromptInputBudgetTokens(),
                         userPrompt,
                         ToolSchemas.MATH_ENRICHMENT),
                 AiRequestUtils.JsonRequestOptions.of(() -> toolCalls.incrementAndGet())

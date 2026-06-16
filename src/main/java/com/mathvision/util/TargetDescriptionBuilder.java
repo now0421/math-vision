@@ -111,12 +111,13 @@ public final class TargetDescriptionBuilder {
     }
 
     /**
-     * Builds the default max input tokens from config or fallback.
+     * Builds the prompt input budget from config or fallback.
      */
-    public static int resolveMaxInputTokens(com.mathvision.config.WorkflowConfig config) {
+    public static int resolvePromptInputBudgetTokens(com.mathvision.config.WorkflowConfig config) {
         if (config != null && config.getModelConfig() != null) {
             return config.getModelConfig().resolvePromptInputBudgetTokens();
         }
         return ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
     }
+
 }

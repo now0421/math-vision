@@ -2433,7 +2433,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
             String storyboardJson = JsonUtils.mapper().writeValueAsString(storyboard);
             int maxRetries = resolvePlacementEnrichmentMaxRetries();
             int maxAttempts = maxRetries + 1;
-            int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
+            int maxInputTokens = TargetDescriptionBuilder.resolvePromptInputBudgetTokens(workflowConfig);
 
             NodeConversationContext conversationContext =
                     new NodeConversationContext(maxInputTokens, Math.max(maxAttempts, 1));
@@ -2839,7 +2839,7 @@ public class StoryboardValidationNode extends PocketFlow.Node<Narrative, Narrati
 
     private NodeConversationContext fixConversationContext(Narrative narrative) {
         if (fixConversationContext == null) {
-            int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
+            int maxInputTokens = TargetDescriptionBuilder.resolvePromptInputBudgetTokens(workflowConfig);
             fixConversationContext = new NodeConversationContext(maxInputTokens, 8);
             String systemPrompt = NarrativePrompts.buildRulesPrompt(outputTarget)
                     + "\n\n" + NarrativePrompts.buildRepairRules(outputTarget);

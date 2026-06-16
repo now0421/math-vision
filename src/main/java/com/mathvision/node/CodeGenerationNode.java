@@ -4,6 +4,8 @@ import com.mathvision.config.WorkflowConfig;
 import com.mathvision.model.CodeResult;
 import com.mathvision.model.Narrative;
 import com.mathvision.model.Narrative.Storyboard;
+import com.mathvision.model.Narrative.StoryboardCoordinateBounds;
+import com.mathvision.model.Narrative.StoryboardCoordinateBoundsAxis;
 import com.mathvision.model.Narrative.StoryboardScene;
 import com.mathvision.model.Narrative.StoryboardObject;
 import com.mathvision.model.Narrative.StoryboardPlacement;
@@ -47,6 +49,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -117,7 +120,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         log.info("=== Stage 5: Code Generation ===");
         toolCalls = 0;
 
-        int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
+        int maxInputTokens = TargetDescriptionBuilder.resolvePromptInputBudgetTokens(workflowConfig);
         this.conversationContext = new NodeConversationContext(maxInputTokens);
 
         Narrative narrative = input.narrative();
@@ -267,10 +270,10 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         Map<String, StoryboardObject> enrichedRegistry = buildBaseEnrichedRegistry(storyboard);
         Map<String, StoryboardObject> createdRuntimeObjects = new LinkedHashMap<>();
         Map<String, StoryboardObject> visibleRuntimeObjects = new LinkedHashMap<>();
-        String coordinateBoundsBlock = coordinateBoundsImplementationBlock(storyboard, isGeoGebra);
+        String coordinateBoundsBlock = coordinateBoundsImplementationBlock(storyboard, isGeoGebra, true);
         String headerCode = isGeoGebra
                 ? staticGeoGebraSkeleton(storyboard, sceneNames)
-                : staticManimSkeleton(scenes, sceneNames,
+                : staticManimSkeleton(storyboard, scenes, sceneNames,
                         SceneModeUtils.normalize(problemBundle != null ? problemBundle.getSceneMode() : null));
         log.info("  Static skeleton generated: {} lines", headerCode.lines().count());
 
@@ -303,7 +306,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                     aiClient, log, sceneName,
                     NodeSupport.buildAiRequest(
                             codegenBaseSnapshot,
-                            conversationContext.getMaxInputTokens(),
+                            conversationContext.getPromptInputBudgetTokens(),
                             scenePrompt,
                             ToolSchemas.SCENE_CODE),
                     AiRequestUtils.CodeRequestOptions.builder()
@@ -560,12 +563,21 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     static String staticManimSkeleton(List<StoryboardScene> scenes,
                                       List<String> sceneMethodNames,
                                       String sceneMode) {
+        return staticManimSkeleton(null, scenes, sceneMethodNames, sceneMode);
+    }
+
+    static String staticManimSkeleton(Storyboard storyboard,
+                                      List<StoryboardScene> scenes,
+                                      List<String> sceneMethodNames,
+                                      String sceneMode) {
         boolean useVoiceover = hasVoiceoverText(scenes);
-        boolean useThreeDScene = !useVoiceover && SceneModeUtils.isThreeD(sceneMode);
+        boolean useThreeD = SceneModeUtils.isThreeD(sceneMode);
+        boolean useThreeDScene = !useVoiceover && useThreeD;
         String baseClass = useVoiceover ? "VoiceoverScene" : (useThreeDScene ? "ThreeDScene" : "Scene");
 
         StringBuilder sb = new StringBuilder();
         sb.append("from manim import *\n");
+        sb.append("import numpy as np\n");
         if (useVoiceover) {
             sb.append("from manim_voiceover import VoiceoverScene\n");
             sb.append("from manim_voiceover.services.gtts import GTTSService\n\n");
@@ -578,6 +590,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             sb.append("        self.set_speech_service(GTTSService(lang=\"zh-CN\", global_speed=VOICEOVER_SPEED))\n");
         }
         sb.append("        self.objects = {}\n");
+        sb.append("        self.setup_shared_scene()\n");
         if (sceneMethodNames == null || sceneMethodNames.isEmpty()) {
             sb.append("        self.wait(1)\n");
         } else {
@@ -587,8 +600,115 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             }
         }
         sb.append("\n");
+        sb.append(buildManimSharedInfrastructure(storyboard, useThreeD));
+        sb.append("\n");
         sb.append("    ").append(MANIM_SCENE_METHODS_MARKER);
         return sb.toString();
+    }
+
+    private static String buildManimSharedInfrastructure(Storyboard storyboard, boolean useThreeD) {
+        StoryboardCoordinateBounds bounds = storyboard != null
+                ? CoordinateBoundsUtils.withPadding(storyboard.getCoordinateBounds())
+                : null;
+        boolean hasXyBounds = bounds != null && bounds.getX() != null && bounds.getY() != null;
+        String xRange = hasXyBounds ? pythonRange(bounds.getX()) : "None";
+        String yRange = hasXyBounds ? pythonRange(bounds.getY()) : "None";
+        String zRange = hasXyBounds && bounds.getZ() != null ? pythonRange(bounds.getZ()) : "None";
+        String axesClass = useThreeD ? "ThreeDAxes" : "Axes";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("    def setup_shared_scene(self):\n");
+        sb.append("        self.objects = getattr(self, \"objects\", {})\n");
+        sb.append("        self._mv_is_3d = ").append(useThreeD ? "True" : "False").append("\n");
+        sb.append("        self._mv_x_range = ").append(xRange).append("\n");
+        sb.append("        self._mv_y_range = ").append(yRange).append("\n");
+        sb.append("        self._mv_z_range = ").append(zRange).append("\n");
+        sb.append("        self._mv_axes = None\n");
+        sb.append("        self.axes = None\n");
+        sb.append("        if self._mv_x_range is not None and self._mv_y_range is not None:\n");
+        sb.append("            if self._mv_is_3d:\n");
+        sb.append("                self.axes = ThreeDAxes(\n");
+        sb.append("                    x_range=self._mv_x_range,\n");
+        sb.append("                    y_range=self._mv_y_range,\n");
+        sb.append("                    z_range=self._mv_z_range if self._mv_z_range is not None else [-1.0, 1.0, 1.0],\n");
+        sb.append("                    x_length=10.5,\n");
+        sb.append("                    y_length=6.5,\n");
+        sb.append("                    z_length=4.0,\n");
+        sb.append("                )\n");
+        sb.append("            else:\n");
+        sb.append("                self.axes = ").append(axesClass).append("(\n");
+        sb.append("                    x_range=self._mv_x_range,\n");
+        sb.append("                    y_range=self._mv_y_range,\n");
+        sb.append("                    x_length=10.5,\n");
+        sb.append("                    y_length=6.5,\n");
+        sb.append("                    tips=False,\n");
+        sb.append("                )\n");
+        sb.append("            self._mv_axes = self.axes\n\n");
+
+        sb.append("    def world_point(self, x, y=0.0, z=0.0):\n");
+        sb.append("        if self._mv_axes is None:\n");
+        sb.append("            return np.array([x, y, z], dtype=float)\n");
+        sb.append("        if self._mv_is_3d:\n");
+        sb.append("            return self._mv_axes.c2p(x, y, z)\n");
+        sb.append("        return self._mv_axes.c2p(x, y)\n\n");
+
+        sb.append("    def c2p(self, x, y=0.0, z=0.0):\n");
+        sb.append("        return self.world_point(x, y, z)\n\n");
+
+        sb.append("    def register_object(self, object_id, mobject):\n");
+        sb.append("        self.objects[str(object_id)] = mobject\n");
+        sb.append("        return mobject\n\n");
+
+        sb.append("    def get_object(self, object_id):\n");
+        sb.append("        return self.objects[str(object_id)]\n\n");
+
+        sb.append("    def has_object(self, object_id):\n");
+        sb.append("        return str(object_id) in self.objects\n\n");
+
+        sb.append("    def remove_registered_object(self, object_id):\n");
+        sb.append("        mobject = self.objects.get(str(object_id))\n");
+        sb.append("        if mobject is not None:\n");
+        sb.append("            self.remove(mobject)\n");
+        sb.append("        return mobject\n");
+        return sb.toString();
+    }
+
+    private static String pythonRange(StoryboardCoordinateBoundsAxis axis) {
+        StoryboardCoordinateBoundsAxis normalized = CoordinateBoundsUtils.normalizeAxis(axis);
+        if (normalized == null || normalized.getMin() == null || normalized.getMax() == null) {
+            return "None";
+        }
+        return "[" + pythonNumber(normalized.getMin())
+                + ", " + pythonNumber(normalized.getMax())
+                + ", " + pythonNumber(resolveManimAxisStep(normalized)) + "]";
+    }
+
+    private static double resolveManimAxisStep(StoryboardCoordinateBoundsAxis axis) {
+        double span = Math.abs(axis.getMax() - axis.getMin());
+        if (span <= 0.0) {
+            return 1.0;
+        }
+        double rough = span / 8.0;
+        if (rough <= 0.25) {
+            return 0.25;
+        }
+        if (rough <= 0.5) {
+            return 0.5;
+        }
+        if (rough <= 1.0) {
+            return 1.0;
+        }
+        return Math.ceil(rough);
+    }
+
+    private static String pythonNumber(double value) {
+        double rounded = Math.round(value * 1_000_000.0) / 1_000_000.0;
+        if (Math.rint(rounded) == rounded) {
+            return String.format(Locale.ROOT, "%.1f", rounded);
+        }
+        return String.format(Locale.ROOT, "%.6f", rounded)
+                .replaceAll("0+$", "")
+                .replaceAll("\\.$", ".0");
     }
 
     static String staticGeoGebraSkeleton(Storyboard storyboard, List<String> sceneSectionNames) {
@@ -665,6 +785,12 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
     }
 
     private static String coordinateBoundsImplementationBlock(Storyboard storyboard, boolean isGeoGebra) {
+        return coordinateBoundsImplementationBlock(storyboard, isGeoGebra, false);
+    }
+
+    private static String coordinateBoundsImplementationBlock(Storyboard storyboard,
+                                                              boolean isGeoGebra,
+                                                              boolean staticSkeletonOwnsManimBounds) {
         if (storyboard == null || storyboard.getCoordinateBounds() == null) {
             return "";
         }
@@ -677,6 +803,11 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             sb.append("- Use `")
                     .append(CoordinateBoundsUtils.toGeoGebraSetCoordSystem(storyboard.getCoordinateBounds()))
                     .append("` as the exact initial GeoGebra view command; it must appear in the generated script before scene-specific construction commands.\n");
+        } else if (staticSkeletonOwnsManimBounds) {
+            sb.append("- The static Manim skeleton has already defined shared coordinate helpers: `self.world_point(x, y, z=0)`, `self.c2p(x, y, z=0)`, and `self.axes`/`self._mv_axes` when bounds are available.\n");
+            sb.append("- Use those skeleton helpers for storyboard world geometry. Do not redefine axes, imports, MainScene, construct(), or coordinate helper methods in the scene body.\n");
+            sb.append("- Do not place storyboard world-coordinate objects with raw scene coordinates such as `Dot([x, y, 0])`, `Line([x1, y1, 0], [x2, y2, 0])`, or `.move_to([x, y, 0])`.\n");
+            sb.append("- Choose render-frame placement for titles, callouts, and fixed overlays at this stage; storyboard placement itself remains world/relative positioning.\n");
         } else {
             sb.append("- For Manim, this is the required coordinate-system boundary: define a shared `Axes`, `NumberPlane`, or for 3D `ThreeDAxes`/equivalent from these ranges. Map storyboard world geometry with `axes.c2p(...)` or a clearly named helper wrapping `c2p`; raw Manim frame coordinates are allowed only for fixed overlays, titles, camera/UI placement, and other non-storyboard-geometry elements.\n");
             sb.append("- Do not place storyboard world-coordinate objects with raw scene coordinates such as `Dot([x, y, 0])`, `Line([x1, y1, 0], [x2, y2, 0])`, or `.move_to([x, y, 0])`.\n");
@@ -1186,7 +1317,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             sb.append(" params=").append(c.getParameters());
         }
         if (c.getReason() != null && !c.getReason().isBlank()) {
-            sb.append(" — ").append(c.getReason());
+            sb.append(" —").append(c.getReason());
         }
         return sb.toString();
     }

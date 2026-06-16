@@ -131,7 +131,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
             teachingOrderIndex.put(teachingNodes.get(i).getId(), i);
         }
 
-        int maxInputTokens = TargetDescriptionBuilder.resolveMaxInputTokens(workflowConfig);
+        int maxInputTokens = TargetDescriptionBuilder.resolvePromptInputBudgetTokens(workflowConfig);
         this.conversationContext = new NodeConversationContext(maxInputTokens);
         String solutionChain = TargetDescriptionBuilder.buildSolutionChain(graph, null);
         this.conversationContext.setSystemMessage(VisualDesignPrompts.buildRulesPrompt(outputTarget, sceneMode));
@@ -247,7 +247,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                         node.getStep(),
                         NodeSupport.buildAiRequest(
                                 conversationSnapshot,
-                                conversationContext.getMaxInputTokens(),
+                                conversationContext.getPromptInputBudgetTokens(),
                                 userPromptText,
                                 sceneDesignSchema),
                         AiRequestUtils.JsonRequestOptions.of(() -> toolCalls.incrementAndGet())

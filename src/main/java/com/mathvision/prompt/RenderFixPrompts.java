@@ -77,22 +77,43 @@ public final class RenderFixPrompts {
     public static String buildFixedContextPrompt(ProblemBundle problemBundle,
                                                   String targetDescription,
                                                   String outputTarget) {
-        return SystemPrompts.buildFixedContextSection(SystemPrompts.buildWorkflowPrefix(
+        return buildFixedContextPrompt(problemBundle, targetDescription, outputTarget, null);
+    }
+
+    public static String buildFixedContextPrompt(ProblemBundle problemBundle,
+                                                  String targetDescription,
+                                                  String outputTarget,
+                                                  String storyboardJson) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(SystemPrompts.buildWorkflowPrefix(
                 "Stage 7 / Code Rendering",
                 "Repair " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra commands" : "Manim code") + " after render failure",
                 ProblemBundleContextBuilder.displayTitle(problemBundle),
                 targetDescription,
                 outputTarget
-        ) + "\n" + ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(problemBundle));
+        )).append("\n").append(ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(problemBundle));
+        if (storyboardJson != null && !storyboardJson.isBlank()) {
+            sb.append("\n\nCompact storyboard JSON (fixed reference context with preferred scene placement for non-derived objects):\n")
+                    .append("```json\n").append(storyboardJson).append("\n```");
+        }
+        return SystemPrompts.buildFixedContextSection(sb.toString());
     }
 
     public static String buildFixedContextPrompt(String legacyTargetConcept,
                                                   String targetDescription,
                                                   String outputTarget) {
+        return buildFixedContextPrompt(legacyTargetConcept, targetDescription, outputTarget, null);
+    }
+
+    public static String buildFixedContextPrompt(String legacyTargetConcept,
+                                                  String targetDescription,
+                                                  String outputTarget,
+                                                  String storyboardJson) {
         return buildFixedContextPrompt(
                 ProblemBundleContextBuilder.legacyBundle(legacyTargetConcept),
                 targetDescription,
-                outputTarget);
+                outputTarget,
+                storyboardJson);
     }
 
     public static String manimUserPrompt(String generatedCode, String error) {
@@ -123,10 +144,10 @@ public final class RenderFixPrompts {
                         : "")
                 .append("The following Manim code failed to render:\n\n")
                 .append("```python\n").append(generatedCode).append("\n```\n\n")
-                .append(storyboardJson != null && !storyboardJson.isBlank()
+                .append(hasInlineStoryboardJson(storyboardJson)
                         ? "Compact storyboard JSON (reference context with preferred scene placement for non-derived objects):\n```json\n"
                         + storyboardJson + "\n```\n\n"
-                        : "")
+                        : "Storyboard reference context, if available, is provided in the fixed context message.\n\n")
                 .append("You MUST audit the ENTIRE file. The detailed render error context is the primary repair evidence, and the actual bugs may be anywhere with the same structural pattern. Do NOT limit your fix to only one line if related code paths share the same issue.\n")
                 .append("Prioritize the earliest root cause instead of patching downstream symptoms.\n")
                 .append("Sweep all `Text(...)`, `Tex(...)`, and `MathTex(...)` calls whenever the error category suggests text-constructor or LaTeX misuse.\n")
@@ -152,10 +173,10 @@ public final class RenderFixPrompts {
             sb.append("Primary error signature: ").append(errorSignature).append("\n");
         }
         sb.append("\n")
-                .append(storyboardJson != null && !storyboardJson.isBlank()
+                .append(hasInlineStoryboardJson(storyboardJson)
                         ? "Compact storyboard JSON (reference context with preferred scene placement for non-derived objects):\n```json\n"
                         + storyboardJson + "\n```\n\n"
-                        : "")
+                        : "Storyboard reference context, if available, is provided in the fixed context message.\n\n")
                 .append("Validation failure details collected from that full pass:\n```\n").append(error).append("\n```\n\n")
                 .append("The following GeoGebra command script failed runtime validation after one full replay pass through `evalCommand(...)`.\n\n")
                 .append("```geogebra\n").append(generatedCode).append("\n```\n\n")
@@ -180,5 +201,11 @@ public final class RenderFixPrompts {
 
     private static String formatErrorType(String error) {
         return ErrorSummarizer.classifyError(error).name();
+    }
+
+    private static boolean hasInlineStoryboardJson(String storyboardJson) {
+        return storyboardJson != null
+                && !storyboardJson.isBlank()
+                && !StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON.equals(storyboardJson.trim());
     }
 }

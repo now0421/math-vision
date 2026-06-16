@@ -61,7 +61,7 @@ public final class NodeSupport {
                                                                            String rulesPrompt,
                                                                            String fixedContextPrompt) {
         int maxInputTokens = workflowConfig != null
-                ? workflowConfig.resolveMaxInputTokens()
+                ? workflowConfig.resolvePromptInputBudgetTokens()
                 : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
         NodeConversationContext context = state != null ? state.getConversationContext() : null;
         if (context == null) {
@@ -86,7 +86,7 @@ public final class NodeSupport {
                 ? context.snapshotWithUserMessage(userPrompt)
                 : List.of(new NodeConversationContext.Message("user", userPrompt));
         if (context != null) {
-            NodeConversationContext.trimSnapshotToFitBudget(snapshot, context.getMaxInputTokens());
+            NodeConversationContext.trimSnapshotToFitBudget(snapshot, context.getPromptInputBudgetTokens());
         }
         return AiRequest.withTools(toAiMessages(snapshot), toolsJson);
     }

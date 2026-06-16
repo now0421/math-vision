@@ -4,6 +4,7 @@ import com.mathvision.model.CodeFixRequest;
 import com.mathvision.model.CodeFixResult;
 import com.mathvision.model.CodeFixSource;
 import com.mathvision.model.CodeResult;
+import com.mathvision.model.AiError;
 import com.mathvision.model.AiRequest;
 import com.mathvision.model.AiResponse;
 import com.mathvision.model.WorkflowActions;
@@ -82,6 +83,41 @@ class CodeFixNodeTest {
         assertEquals("Code fix returned code identical to source code", fixResult.getFailureReason());
     }
 
+    @Test
+    void marksRateLimitBlockedWhenProviderRetriesAreExhausted() {
+        String originalCode = String.join("\n",
+                "from manim import *",
+                "",
+                "class MainScene(Scene):",
+                "    def construct(self):",
+                "        self.wait(1)");
+
+        AiError error = new AiError();
+        error.setHttpStatus(429);
+        error.setMessage("zhipu:GLM-5V-Turbo API returned HTTP 429");
+        error.setRateLimited(true);
+        error.setTransientFailure(true);
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, new ResponseAiClient(AiResponse.failure(error)));
+        ctx.put(WorkflowKeys.CODE_RESULT, new CodeResult(
+                originalCode,
+                "MainScene",
+                "demo",
+                "Demo concept",
+                "Demo description"));
+        ctx.put(WorkflowKeys.CODE_FIX_REQUEST, buildRenderFailureRequest(originalCode));
+
+        new CodeFixNode().run(ctx);
+
+        CodeFixResult fixResult = (CodeFixResult) ctx.get(WorkflowKeys.CODE_FIX_RESULT);
+
+        assertNotNull(fixResult);
+        assertFalse(fixResult.isApplied());
+        assertEquals(CodeFixResult.FixOutcome.RATE_LIMIT_BLOCKED, fixResult.getOutcome());
+        assertEquals("Provider rate limit exhausted after 8 retries", fixResult.getFailureReason());
+    }
+
     private CodeFixRequest buildRenderFailureRequest(String generatedCode) {
         CodeFixRequest request = new CodeFixRequest();
         request.setSource(CodeFixSource.CODE_RENDER);
@@ -105,6 +141,19 @@ class CodeFixNodeTest {
         @Override
         public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
             return CompletableFuture.completedFuture(AiClientTestSupport.textResponse(response));
+        }
+    }
+
+    private static final class ResponseAiClient implements AiClient {
+        private final AiResponse response;
+
+        private ResponseAiClient(AiResponse response) {
+            this.response = response;
+        }
+
+        @Override
+        public CompletableFuture<AiResponse> chatAsync(AiRequest request) {
+            return CompletableFuture.completedFuture(response);
         }
     }
 }

@@ -46,7 +46,7 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
 
     private static final Logger log = LoggerFactory.getLogger(RenderNode.class);
     private static final int DEFAULT_MAX_RENDER_RETRIES = 4;
-    private static final int CODE_FIX_CONTEXT_ROUNDS = 6;
+    private static final int CODE_FIX_CONTEXT_ROUNDS = 3;
 
     private final ManimRendererService renderer;
     private final GeoGebraRenderService geoGebraRenderer;
@@ -185,7 +185,9 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         codeResult.setSceneName(sceneName);
 
         if (input.previousFixResult() != null && !input.previousFixResult().isApplied()) {
-            log.warn("Previous shared code-fix pass returned code identical to the source, stopping render retries");
+            log.warn("Previous shared code-fix pass did not apply a fix (outcome={}, reason={}), stopping render retries",
+                    input.previousFixResult().getOutcome(),
+                    input.previousFixResult().getFailureReason());
             return failureResult(
                     currentCode,
                     sceneName,
@@ -263,7 +265,8 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
                     log.warn("  Render timed out but stderr contains a fixable error: {}", signature);
                     retryState.previousErrorSignature = signature;
                     retryState.setRequestFix(true);
-                    retryState.pendingFocusedError = ErrorSummarizer.buildRenderFixSummary(focusedError);
+                    retryState.pendingFocusedError = ErrorSummarizer.buildFullTracebackRenderFixContext(
+                            renderAttempt.stdout(), renderAttempt.stderr());
                     retryState.pendingStaticAuditIssues = new ArrayList<>(ManimCodeUtils.validateFull(currentCode));
                     return failureResult(
                             currentCode,
@@ -327,7 +330,8 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         String errorSignature = ErrorSummarizer.summarizeSignature(focusedError);
         retryState.previousErrorSignature = errorSignature;
         retryState.setRequestFix(true);
-        retryState.pendingFocusedError = ErrorSummarizer.buildRenderFixSummary(focusedError);
+        retryState.pendingFocusedError = ErrorSummarizer.buildFullTracebackRenderFixContext(
+                renderAttempt.stdout(), renderAttempt.stderr());
         retryState.pendingStaticAuditIssues = new ArrayList<>(ManimCodeUtils.validateFull(currentCode));
         return failureResult(
                 currentCode,
@@ -354,7 +358,9 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         codeResult.setSceneName(sceneName);
 
         if (input.previousFixResult() != null && !input.previousFixResult().isApplied()) {
-            log.warn("Previous shared code-fix pass returned GeoGebra code identical to the source, stopping render retries");
+            log.warn("Previous shared code-fix pass did not apply a GeoGebra fix (outcome={}, reason={}), stopping render retries",
+                    input.previousFixResult().getOutcome(),
+                    input.previousFixResult().getFailureReason());
             return failureResult(
                     preparedCode,
                     sceneName,
@@ -510,33 +516,39 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
         request.setProblemBundle(input.problemBundle());
         request.setTargetDescription(ProblemBundleContextBuilder.workflowTargetDescription(
                 input.problemBundle(), codeResult.getSceneName(), "", outputTarget));
-        request.setStoryboardJson(input.narrative() != null && input.narrative().hasStoryboard()
+        String storyboardJson = input.narrative() != null && input.narrative().hasStoryboard()
                 ? StoryboardJsonBuilder.buildForCodegen(input.narrative().getStoryboard(), outputTarget)
-                : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
+                : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON;
         request.setErrorContextMode("summary_signature");
         request.setInputTextHealth(TextHealthDiagnostics.summarize(
-                request.getErrorReason() + "\n" + request.getStoryboardJson()));
+                request.getErrorReason() + "\n" + storyboardJson));
         request.setStaticAuditIssueCount(retryState.pendingStaticAuditIssues.size());
         request.setStaticAuditSummary(String.join(" | ", retryState.pendingStaticAuditIssues));
         request.setFixHistory(new ArrayList<>(retryState.fixHistory));
-        attachRenderCodeFixContext(input, request, outputTarget);
+        attachRenderCodeFixContext(input, request, outputTarget, storyboardJson);
+        request.setStoryboardJson(StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
         return request;
     }
 
     private void attachRenderCodeFixContext(RenderInput input,
                                             CodeFixRequest request,
-                                            String outputTarget) {
+                                            String outputTarget,
+                                            String storyboardJson) {
         String rulesPrompt = RenderFixPrompts.buildRulesPrompt(outputTarget);
         String fixedContextPrompt = RenderFixPrompts.buildFixedContextPrompt(
                 request.getProblemBundle(),
                 request.getTargetDescription(),
-                outputTarget);
+                outputTarget,
+                storyboardJson);
         NodeConversationContext conversationContext = NodeSupport.ensureCodeFixConversationContext(
                 input.retryState(),
                 input.config(),
                 CODE_FIX_CONTEXT_ROUNDS,
                 rulesPrompt,
                 fixedContextPrompt);
+        conversationContext.setPinnedMessages(List.of(
+                new NodeConversationContext.Message("system", rulesPrompt),
+                new NodeConversationContext.Message("system", fixedContextPrompt)));
         request.setRulesPrompt(rulesPrompt);
         request.setFixedContextPrompt(fixedContextPrompt);
         request.setConversationContext(conversationContext);
@@ -636,6 +648,9 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
                     break;
                 case INPUT_CORRUPTED:
                     outcome = "input text had encoding issues";
+                    break;
+                case RATE_LIMIT_BLOCKED:
+                    outcome = "provider rate limit exhausted";
                     break;
                 case FAILED:
                     outcome = "fix request failed";

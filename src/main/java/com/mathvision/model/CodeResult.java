@@ -18,6 +18,11 @@ public class CodeResult {
     private List<SceneCodeEntry> sceneEntries = new ArrayList<>();
     private String sceneName;
     private String description;
+    /**
+     * Legacy resume metadata only. ProblemBundle remains the authoritative target context.
+     */
+    private String targetConcept = "";
+    private String targetDescription = "";
     private String outputTarget = WorkflowConfig.OUTPUT_TARGET_MANIM;
     private String artifactFormat = "python";
     private int toolCalls;
@@ -31,17 +36,15 @@ public class CodeResult {
         this.description = description;
     }
 
-    /**
-     * Legacy constructor kept for older callers. Target concept/description
-     * are ignored; ProblemBundle is the authoritative target context.
-     */
     public CodeResult(String generatedCode, String sceneName, String description, String ignoredTargetConcept) {
         this(generatedCode, sceneName, description);
+        this.targetConcept = ignoredTargetConcept != null ? ignoredTargetConcept : "";
     }
 
     public CodeResult(String generatedCode, String sceneName, String description,
-                      String ignoredTargetConcept, String ignoredTargetDescription) {
-        this(generatedCode, sceneName, description);
+                      String targetConcept, String targetDescription) {
+        this(generatedCode, sceneName, description, targetConcept);
+        this.targetDescription = targetDescription != null ? targetDescription : "";
     }
 
     public int codeLineCount() {
@@ -64,11 +67,15 @@ public class CodeResult {
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
 
-    public String getTargetConcept() { return ""; }
-    public void setTargetConcept(String ignoredTargetConcept) {}
+    public String getTargetConcept() { return targetConcept; }
+    public void setTargetConcept(String targetConcept) {
+        this.targetConcept = targetConcept != null ? targetConcept : "";
+    }
 
-    public String getTargetDescription() { return ""; }
-    public void setTargetDescription(String ignoredTargetDescription) {}
+    public String getTargetDescription() { return targetDescription; }
+    public void setTargetDescription(String targetDescription) {
+        this.targetDescription = targetDescription != null ? targetDescription : "";
+    }
 
     public String getOutputTarget() { return outputTarget; }
     public void setOutputTarget(String outputTarget) { this.outputTarget = outputTarget; }

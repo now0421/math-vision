@@ -484,10 +484,11 @@ class PromptModulesTest {
 
     @Test
     void renderFixUserPromptStartsWithErrorTypeBeforeCodeContext() {
+        String storyboardJson = "{\"scenes\":[{\"scene_id\":\"s1\"}]}";
         String prompt = RenderFixPrompts.manimUserPrompt(
                 "from manim import *\n\nclass Demo(Scene):\n    pass",
                 "Traceback (most recent call last):\nValueError: invalid point data",
-                "{\"scenes\":[]}",
+                storyboardJson,
                 java.util.List.of(),
                 null,
                 null
@@ -500,6 +501,24 @@ class PromptModulesTest {
         assertTrue(prompt.indexOf("```python") < prompt.indexOf("Compact storyboard JSON"));
         assertTrue(prompt.contains("The detailed render error context is the primary repair evidence"));
         assertFalse(prompt.contains("Treat the error summary as a routing hint"));
+
+        String fixedContextPrompt = RenderFixPrompts.buildFixedContextPrompt(
+                "Demo",
+                "Repair render",
+                "manim",
+                storyboardJson);
+        assertTrue(fixedContextPrompt.contains("Compact storyboard JSON (fixed reference context"));
+
+        String promptWithoutInlineStoryboard = RenderFixPrompts.manimUserPrompt(
+                "from manim import *",
+                "ValueError: invalid point data",
+                StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON,
+                java.util.List.of(),
+                null,
+                null
+        );
+        assertTrue(promptWithoutInlineStoryboard.contains(
+                "Storyboard reference context, if available, is provided in the fixed context message."));
     }
 
     @Test
@@ -509,7 +528,7 @@ class PromptModulesTest {
         String manimRenderUserPrompt = RenderFixPrompts.manimUserPrompt(
                 "from manim import *",
                 "ValueError: demo",
-                "{\"scenes\":[]}",
+                "{\"scenes\":[{\"scene_id\":\"s1\"}]}",
                 java.util.List.of(),
                 null,
                 null);

@@ -2,6 +2,7 @@ package com.mathvision.node;
 
 import com.mathvision.config.ModelConfig;
 import com.mathvision.config.WorkflowConfig;
+import com.mathvision.model.AiRequest;
 import com.mathvision.model.CodeFixRequest;
 import com.mathvision.model.CodeFixResult;
 import com.mathvision.model.CodeFixSource;
@@ -47,6 +48,7 @@ import java.util.stream.Collectors;
 public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, String> {
 
     private static final Logger log = LoggerFactory.getLogger(CodeFixNode.class);
+    private static final String RATE_LIMIT_BLOCKED_REASON = "Provider rate limit exhausted after 8 retries";
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
@@ -109,11 +111,13 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
 
         try {
             log.info("=== Shared Code Fix: {} ===", request.getSource());
+            AiRequest aiRequest = buildCodeFixAiRequest(request, conversationContext, currentRequestPrompt);
+            result.setFixedContextPrompt(request.getFixedContextPrompt());
             AiRequestUtils.CodeResult codeResponse = AiRequestUtils.requestCodeAsync(
                             aiClient,
                             log,
                             "code-fix",
-                            NodeSupport.buildAiRequest(conversationContext, currentRequestPrompt, resolveToolSchema()),
+                            aiRequest,
                             AiRequestUtils.CodeRequestOptions.builder()
                                     .onApiCall(() -> toolCalls++)
                                     .preferredPayloadFields(List.of(resolveGeneratedCodeFieldName()))
@@ -121,11 +125,16 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
                                     .codeValidator(text -> text != null && !text.isBlank())
                                     .build())
                     .join();
-            if (codeResponse != null && !codeResponse.getAssistantTranscript().isBlank()) {
+            if (codeResponse != null
+                    && !codeResponse.getAssistantTranscript().isBlank()
+                    && request.getSource() != CodeFixSource.CODE_RENDER) {
                 conversationContext.appendTurn(currentRequestPrompt, codeResponse.getAssistantTranscript());
             }
             String fixedCode = codeResponse != null ? codeResponse.getCode() : null;
-            if (fixedCode == null || fixedCode.isBlank()) {
+            if (isRateLimitBlocked(codeResponse)) {
+                result.setFailureReason(RATE_LIMIT_BLOCKED_REASON);
+                result.setOutcome(CodeFixResult.FixOutcome.RATE_LIMIT_BLOCKED);
+            } else if (fixedCode == null || fixedCode.isBlank()) {
                 result.setFailureReason("Code fix returned no parseable "
                         + (isGeoGebraTarget(request) ? "GeoGebra code" : "Python code"));
                 result.setOutcome(CodeFixResult.FixOutcome.UNCHANGED);
@@ -169,6 +178,12 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         return result;
     }
 
+    private boolean isRateLimitBlocked(AiRequestUtils.CodeResult codeResponse) {
+        return codeResponse != null
+                && codeResponse.getError() != null
+                && codeResponse.getError().isRateLimited();
+    }
+
     @Override
     public String post(Map<String, Object> ctx, CodeFixRequest request, CodeFixResult result) {
         ctx.remove(WorkflowKeys.CODE_FIX_REQUEST);
@@ -204,7 +219,7 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
                 request != null ? request.getConversationContext() : null;
         if (conversationContext == null) {
             int maxInputTokens = workflowConfig != null
-                    ? workflowConfig.resolveMaxInputTokens()
+                    ? workflowConfig.resolvePromptInputBudgetTokens()
                     : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
             conversationContext = new NodeConversationContext(maxInputTokens, fallbackContextRounds(request));
         }
@@ -215,13 +230,20 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         return conversationContext;
     }
 
+    private AiRequest buildCodeFixAiRequest(CodeFixRequest request,
+                                            NodeConversationContext conversationContext,
+                                            String currentRequestPrompt) {
+        String toolSchema = resolveToolSchema();
+        return NodeSupport.buildAiRequest(conversationContext, currentRequestPrompt, toolSchema);
+    }
+
     private int fallbackContextRounds(CodeFixRequest request) {
         if (request == null || request.getSource() == null) {
             return 4;
         }
         switch (request.getSource()) {
             case CODE_RENDER:
-                return 6;
+                return 3;
             case SCENE_LAYOUT_EVALUATION:
                 return 5;
             case CODE_EVALUATION:

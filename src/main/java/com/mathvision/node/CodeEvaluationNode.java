@@ -324,7 +324,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                     sceneName,
                     NodeSupport.buildAiRequest(
                             reviewConversationContext.getPinnedMessages(),
-                            reviewConversationContext.getMaxInputTokens(),
+                            reviewConversationContext.getPromptInputBudgetTokens(),
                             userPrompt,
                             ToolSchemas.CODE_REVIEW),
                     AiRequestUtils.JsonRequestOptions.of(() -> toolCalls++)
@@ -348,7 +348,7 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
         String targetDescription = ProblemBundleContextBuilder.workflowTargetDescription(
                 problemBundle, fallbackSceneName, "", NodeSupport.resolveOutputTarget(workflowConfig));
         int maxInputTokens = workflowConfig != null
-                ? workflowConfig.resolveMaxInputTokens()
+                ? workflowConfig.resolvePromptInputBudgetTokens()
                 : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
 
         this.reviewConversationContext = new NodeConversationContext(maxInputTokens);
