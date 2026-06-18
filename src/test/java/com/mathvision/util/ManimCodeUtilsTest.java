@@ -14,6 +14,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ManimCodeUtilsTest {
 
     @Test
+    void buildSceneMethodName_usesOnlySequentialSceneNumber() {
+        assertEquals("scene_1", ManimCodeUtils.buildSceneMethodName("intro", "Setup Coordinates", 0));
+        assertEquals("scene_2", ManimCodeUtils.buildSceneMethodName("custom_id", "Finish!", 1));
+    }
+
+    @Test
     void extractCode_extractsFromPythonBlock() {
         String response = "Here's the code:\n```python\nfrom manim import *\n\nclass MainScene(Scene):\n    pass\n```";
         String extracted = ManimCodeUtils.extractCode(response);

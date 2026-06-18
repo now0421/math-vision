@@ -123,6 +123,7 @@ public final class CodeEvaluationPrompts {
                     + SystemPrompts.MANIM_VOICEOVER_RULES
                     + SystemPrompts.MANIM_CHINESE_TEXT_RENDERING_RULES
                     + SystemPrompts.STORYBOARD_FIELD_GUIDE_MANIM + "\n"
+                    + SystemPrompts.MANIM_CODE_FIX_CLASS_INHERITANCE_RULES
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS
                     + "Preserve valid `VoiceoverScene`, `GTTSService`, `self.voiceover(...)`, Chinese `voiceover_text`, and Chinese visible strings while revising.\n"
@@ -291,6 +292,7 @@ public final class CodeEvaluationPrompts {
                         + "Rewrite the FULL code to reduce clutter, preserve continuity, correct semantically wrong placements such as angle arcs or labels attached to the wrong geometry, better match pacing to narration, and keep 3D overlays readable.\n"
                         + "Use object_registry constraints, scene placement/style, and scene notes_for_codegen as semantic guidance; treat placement as preferred layout input that may be adjusted for safety/readability, and never force a derived object to a placement coordinate when structured constraints or notes_for_codegen define a different construction.\n"
                         + "Keep implemented geometric relationships internally consistent while making layout safer; preserve storyboard hard geometry, notes_for_codegen, constraint semantics, key object identity, scene order, continuity, Chinese voiceover strings, Chinese visible text, and teaching intent. Use equivalent documented Manim constructions when exact storyboard details are unsafe or unsupported.\n"
+                        + "Preserve the original `class MainScene(...)` base class exactly; do not switch between `Scene`, `VoiceoverScene`, and `ThreeDScene` while revising this file.\n"
                         + "Also fix nearby Python/Manim runtime mistakes. Preserve the scene class name and teaching goal.\n"
                         + "Return ONLY the full Python code block.",
                 sceneName, storyboardJson, staticAnalysisJson, reviewJson, generatedCode));

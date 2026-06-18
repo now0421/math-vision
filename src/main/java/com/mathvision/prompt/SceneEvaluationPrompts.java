@@ -17,6 +17,7 @@ public final class SceneEvaluationPrompts {
                     + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
                     + SystemPrompts.MANIM_VOICEOVER_RULES
                     + SystemPrompts.MANIM_CHINESE_TEXT_RENDERING_RULES
+                    + SystemPrompts.MANIM_CODE_FIX_CLASS_INHERITANCE_RULES
                     + "Use the rendered geometry report as authority for observed layout problems, and use storyboard object_registry dependency facts as semantic authority for how affected geometry must be constructed.\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + "Prefer adjusting positioning, scaling, grouping, and spacing over deleting explanatory content.\n"
@@ -114,6 +115,7 @@ public final class SceneEvaluationPrompts {
                 .append("Issue summary:\n```\n").append(issueSummary).append("\n```\n\n")
                 .append("Scene evaluation report excerpt:\n```json\n").append(sceneEvaluationJson).append("\n```\n")
                 .append("When an offscreen issue affects storyboard world-coordinate geometry, repair by expanding the `Axes`/`NumberPlane` coordinate ranges first and keep object placement through the axes coordinate mapping. Do not solve this first by rewriting storyboard coordinates into raw Manim frame positions.\n")
+                .append("Preserve the original `class MainScene(...)` base class exactly; do not switch between `Scene`, `VoiceoverScene`, and `ThreeDScene` while applying the layout repair.\n")
                 .append("Preserve valid voiceover structure and Chinese learner-facing strings while applying the layout repair.\n");
 
         PromptUtils.appendFixHistory(sb, fixHistory);

@@ -320,6 +320,14 @@ public final class SystemPrompts {
                     + "- Keep formulas in `MathTex(...)`; do not force formula strings into Chinese prose.\n"
                     + "- Preserve Chinese strings exactly unless a repair must shorten wording for readability.\n";
 
+    /** Manim-only guardrail for code-fix passes that rewrite a full file. */
+    public static final String MANIM_CODE_FIX_CLASS_INHERITANCE_RULES =
+            "Manim code-fix class inheritance rules:\n"
+                    + "- Preserve the exact base class from the current code's main scene declaration. If the input has `class MainScene(Scene):`, keep `Scene`; if it has `class MainScene(VoiceoverScene):`, keep `VoiceoverScene`; if it has `class MainScene(ThreeDScene):`, keep `ThreeDScene`.\n"
+                    + "- Do not switch between `Scene`, `VoiceoverScene`, `ThreeDScene`, `MovingCameraScene`, `ZoomedScene`, or another scene subclass during a code-fix pass unless the request explicitly asks to change the inheritance.\n"
+                    + "- If the original base class is `VoiceoverScene`, preserve the `manim_voiceover` imports, `set_speech_service(...)`, and `self.voiceover(...)` blocks; fix runtime, layout, or pacing issues inside that structure instead of downgrading to `Scene`.\n"
+                    + "- If the original base class is `ThreeDScene`, fix camera or 3D issues inside `ThreeDScene` instead of downgrading to `Scene`.\n";
+
     /** Opacity hierarchy for visual layering, applicable to all output targets. */
     public static final String OPACITY_LEVELS =
             "Opacity hierarchy:\n"

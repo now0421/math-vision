@@ -324,20 +324,6 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
             }
 
             String sceneCode = requireCode(sceneResult, sceneName);
-            JsonNode scenePayload = sceneResult != null ? sceneResult.getPayload() : null;
-            if (scenePayload != null && !isGeoGebra && scenePayload.has("sceneMethodName")) {
-                String returnedName = scenePayload.get("sceneMethodName").asText("");
-                if (!returnedName.isBlank() && !returnedName.equals(sceneName)) {
-                    log.debug("  Ignoring returned Manim scene method name '{}' for skeleton method '{}'",
-                            returnedName, sceneName);
-                }
-            } else if (scenePayload != null && isGeoGebra && scenePayload.has("sceneMethodName")) {
-                String returnedName = scenePayload.get("sceneMethodName").asText("");
-                if (!returnedName.isBlank()) {
-                    sceneName = returnedName;
-                }
-            }
-
             entries.add(new SceneCodeEntry(i, scene.getSceneId(), sceneName, sceneCode, false));
             log.debug("  Scene {} ({}) generated: {} lines", i + 1, sceneName, sceneCode.lines().count());
         }

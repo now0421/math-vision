@@ -103,6 +103,13 @@ class ToolSchemasTest {
     }
 
     @Test
+    void sceneCodeTool_returnsOnlySceneCodeBody() {
+        assertTrue(ToolSchemas.SCENE_CODE.contains("write_scene_code"));
+        assertTrue(ToolSchemas.SCENE_CODE.contains("sceneCode"));
+        assertFalse(ToolSchemas.SCENE_CODE.contains("sceneMethodName"));
+    }
+
+    @Test
     void codeReviewTool_usesCanonicalFields() {
         assertTrue(ToolSchemas.CODE_REVIEW.contains("approved_for_render"));
         assertTrue(ToolSchemas.CODE_REVIEW.contains("rule_checks"));

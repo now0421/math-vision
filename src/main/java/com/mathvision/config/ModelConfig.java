@@ -14,9 +14,9 @@ public class ModelConfig {
     public static final int DEFAULT_MAX_INPUT_TOKENS = 131072;
     public static final int DEFAULT_REQUEST_TIMEOUT_SECONDS = 300;
     public static final int DEFAULT_TRANSIENT_FAILURE_RETRIES = 2;
-    public static final int DEFAULT_RATE_LIMIT_RETRIES = 8;
+    public static final int DEFAULT_RATE_LIMIT_RETRIES = 12;
     public static final long DEFAULT_RATE_LIMIT_BASE_DELAY_MILLIS = 5_000L;
-    public static final long DEFAULT_RATE_LIMIT_MAX_DELAY_MILLIS = 120_000L;
+    public static final long DEFAULT_RATE_LIMIT_MAX_DELAY_MILLIS = 300_000L;
 
     private String model;
     private String provider;

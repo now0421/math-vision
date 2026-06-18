@@ -48,7 +48,8 @@ import java.util.stream.Collectors;
 public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, String> {
 
     private static final Logger log = LoggerFactory.getLogger(CodeFixNode.class);
-    private static final String RATE_LIMIT_BLOCKED_REASON = "Provider rate limit exhausted after 8 retries";
+    private static final String RATE_LIMIT_BLOCKED_REASON_TEMPLATE =
+            "Provider rate limit exhausted after %d retries";
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
@@ -132,7 +133,7 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             }
             String fixedCode = codeResponse != null ? codeResponse.getCode() : null;
             if (isRateLimitBlocked(codeResponse)) {
-                result.setFailureReason(RATE_LIMIT_BLOCKED_REASON);
+                result.setFailureReason(rateLimitBlockedReason());
                 result.setOutcome(CodeFixResult.FixOutcome.RATE_LIMIT_BLOCKED);
             } else if (fixedCode == null || fixedCode.isBlank()) {
                 result.setFailureReason("Code fix returned no parseable "
@@ -182,6 +183,14 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
         return codeResponse != null
                 && codeResponse.getError() != null
                 && codeResponse.getError().isRateLimited();
+    }
+
+    private String rateLimitBlockedReason() {
+        int retries = ModelConfig.DEFAULT_RATE_LIMIT_RETRIES;
+        if (workflowConfig != null && workflowConfig.getModelConfig() != null) {
+            retries = workflowConfig.getModelConfig().getRateLimitRetries();
+        }
+        return String.format(RATE_LIMIT_BLOCKED_REASON_TEMPLATE, Math.max(retries, 0));
     }
 
     @Override

@@ -19,21 +19,23 @@ class CodeGenerationNodeAssemblyTest {
                 "",
                 "class MainScene(Scene):",
                 "    def construct(self):",
-                "        self.scene_1_intro()",
-                "        self.scene_2_finish()",
+                "        self.scene_1()",
+                "        self.scene_2()",
                 "",
                 "    # __SCENE_METHODS__");
         List<SceneCodeEntry> entries = List.of(
-                new SceneCodeEntry(0, "scene_1", "scene_1_intro",
+                new SceneCodeEntry(0, "scene_1", "scene_1",
                         "title = Text(\"Intro\")\nself.play(Write(title))", false),
-                new SceneCodeEntry(1, "scene_2", "scene_2_finish",
+                new SceneCodeEntry(1, "scene_2", "scene_2",
                         "def scene_2_finish(self):\n    self.wait(1)", false)
         );
 
         String code = CodeGenerationNode.assembleManimPerSceneCode(skeleton, entries);
 
-        assertTrue(code.contains("    def scene_1_intro(self):\n        title = Text(\"Intro\")"));
-        assertTrue(code.contains("    def scene_2_finish(self):\n        self.wait(1)"));
+        assertTrue(code.contains("    def scene_1(self):\n        title = Text(\"Intro\")"));
+        assertTrue(code.contains("    def scene_2(self):\n        self.wait(1)"));
+        assertFalse(code.contains("def scene_1_intro"));
+        assertFalse(code.contains("def scene_2_finish"));
         assertFalse(code.contains("\ndef scene_1_intro(self):"));
         assertFalse(code.contains("\ndef scene_2_finish(self):"));
         assertTrue(ManimCodeUtils.validateFull(code).isEmpty());
@@ -50,11 +52,11 @@ class CodeGenerationNodeAssemblyTest {
 
         String skeleton = CodeGenerationNode.staticManimSkeleton(
                 List.of(first, second),
-                List.of("scene_1_intro", "scene_2_finish"),
+                List.of("scene_1", "scene_2"),
                 "2d");
         String code = CodeGenerationNode.assembleManimPerSceneCode(skeleton, List.of(
-                new SceneCodeEntry(0, "intro", "scene_1_intro", "self.wait(0.1)", false),
-                new SceneCodeEntry(1, "finish", "scene_2_finish", "self.wait(0.1)", false)
+                new SceneCodeEntry(0, "intro", "scene_1", "self.wait(0.1)", false),
+                new SceneCodeEntry(1, "finish", "scene_2", "self.wait(0.1)", false)
         ));
 
         assertTrue(skeleton.contains("class MainScene(Scene):"));
@@ -63,8 +65,10 @@ class CodeGenerationNodeAssemblyTest {
         assertTrue(skeleton.contains("self.setup_shared_scene()"));
         assertTrue(skeleton.contains("def register_object(self, object_id, mobject):"));
         assertTrue(skeleton.contains("def get_object(self, object_id):"));
-        assertTrue(skeleton.contains("self.scene_1_intro()"));
-        assertTrue(skeleton.contains("self.scene_2_finish()"));
+        assertTrue(skeleton.contains("self.scene_1()"));
+        assertTrue(skeleton.contains("self.scene_2()"));
+        assertFalse(skeleton.contains("scene_1_intro"));
+        assertFalse(skeleton.contains("scene_2_finish"));
         assertTrue(ManimCodeUtils.validateFull(code).isEmpty());
     }
 
@@ -84,10 +88,10 @@ class CodeGenerationNodeAssemblyTest {
         String skeleton = CodeGenerationNode.staticManimSkeleton(
                 storyboard,
                 List.of(first),
-                List.of("scene_1_intro"),
+                List.of("scene_1"),
                 "2d");
         String code = CodeGenerationNode.assembleManimPerSceneCode(skeleton, List.of(
-                new SceneCodeEntry(0, "intro", "scene_1_intro",
+                new SceneCodeEntry(0, "intro", "scene_1",
                         "point = Dot(self.world_point(0, 0))\nself.register_object(\"origin\", point)\nself.add(point)",
                         false)
         ));
@@ -113,7 +117,7 @@ class CodeGenerationNodeAssemblyTest {
         String skeleton = CodeGenerationNode.staticManimSkeleton(
                 storyboard,
                 List.of(scene),
-                List.of("scene_1_intro"),
+                List.of("scene_1"),
                 "3d");
 
         assertTrue(skeleton.contains("class MainScene(ThreeDScene):"));
@@ -130,7 +134,7 @@ class CodeGenerationNodeAssemblyTest {
 
         String skeleton = CodeGenerationNode.staticManimSkeleton(
                 List.of(scene),
-                List.of("scene_1_intro"),
+                List.of("scene_1"),
                 "2d");
 
         assertTrue(skeleton.contains("from manim_voiceover import VoiceoverScene"));

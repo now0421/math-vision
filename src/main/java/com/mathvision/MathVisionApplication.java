@@ -462,7 +462,11 @@ public class MathVisionApplication {
         }
 
         if (renderResult != null) {
-            summary.put("render_success", renderResult.isSuccess());
+            boolean renderEverSucceeded = renderResult.isSuccess()
+                    || Boolean.TRUE.equals(ctx.get(WorkflowKeys.RENDER_EVER_SUCCEEDED));
+            summary.put("render_success", renderEverSucceeded);
+            summary.put("render_final_success", renderResult.isSuccess());
+            summary.put("render_ever_succeeded", renderEverSucceeded);
             summary.put("render_attempts", renderResult.getAttempts());
             summary.put("video_path", renderResult.getVideoPath());
             summary.put("artifact_path", renderResult.getArtifactPath());

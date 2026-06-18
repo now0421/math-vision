@@ -48,9 +48,9 @@
       "timeout_retry_multiplier": 2.0,
       "max_request_timeout_seconds": 900,
       "transient_failure_retries": 2,
-      "rate_limit_retries": 8,
+      "rate_limit_retries": 12,
       "rate_limit_base_delay_millis": 5000,
-      "rate_limit_max_delay_millis": 120000,
+      "rate_limit_max_delay_millis": 300000,
       "supports_vision": true
     },
     "claude-opus-4-8": {
@@ -64,9 +64,9 @@
       "timeout_retry_multiplier": 2.0,
       "max_request_timeout_seconds": 900,
       "transient_failure_retries": 2,
-      "rate_limit_retries": 8,
+      "rate_limit_retries": 12,
       "rate_limit_base_delay_millis": 5000,
-      "rate_limit_max_delay_millis": 120000,
+      "rate_limit_max_delay_millis": 300000,
       "adaptive_thinking": true,
       "effort": "high",
       "supports_vision": true
@@ -82,9 +82,9 @@
       "timeout_retry_multiplier": 2.0,
       "max_request_timeout_seconds": 900,
       "transient_failure_retries": 2,
-      "rate_limit_retries": 8,
+      "rate_limit_retries": 12,
       "rate_limit_base_delay_millis": 5000,
-      "rate_limit_max_delay_millis": 120000,
+      "rate_limit_max_delay_millis": 300000,
       "adaptive_thinking": true,
       "effort": "high",
       "supports_vision": true
@@ -101,9 +101,9 @@
       "timeout_retry_multiplier": 2.0,
       "max_request_timeout_seconds": 900,
       "transient_failure_retries": 2,
-      "rate_limit_retries": 8,
+      "rate_limit_retries": 12,
       "rate_limit_base_delay_millis": 5000,
-      "rate_limit_max_delay_millis": 120000
+      "rate_limit_max_delay_millis": 300000
     },
     "kimi-k2.6": {
       "model": "kimi-k2.6",
@@ -117,9 +117,9 @@
       "timeout_retry_multiplier": 2.0,
       "max_request_timeout_seconds": 900,
       "transient_failure_retries": 2,
-      "rate_limit_retries": 8,
+      "rate_limit_retries": 12,
       "rate_limit_base_delay_millis": 5000,
-      "rate_limit_max_delay_millis": 120000,
+      "rate_limit_max_delay_millis": 300000,
       "thinking": "disabled",
       "supports_vision": true
     },
@@ -135,9 +135,9 @@
       "timeout_retry_multiplier": 2.0,
       "max_request_timeout_seconds": 900,
       "transient_failure_retries": 2,
-      "rate_limit_retries": 8,
+      "rate_limit_retries": 12,
       "rate_limit_base_delay_millis": 5000,
-      "rate_limit_max_delay_millis": 120000
+      "rate_limit_max_delay_millis": 300000
     },
     "deepseek-v4-flash": {
       "model": "deepseek-v4-flash",
@@ -150,9 +150,9 @@
       "timeout_retry_multiplier": 2.0,
       "max_request_timeout_seconds": 900,
       "transient_failure_retries": 2,
-      "rate_limit_retries": 8,
+      "rate_limit_retries": 12,
       "rate_limit_base_delay_millis": 5000,
-      "rate_limit_max_delay_millis": 120000
+      "rate_limit_max_delay_millis": 300000
     },
     "gemini-2.0-flash": {
       "model": "gemini-2.0-flash",
@@ -166,9 +166,9 @@
       "timeout_retry_multiplier": 2.0,
       "max_request_timeout_seconds": 900,
       "transient_failure_retries": 2,
-      "rate_limit_retries": 8,
+      "rate_limit_retries": 12,
       "rate_limit_base_delay_millis": 5000,
-      "rate_limit_max_delay_millis": 120000
+      "rate_limit_max_delay_millis": 300000
     },
     "qwen3.6-plus": {
       "model": "qwen3.6-plus",
@@ -182,9 +182,9 @@
       "timeout_retry_multiplier": 2.0,
       "max_request_timeout_seconds": 900,
       "transient_failure_retries": 2,
-      "rate_limit_retries": 8,
+      "rate_limit_retries": 12,
       "rate_limit_base_delay_millis": 5000,
-      "rate_limit_max_delay_millis": 120000
+      "rate_limit_max_delay_millis": 300000
     },
     "qwen3.6-flash": {
       "model": "qwen3.6-flash",
@@ -198,9 +198,9 @@
       "timeout_retry_multiplier": 2.0,
       "max_request_timeout_seconds": 900,
       "transient_failure_retries": 2,
-      "rate_limit_retries": 8,
+      "rate_limit_retries": 12,
       "rate_limit_base_delay_millis": 5000,
-      "rate_limit_max_delay_millis": 120000
+      "rate_limit_max_delay_millis": 300000
     }
   }
 }

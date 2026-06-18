@@ -335,6 +335,7 @@ public final class CodeGenerationPrompts {
                 "Now implement scene method `%s` (scene %d of %d).\n\n"
                         + "Scene specification:\n```json\n%s\n```\n\n"
                         + "Generate ONLY the method body for `def %s(self):`.\n"
+                        + "- The scene method name is exactly `%s`; do not derive a longer name from scene_id, title, goal, or content.\n"
                         + "- Do not include the `def %s(self):` signature; return only the indented or unindented body statements.\n"
                         + "- If no implementation is possible, return `pass` as the body.\n"
                         + "- The static skeleton already owns imports, MainScene, construct(), `self.objects`, and shared helpers. Use `self.world_point(...)` / `self.c2p(...)` for storyboard world coordinates when coordinate bounds are present.\n"
@@ -364,7 +365,7 @@ public final class CodeGenerationPrompts {
                         + "- Preserve selected Chinese `voiceover_text` and Chinese visible object content exactly unless shortening is required for readability.\n"
                         + "- Return the method body via the write_scene_code tool.",
                 methodName, sceneIndex + 1, totalScenes,
-                sceneJson, methodName, methodName));
+                sceneJson, methodName, methodName, methodName));
     }
 
     /**

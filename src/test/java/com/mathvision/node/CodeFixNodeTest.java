@@ -115,7 +115,7 @@ class CodeFixNodeTest {
         assertNotNull(fixResult);
         assertFalse(fixResult.isApplied());
         assertEquals(CodeFixResult.FixOutcome.RATE_LIMIT_BLOCKED, fixResult.getOutcome());
-        assertEquals("Provider rate limit exhausted after 8 retries", fixResult.getFailureReason());
+        assertEquals("Provider rate limit exhausted after 12 retries", fixResult.getFailureReason());
     }
 
     private CodeFixRequest buildRenderFailureRequest(String generatedCode) {

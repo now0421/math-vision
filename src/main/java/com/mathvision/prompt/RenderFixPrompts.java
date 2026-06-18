@@ -20,6 +20,7 @@ public final class RenderFixPrompts {
                     + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES
                     + SystemPrompts.MANIM_VOICEOVER_RULES
                     + SystemPrompts.MANIM_CHINESE_TEXT_RENDERING_RULES
+                    + SystemPrompts.MANIM_CODE_FIX_CLASS_INHERITANCE_RULES
                     + "Keep implemented mathematical constructions internally consistent while fixing render issues.\n"
                     + "Treat storyboard scene placement as preferred layout input for non-derived objects, but adjust it when needed to fix runtime failures, offscreen/overlap risk, readability, or internal consistency while preserving structured constraints.\n"
                     + "Treat storyboard `coordinate_bounds` as the authoritative storyboard world-coordinate range: preserve given storyboard coordinates and map them through `Axes`/`NumberPlane` with `axes.c2p(x, y)`. Do not rewrite storyboard coordinates to fit the frame; if content falls outside, prefer widening `coordinate_bounds` or the coordinate mapping. Derived points stay computed from their dependencies.\n"
@@ -152,6 +153,7 @@ public final class RenderFixPrompts {
                 .append("Prioritize the earliest root cause instead of patching downstream symptoms.\n")
                 .append("Sweep all `Text(...)`, `Tex(...)`, and `MathTex(...)` calls whenever the error category suggests text-constructor or LaTeX misuse.\n")
                 .append("Use storyboard structured constraints, preferred scene placement, geometric summaries, or derived constructions as repair context; keep the final code internally consistent while fixing the render failure.\n")
+                .append("Preserve the original `class MainScene(...)` base class exactly; do not switch between `Scene`, `VoiceoverScene`, and `ThreeDScene` while repairing this file.\n")
                 .append("Preserve valid voiceover structure and Chinese learner-facing strings while repairing Manim runtime errors.\n")
                 .append("Also proactively check for common Python and Manim runtime mistakes.\n")
                 .append("Remember: Return ONLY the single Python code block containing the full file. No explanation.\n");

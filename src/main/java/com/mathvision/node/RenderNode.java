@@ -473,6 +473,9 @@ public class RenderNode extends PocketFlow.Node<RenderNode.RenderInput, RenderRe
     @Override
     public String post(Map<String, Object> ctx, RenderInput input, RenderResult result) {
         ctx.put(WorkflowKeys.RENDER_RESULT, result);
+        if (result != null && result.isSuccess()) {
+            ctx.put(WorkflowKeys.RENDER_EVER_SUCCEEDED, true);
+        }
 
         Path outputDir = input.outputDir();
         if (outputDir != null) {

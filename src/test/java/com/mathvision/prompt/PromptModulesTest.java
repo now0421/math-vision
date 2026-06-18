@@ -99,6 +99,48 @@ class PromptModulesTest {
     }
 
     @Test
+    void codeFixPromptsPreserveOriginalManimSceneBaseClass() {
+        String revisionRules = CodeEvaluationPrompts.buildRevisionRulesPrompt("manim");
+        String renderRules = RenderFixPrompts.buildRulesPrompt("manim");
+        String layoutRules = SceneEvaluationPrompts.buildLayoutFixRulesPrompt("manim");
+        String revisionUserPrompt = CodeEvaluationPrompts.revisionUserPrompt(
+                "MainScene",
+                "{\"scenes\":[]}",
+                "{}",
+                "{}",
+                "from manim import *\nclass MainScene(VoiceoverScene):\n    pass");
+        String renderUserPrompt = RenderFixPrompts.manimUserPrompt(
+                "from manim import *\nclass MainScene(VoiceoverScene):\n    pass",
+                "ValueError: demo",
+                "{\"scenes\":[]}",
+                java.util.List.of(),
+                null,
+                null);
+        String layoutUserPrompt = SceneEvaluationPrompts.manimLayoutFixUserPrompt(
+                "{\"scenes\":[]}",
+                "from manim import *\nclass MainScene(VoiceoverScene):\n    pass",
+                "overlap",
+                "{}",
+                java.util.List.of());
+        String geogebraRevisionRules = CodeEvaluationPrompts.buildRevisionRulesPrompt("geogebra");
+        String geogebraRenderRules = RenderFixPrompts.buildRulesPrompt("geogebra");
+        String geogebraLayoutRules = SceneEvaluationPrompts.buildLayoutFixRulesPrompt("geogebra");
+
+        assertTrue(revisionRules.contains("Manim code-fix class inheritance rules"));
+        assertTrue(renderRules.contains("Manim code-fix class inheritance rules"));
+        assertTrue(layoutRules.contains("Manim code-fix class inheritance rules"));
+        assertTrue(revisionRules.contains("class MainScene(VoiceoverScene):"));
+        assertTrue(renderRules.contains("Do not switch between `Scene`, `VoiceoverScene`, `ThreeDScene`"));
+        assertTrue(layoutRules.contains("fix camera or 3D issues inside `ThreeDScene`"));
+        assertTrue(revisionUserPrompt.contains("Preserve the original `class MainScene(...)` base class exactly"));
+        assertTrue(renderUserPrompt.contains("Preserve the original `class MainScene(...)` base class exactly"));
+        assertTrue(layoutUserPrompt.contains("Preserve the original `class MainScene(...)` base class exactly"));
+        assertFalse(geogebraRevisionRules.contains("Manim code-fix class inheritance rules"));
+        assertFalse(geogebraRenderRules.contains("Manim code-fix class inheritance rules"));
+        assertFalse(geogebraLayoutRules.contains("Manim code-fix class inheritance rules"));
+    }
+
+    @Test
     void storyboardRulesPreserveValidatedScenePlacement() {
         String authorityRules = SystemPrompts.STORYBOARD_AUTHORITY_RULES;
         String referenceRules = SystemPrompts.STORYBOARD_REFERENCE_RULES;

@@ -103,21 +103,10 @@ public final class ManimCodeUtils {
     }
 
     /**
-     * Builds a Python method name for a scene, e.g. "scene_1_setup_coordinates".
+     * Builds the canonical Python method name for a storyboard scene.
      */
     public static String buildSceneMethodName(String sceneId, String title, int index) {
-        String base = "scene_" + (index + 1);
-        String suffix = "";
-        if (title != null && !title.isBlank()) {
-            suffix = "_" + title.toLowerCase()
-                    .replaceAll("[^a-z0-9]+", "_")
-                    .replaceAll("^_|_$", "")
-                    .replaceAll("_{2,}", "_");
-            if (suffix.length() > 30) {
-                suffix = suffix.substring(0, 30).replaceAll("_$", "");
-            }
-        }
-        return base + suffix;
+        return "scene_" + (index + 1);
     }
 
     public static List<String> validateStructure(String manimCode) {

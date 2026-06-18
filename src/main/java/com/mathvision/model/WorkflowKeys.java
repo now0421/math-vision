@@ -49,6 +49,7 @@ public final class WorkflowKeys {
 
     // ---- Stage 7: Render output ----
     public static final String RENDER_RESULT = "renderResult";
+    public static final String RENDER_EVER_SUCCEEDED = "renderEverSucceeded";
 
     // ---- Stage 8: Scene evaluation output ----
     public static final String SCENE_EVALUATION_RESULT = "sceneEvaluationResult";

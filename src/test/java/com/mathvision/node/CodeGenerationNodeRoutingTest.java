@@ -280,8 +280,10 @@ class CodeGenerationNodeRoutingTest {
         assertEquals(2, codeResult.getToolCalls());
         assertTrue(codeResult.getGeneratedCode().contains("class MainScene(Scene):"));
         assertTrue(codeResult.getGeneratedCode().contains("self.objects = {}"));
-        assertTrue(codeResult.getGeneratedCode().contains("def scene_1_intro"));
-        assertTrue(codeResult.getGeneratedCode().contains("def scene_2_finish"));
+        assertTrue(codeResult.getGeneratedCode().contains("def scene_1(self):"));
+        assertTrue(codeResult.getGeneratedCode().contains("def scene_2(self):"));
+        assertFalse(codeResult.getGeneratedCode().contains("def scene_1_intro"));
+        assertFalse(codeResult.getGeneratedCode().contains("def scene_2_finish"));
 
         assertEquals(2, aiClient.userMessages.size());
         assertTrue(aiClient.toolsJsonHistory.stream().allMatch(ToolSchemas.SCENE_CODE::equals));

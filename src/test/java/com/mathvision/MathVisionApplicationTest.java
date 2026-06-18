@@ -6,6 +6,7 @@ import com.mathvision.model.CodeFixTraceReport;
 import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
 import com.mathvision.model.ProblemBundle;
+import com.mathvision.model.RenderResult;
 import com.mathvision.model.WorkflowKeys;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -96,6 +97,26 @@ class MathVisionApplicationTest {
         @SuppressWarnings("unchecked")
         Map<String, Integer> breakdown = (Map<String, Integer>) summary.get("llm_calls_breakdown");
         assertEquals(1, breakdown.get("problem_normalization"));
+    }
+
+    @Test
+    void workflowSummaryKeepsRenderSuccessTrueAfterAnySuccessfulRender() throws Exception {
+        WorkflowConfig config = ConfigLoader.load(null, null);
+        RenderResult finalRenderResult = new RenderResult();
+        finalRenderResult.setSuccess(false);
+        finalRenderResult.setAttempts(2);
+        finalRenderResult.setLastError("later render failed");
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.CONFIG, config);
+        ctx.put(WorkflowKeys.RENDER_RESULT, finalRenderResult);
+        ctx.put(WorkflowKeys.RENDER_EVER_SUCCEEDED, true);
+
+        Map<String, Object> summary = buildSummary(ctx);
+
+        assertTrue(Boolean.TRUE.equals(summary.get("render_success")));
+        assertFalse(Boolean.TRUE.equals(summary.get("render_final_success")));
+        assertTrue(Boolean.TRUE.equals(summary.get("render_ever_succeeded")));
     }
 
     @Test
