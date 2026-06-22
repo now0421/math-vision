@@ -198,6 +198,100 @@ class ManimCodeUtilsTest {
     }
 
     @Test
+    void validateFullDetectsGeneratedCoordinateScaleRegression() {
+        String code = String.join("\n",
+                "from manim import *",
+                "import numpy as np",
+                "",
+                "class MainScene(Scene):",
+                "    def construct(self):",
+                "        self.setup_shared_scene()",
+                "        self.wait(1)",
+                "",
+                "    def setup_shared_scene(self):",
+                "        self._mv_x_range = [-3.5, 7.0, 1.0]",
+                "        self._mv_y_range = [-6.5, 5.0, 1.0]",
+                "        self._mv_z_range = None",
+                "        self._mv_axes = None",
+                "        self.axes = Axes(",
+                "            x_range=self._mv_x_range,",
+                "            y_range=self._mv_y_range,",
+                "            x_length=11.0,",
+                "            y_length=8.5,",
+                "            tips=False,",
+                "        )",
+                "        self._mv_axes = self.axes",
+                "",
+                "    def world_point(self, x, y=0.0, z=0.0):",
+                "        return self._mv_axes.c2p(x, y)",
+                "",
+                "    def c2p(self, x, y=0.0, z=0.0):",
+                "        return self.world_point(x, y, z)");
+
+        List<String> violations = ManimCodeUtils.validateFull(code);
+
+        assertTrue(ManimCodeUtils.hasCoordinateScaleContractViolation(violations));
+        assertTrue(violations.stream().anyMatch(v -> v.contains("_mv_unit_scale")));
+        assertTrue(violations.stream().anyMatch(v -> v.contains("raw numeric axis lengths")));
+    }
+
+    @Test
+    void validateFullDetectsRawStoryboardCircleAndArcRadii() {
+        String code = String.join("\n",
+                "from manim import *",
+                "import numpy as np",
+                "",
+                "class MainScene(Scene):",
+                "    def construct(self):",
+                "        self.setup_shared_scene()",
+                "        circle = Circle(radius=4)",
+                "        arc = Arc(radius=4.0, start_angle=0, angle=PI)",
+                "        self.add(circle, arc)",
+                "",
+                "    def setup_shared_scene(self):",
+                "        self._mv_x_range = [-5.0, 5.0, 1.0]",
+                "        self._mv_y_range = [-5.0, 5.0, 1.0]",
+                "        self._mv_z_range = None",
+                "        self._mv_frame_width = 10.5",
+                "        self._mv_frame_height = 6.5",
+                "        self._mv_unit_scale = 1.0",
+                "        self._mv_x_length = self._mv_frame_width",
+                "        self._mv_y_length = self._mv_frame_height",
+                "        self._mv_axes = None",
+                "        self.axes = Axes(",
+                "            x_range=self._mv_x_range,",
+                "            y_range=self._mv_y_range,",
+                "            x_length=self._mv_x_length,",
+                "            y_length=self._mv_y_length,",
+                "            tips=False,",
+                "        )",
+                "        self._mv_axes = self.axes",
+                "",
+                "    def world_point(self, x, y=0.0, z=0.0):",
+                "        return self._mv_axes.c2p(x, y)",
+                "",
+                "    def c2p(self, x, y=0.0, z=0.0):",
+                "        return self.world_point(x, y, z)",
+                "",
+                "    def world_radius(self, radius):",
+                "        return abs(radius) * getattr(self, '_mv_unit_scale', 1.0)",
+                "",
+                "    def world_circle(self, x, y, radius, **kwargs):",
+                "        circle = Circle(radius=self.world_radius(radius), **kwargs)",
+                "        circle.move_to(self.c2p(x, y))",
+                "        return circle",
+                "",
+                "    def world_arc(self, x, y, radius, start_angle=0.0, angle=TAU, **kwargs):",
+                "        return Arc(radius=self.world_radius(radius), start_angle=start_angle,",
+                "                   angle=angle, arc_center=self.c2p(x, y), **kwargs)");
+
+        List<String> violations = ManimCodeUtils.validateFull(code);
+
+        assertTrue(ManimCodeUtils.hasCoordinateScaleContractViolation(violations));
+        assertTrue(violations.stream().anyMatch(v -> v.contains("Circle/Arc radius")));
+    }
+
+    @Test
     void validateManimRules_allowsDocumentedSetPointsAsCornersAndSmoothly() {
         String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n"
                 + "        path = VMobject()\n"

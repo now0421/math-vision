@@ -56,6 +56,39 @@ class CodeFixNodeTest {
     }
 
     @Test
+    void rejectsManimFixThatBreaksCoordinateScaleContract() {
+        String originalCode = String.join("\n",
+                "from manim import *",
+                "",
+                "class MainScene(Scene):",
+                "    def construct(self):",
+                "        self.wait(1)");
+        String returnedCode = coordinateScaleRegressionCode();
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, new StubAiClient(returnedCode));
+        ctx.put(WorkflowKeys.CODE_RESULT, new CodeResult(
+                originalCode,
+                "MainScene",
+                "demo",
+                "Demo concept",
+                "Demo description"));
+        ctx.put(WorkflowKeys.CODE_FIX_REQUEST, buildRenderFailureRequest(originalCode));
+
+        new CodeFixNode().run(ctx);
+
+        CodeFixResult fixResult = (CodeFixResult) ctx.get(WorkflowKeys.CODE_FIX_RESULT);
+        CodeResult updatedCodeResult = (CodeResult) ctx.get(WorkflowKeys.CODE_RESULT);
+
+        assertNotNull(fixResult);
+        assertFalse(fixResult.isApplied());
+        assertEquals(CodeFixResult.FixOutcome.FAILED, fixResult.getOutcome());
+        assertTrue(fixResult.getFailureReason().contains("Manim coordinate scale contract"));
+        assertTrue(fixResult.getPostFixStaticAuditSummary().contains("Manim coordinate scale contract"));
+        assertEquals(originalCode, updatedCodeResult.getGeneratedCode());
+    }
+
+    @Test
     void doesNotApplyFixWhenReturnedCodeIsIdenticalToSource() {
         String originalCode = String.join("\n",
                 "from manim import *",
@@ -129,6 +162,37 @@ class CodeFixNodeTest {
         request.setSceneName("MainScene");
         request.setExpectedSceneName("MainScene");
         return request;
+    }
+
+    private String coordinateScaleRegressionCode() {
+        return String.join("\n",
+                "from manim import *",
+                "import numpy as np",
+                "",
+                "class MainScene(Scene):",
+                "    def construct(self):",
+                "        self.setup_shared_scene()",
+                "        self.wait(1)",
+                "",
+                "    def setup_shared_scene(self):",
+                "        self._mv_x_range = [-3.5, 7.0, 1.0]",
+                "        self._mv_y_range = [-6.5, 5.0, 1.0]",
+                "        self._mv_z_range = None",
+                "        self._mv_axes = None",
+                "        self.axes = Axes(",
+                "            x_range=self._mv_x_range,",
+                "            y_range=self._mv_y_range,",
+                "            x_length=11.0,",
+                "            y_length=8.5,",
+                "            tips=False,",
+                "        )",
+                "        self._mv_axes = self.axes",
+                "",
+                "    def world_point(self, x, y=0.0, z=0.0):",
+                "        return self._mv_axes.c2p(x, y)",
+                "",
+                "    def c2p(self, x, y=0.0, z=0.0):",
+                "        return self.world_point(x, y, z)");
     }
 
     private static final class StubAiClient implements AiClient {

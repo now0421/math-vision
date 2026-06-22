@@ -76,6 +76,12 @@ class SceneEvaluationNodeTest {
         assertNotNull(request);
         assertEquals(CodeFixSource.SCENE_LAYOUT_EVALUATION, request.getSource());
         assertEquals(WorkflowActions.RETRY_RENDER, request.getReturnAction());
+        assertNull(request.getProblemBundle());
+        assertNull(request.getTargetDescription());
+        assertNotNull(request.getConversationContext());
+        assertTrue(request.getConversationContext().getRollingMessages().isEmpty());
+        assertEquals(2, request.getConversationContext().getPinnedMessages().size());
+        assertFalse(request.getFixedContextPrompt().contains("ProblemBundle JSON"));
         assertNotNull(request.getSceneEvaluationJson());
         assertTrue(request.getSceneEvaluationJson().contains("\"issue_sample_count\""));
         assertTrue(request.getSceneEvaluationJson().contains("expand_axes_coordinate_range_first"));

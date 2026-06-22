@@ -23,7 +23,7 @@ public final class RenderFixPrompts {
                     + SystemPrompts.MANIM_CODE_FIX_CLASS_INHERITANCE_RULES
                     + "Keep implemented mathematical constructions internally consistent while fixing render issues.\n"
                     + "Treat storyboard scene placement as preferred layout input for non-derived objects, but adjust it when needed to fix runtime failures, offscreen/overlap risk, readability, or internal consistency while preserving structured constraints.\n"
-                    + "Treat storyboard `coordinate_bounds` as the authoritative storyboard world-coordinate range: preserve given storyboard coordinates and map them through `Axes`/`NumberPlane` with `axes.c2p(x, y)`. Do not rewrite storyboard coordinates to fit the frame; if content falls outside, prefer widening `coordinate_bounds` or the coordinate mapping. Derived points stay computed from their dependencies.\n"
+                    + "Treat storyboard `coordinate_bounds` as the authoritative storyboard world-coordinate range: preserve given storyboard coordinates and map them through `Axes`/`NumberPlane` with `axes.c2p(x, y)` or the provided helper. Keep x/y storyboard world units on one uniform screen scale so equal lengths render equally; convert storyboard radii/metric lengths through that same scale before passing them to `Circle`, `Arc`, sectors, braces, or similar geometry. Do not rewrite storyboard coordinates to fit the frame; if content falls outside, prefer widening `coordinate_bounds` or the coordinate mapping. Derived points stay computed from their dependencies.\n"
                     + "Mandatory rules:\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS

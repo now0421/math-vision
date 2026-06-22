@@ -99,8 +99,17 @@ class CodeGenerationNodeAssemblyTest {
         assertTrue(skeleton.contains("self._mv_x_range = [-5.0, 5.0, 2.0]"));
         assertTrue(skeleton.contains("self._mv_y_range = [-3.0, 4.0, 1.0]"));
         assertTrue(skeleton.contains("self.axes = Axes("));
+        assertTrue(skeleton.contains("scale_candidates = [self._mv_frame_width / x_span, self._mv_frame_height / y_span]"));
+        assertTrue(skeleton.contains("self._mv_unit_scale = min(scale_candidates)"));
+        assertTrue(skeleton.contains("x_length=self._mv_x_length"));
+        assertTrue(skeleton.contains("y_length=self._mv_y_length"));
+        assertFalse(skeleton.contains("x_length=10.5"));
+        assertFalse(skeleton.contains("y_length=6.5"));
         assertTrue(skeleton.contains("def world_point(self, x, y=0.0, z=0.0):"));
         assertTrue(skeleton.contains("def c2p(self, x, y=0.0, z=0.0):"));
+        assertTrue(skeleton.contains("def world_radius(self, radius):"));
+        assertTrue(skeleton.contains("def world_circle(self, x, y, radius, **kwargs):"));
+        assertTrue(skeleton.contains("def world_arc(self, x, y, radius, start_angle=0.0, angle=TAU, **kwargs):"));
         assertTrue(ManimCodeUtils.validateFull(code).isEmpty());
     }
 
@@ -123,6 +132,8 @@ class CodeGenerationNodeAssemblyTest {
         assertTrue(skeleton.contains("class MainScene(ThreeDScene):"));
         assertTrue(skeleton.contains("self._mv_z_range = [-2.0, 4.0, 1.0]"));
         assertTrue(skeleton.contains("self.axes = ThreeDAxes("));
+        assertTrue(skeleton.contains("scale_candidates.append(self._mv_frame_depth / z_span)"));
+        assertTrue(skeleton.contains("z_length=self._mv_z_length"));
     }
 
     @Test
@@ -139,6 +150,7 @@ class CodeGenerationNodeAssemblyTest {
 
         assertTrue(skeleton.contains("from manim_voiceover import VoiceoverScene"));
         assertTrue(skeleton.contains("from manim_voiceover.services.gtts import GTTSService"));
+        assertTrue(skeleton.contains("VOICEOVER_SPEED = 1.5"));
         assertTrue(skeleton.contains("class MainScene(VoiceoverScene):"));
         assertTrue(skeleton.contains("self.set_speech_service(GTTSService(lang=\"zh-CN\", global_speed=VOICEOVER_SPEED))"));
     }

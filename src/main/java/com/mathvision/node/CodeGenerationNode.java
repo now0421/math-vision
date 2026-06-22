@@ -567,7 +567,7 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         if (useVoiceover) {
             sb.append("from manim_voiceover import VoiceoverScene\n");
             sb.append("from manim_voiceover.services.gtts import GTTSService\n\n");
-            sb.append("VOICEOVER_SPEED = 1.0\n");
+            sb.append("VOICEOVER_SPEED = 1.5\n");
         }
         sb.append("\n");
         sb.append("class MainScene(").append(baseClass).append("):\n");
@@ -609,24 +609,45 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
         sb.append("        self._mv_x_range = ").append(xRange).append("\n");
         sb.append("        self._mv_y_range = ").append(yRange).append("\n");
         sb.append("        self._mv_z_range = ").append(zRange).append("\n");
+        sb.append("        self._mv_frame_width = 10.5\n");
+        sb.append("        self._mv_frame_height = 6.5\n");
+        sb.append("        self._mv_frame_depth = 4.0\n");
+        sb.append("        self._mv_unit_scale = 1.0\n");
+        sb.append("        self._mv_x_length = self._mv_frame_width\n");
+        sb.append("        self._mv_y_length = self._mv_frame_height\n");
+        sb.append("        self._mv_z_length = self._mv_frame_depth\n");
         sb.append("        self._mv_axes = None\n");
         sb.append("        self.axes = None\n");
         sb.append("        if self._mv_x_range is not None and self._mv_y_range is not None:\n");
+        sb.append("            x_span = max(abs(self._mv_x_range[1] - self._mv_x_range[0]), 1.0)\n");
+        sb.append("            y_span = max(abs(self._mv_y_range[1] - self._mv_y_range[0]), 1.0)\n");
+        sb.append("            scale_candidates = [self._mv_frame_width / x_span, self._mv_frame_height / y_span]\n");
+        sb.append("            z_span = 1.0\n");
+        sb.append("            if self._mv_is_3d:\n");
+        sb.append("                active_z_range = self._mv_z_range if self._mv_z_range is not None else [-1.0, 1.0, 1.0]\n");
+        sb.append("                z_span = max(abs(active_z_range[1] - active_z_range[0]), 1.0)\n");
+        sb.append("                if self._mv_z_range is not None:\n");
+        sb.append("                    scale_candidates.append(self._mv_frame_depth / z_span)\n");
+        sb.append("            self._mv_unit_scale = min(scale_candidates)\n");
+        sb.append("            self._mv_x_length = x_span * self._mv_unit_scale\n");
+        sb.append("            self._mv_y_length = y_span * self._mv_unit_scale\n");
+        sb.append("            if self._mv_is_3d:\n");
+        sb.append("                self._mv_z_length = z_span * self._mv_unit_scale\n");
         sb.append("            if self._mv_is_3d:\n");
         sb.append("                self.axes = ThreeDAxes(\n");
         sb.append("                    x_range=self._mv_x_range,\n");
         sb.append("                    y_range=self._mv_y_range,\n");
         sb.append("                    z_range=self._mv_z_range if self._mv_z_range is not None else [-1.0, 1.0, 1.0],\n");
-        sb.append("                    x_length=10.5,\n");
-        sb.append("                    y_length=6.5,\n");
-        sb.append("                    z_length=4.0,\n");
+        sb.append("                    x_length=self._mv_x_length,\n");
+        sb.append("                    y_length=self._mv_y_length,\n");
+        sb.append("                    z_length=self._mv_z_length,\n");
         sb.append("                )\n");
         sb.append("            else:\n");
         sb.append("                self.axes = ").append(axesClass).append("(\n");
         sb.append("                    x_range=self._mv_x_range,\n");
         sb.append("                    y_range=self._mv_y_range,\n");
-        sb.append("                    x_length=10.5,\n");
-        sb.append("                    y_length=6.5,\n");
+        sb.append("                    x_length=self._mv_x_length,\n");
+        sb.append("                    y_length=self._mv_y_length,\n");
         sb.append("                    tips=False,\n");
         sb.append("                )\n");
         sb.append("            self._mv_axes = self.axes\n\n");
@@ -640,6 +661,21 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
 
         sb.append("    def c2p(self, x, y=0.0, z=0.0):\n");
         sb.append("        return self.world_point(x, y, z)\n\n");
+
+        sb.append("    def world_vector(self, dx, dy=0.0, dz=0.0):\n");
+        sb.append("        return self.world_point(dx, dy, dz) - self.world_point(0.0, 0.0, 0.0)\n\n");
+
+        sb.append("    def world_radius(self, radius):\n");
+        sb.append("        return abs(radius) * getattr(self, '_mv_unit_scale', 1.0)\n\n");
+
+        sb.append("    def world_circle(self, x, y, radius, **kwargs):\n");
+        sb.append("        circle = Circle(radius=self.world_radius(radius), **kwargs)\n");
+        sb.append("        circle.move_to(self.c2p(x, y))\n");
+        sb.append("        return circle\n\n");
+
+        sb.append("    def world_arc(self, x, y, radius, start_angle=0.0, angle=TAU, **kwargs):\n");
+        sb.append("        return Arc(radius=self.world_radius(radius), start_angle=start_angle,\n");
+        sb.append("                   angle=angle, arc_center=self.c2p(x, y), **kwargs)\n\n");
 
         sb.append("    def register_object(self, object_id, mobject):\n");
         sb.append("        self.objects[str(object_id)] = mobject\n");
@@ -790,12 +826,15 @@ public class CodeGenerationNode extends PocketFlow.Node<CodeGenerationNode.CodeG
                     .append(CoordinateBoundsUtils.toGeoGebraSetCoordSystem(storyboard.getCoordinateBounds()))
                     .append("` as the exact initial GeoGebra view command; it must appear in the generated script before scene-specific construction commands.\n");
         } else if (staticSkeletonOwnsManimBounds) {
-            sb.append("- The static Manim skeleton has already defined shared coordinate helpers: `self.world_point(x, y, z=0)`, `self.c2p(x, y, z=0)`, and `self.axes`/`self._mv_axes` when bounds are available.\n");
+            sb.append("- The static Manim skeleton has already defined shared coordinate helpers: `self.world_point(x, y, z=0)`, `self.c2p(x, y, z=0)`, `self.world_vector(dx, dy, dz=0)`, `self.world_radius(r)`, `self.world_circle(x, y, r, **kwargs)`, `self.world_arc(x, y, r, ...)`, and `self.axes`/`self._mv_axes` when bounds are available.\n");
+            sb.append("- The static Manim skeleton maps storyboard x/y units with one uniform screen scale derived from these bounds, so equal world lengths render equally and the padded bounds fit inside the Manim frame. Do not override `x_length`, `y_length`, `_mv_unit_scale`, or the shared coordinate helper methods in scene code.\n");
             sb.append("- Use those skeleton helpers for storyboard world geometry. Do not redefine axes, imports, MainScene, construct(), or coordinate helper methods in the scene body.\n");
+            sb.append("- For world-coordinate circles, arcs, and any geometric radius/length parameter from the storyboard, convert the value with `self.world_radius(r)` or use `self.world_circle(...)` / `self.world_arc(...)`; do not pass a storyboard radius directly as raw Manim frame units.\n");
             sb.append("- Do not place storyboard world-coordinate objects with raw scene coordinates such as `Dot([x, y, 0])`, `Line([x1, y1, 0], [x2, y2, 0])`, or `.move_to([x, y, 0])`.\n");
             sb.append("- Choose render-frame placement for titles, callouts, and fixed overlays at this stage; storyboard placement itself remains world/relative positioning.\n");
         } else {
-            sb.append("- For Manim, this is the required coordinate-system boundary: define a shared `Axes`, `NumberPlane`, or for 3D `ThreeDAxes`/equivalent from these ranges. Map storyboard world geometry with `axes.c2p(...)` or a clearly named helper wrapping `c2p`; raw Manim frame coordinates are allowed only for fixed overlays, titles, camera/UI placement, and other non-storyboard-geometry elements.\n");
+            sb.append("- For Manim, this is the required coordinate-system boundary: define a shared `Axes`, `NumberPlane`, or for 3D `ThreeDAxes`/equivalent from these ranges using one uniform x/y unit scale so equal world lengths render equally and the padded bounds fit inside the frame. Map storyboard world geometry with `axes.c2p(...)` or a clearly named helper wrapping `c2p`; raw Manim frame coordinates are allowed only for fixed overlays, titles, camera/UI placement, and other non-storyboard-geometry elements.\n");
+            sb.append("- For world-coordinate circles, arcs, and any geometric radius/length parameter from the storyboard, convert the value through the same uniform unit scale; do not pass a storyboard radius directly as raw Manim frame units.\n");
             sb.append("- Do not place storyboard world-coordinate objects with raw scene coordinates such as `Dot([x, y, 0])`, `Line([x1, y1, 0], [x2, y2, 0])`, or `.move_to([x, y, 0])`.\n");
             sb.append("- Choose render-frame placement for titles, callouts, and fixed overlays at this stage; storyboard placement itself remains world/relative positioning.\n");
         }

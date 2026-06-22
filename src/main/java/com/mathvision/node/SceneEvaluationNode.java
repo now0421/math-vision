@@ -1,5 +1,6 @@
 package com.mathvision.node;
 
+import com.mathvision.config.ModelConfig;
 import com.mathvision.config.WorkflowConfig;
 import com.mathvision.model.CodeFixRequest;
 import com.mathvision.model.CodeFixSource;
@@ -25,7 +26,6 @@ import com.mathvision.util.ErrorSummarizer;
 import com.mathvision.util.GeoGebraCodeUtils;
 import com.mathvision.service.FileOutputService;
 import com.mathvision.util.NodeConversationContext;
-import com.mathvision.util.ProblemBundleContextBuilder;
 import com.mathvision.util.StoryboardConstraintUtils;
 import com.mathvision.util.StoryboardPatchResolver;
 import com.mathvision.util.TextUtils;
@@ -74,7 +74,6 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     private static final double GEOGEBRA_MIN_VIEW_WIDTH_UTILIZATION = 0.25;
     private static final double GEOGEBRA_MIN_VIEW_HEIGHT_UTILIZATION = 0.20;
     private static final int DEFAULT_MAX_FIX_ATTEMPTS = 2;
-    private static final int CODE_FIX_CONTEXT_ROUNDS = 5;
     private static final int MAX_FIX_REPORT_SAMPLES = 12;
     private static final int MAX_ISSUES_PER_SAMPLE_IN_FIX_REPORT = 6;
 
@@ -319,9 +318,6 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 : WorkflowConfig.OUTPUT_TARGET_MANIM);
         request.setExpectedSceneName(isGeoGebra ? GeoGebraCodeUtils.EXPECTED_FIGURE_NAME : "MainScene");
         String outputTarget = isGeoGebra ? WorkflowConfig.OUTPUT_TARGET_GEOGEBRA : WorkflowConfig.OUTPUT_TARGET_MANIM;
-        request.setProblemBundle(input.problemBundle());
-        request.setTargetDescription(ProblemBundleContextBuilder.workflowTargetDescription(
-                input.problemBundle(), codeResult.getSceneName(), "", outputTarget));
         request.setStoryboardJson(storyboard != null
                 ? StoryboardJsonBuilder.buildForSceneEvaluationFix(storyboard, outputTarget)
                 : StoryboardJsonBuilder.EMPTY_STORYBOARD_JSON);
@@ -334,16 +330,13 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                                                      CodeFixRequest request,
                                                      String outputTarget) {
         String rulesPrompt = SceneEvaluationPrompts.buildLayoutFixRulesPrompt(outputTarget);
-        String fixedContextPrompt = SceneEvaluationPrompts.buildLayoutFixFixedContextPrompt(
-                request.getProblemBundle(),
-                request.getTargetDescription(),
-                outputTarget);
-        NodeConversationContext conversationContext = NodeSupport.ensureCodeFixConversationContext(
-                input.retryState(),
-                input.config(),
-                CODE_FIX_CONTEXT_ROUNDS,
-                rulesPrompt,
-                fixedContextPrompt);
+        String fixedContextPrompt = SceneEvaluationPrompts.buildLayoutFixFixedContextPrompt(outputTarget);
+        int maxInputTokens = input.config() != null
+                ? input.config().resolvePromptInputBudgetTokens()
+                : ModelConfig.DEFAULT_MAX_INPUT_TOKENS;
+        NodeConversationContext conversationContext = new NodeConversationContext(maxInputTokens, 0);
+        conversationContext.setSystemMessage(rulesPrompt);
+        conversationContext.setFixedContextMessage(fixedContextPrompt);
         request.setRulesPrompt(rulesPrompt);
         request.setFixedContextPrompt(fixedContextPrompt);
         request.setConversationContext(conversationContext);

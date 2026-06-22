@@ -25,6 +25,7 @@ import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProblemNormalizationNodeTest {
@@ -108,6 +109,54 @@ class ProblemNormalizationNodeTest {
         ProblemBundle storedBundle = (ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE);
         assertEquals("p_fixed", storedBundle.getId());
         assertEquals("Given triangle ABC with AB = 5, find angle C.", storedBundle.getStatement());
+    }
+
+    @Test
+    void normalizationFailsWhenInitialLlmResponseIsNotProblemBundle() {
+        ProblemSource source = new ProblemSource();
+        source.setSourceType("text");
+        source.setRawText("Given triangle ABC with AB = 5, find angle C.");
+
+        QueuePayloadAiClient aiClient = new QueuePayloadAiClient("{\"not_a_problem_bundle\":true}");
+
+        Map<String, Object> ctx = new HashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.CONFIG, new WorkflowConfig());
+
+        ProblemNormalizationNode node = new ProblemNormalizationNode();
+        node.prep(ctx);
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> node.exec(source));
+
+        assertTrue(error.getMessage().contains("did not look like a ProblemBundle"));
+        assertEquals(1, aiClient.toolCallCount);
+    }
+
+    @Test
+    void normalizationFailsWhenReviewLlmResponseIsNotProblemBundle() {
+        ProblemSource source = new ProblemSource();
+        source.setSourceType("text");
+        source.setRawText("Given triangle ABC with AB = 5, find angle C.");
+
+        QueuePayloadAiClient aiClient = new QueuePayloadAiClient(
+                problemBundlePayload(
+                        "p_generated",
+                        "Triangle ABC",
+                        "Given triangle ABC with AB = 5, find angle C."),
+                "{\"review_notes\":\"looks ok\"}"
+        );
+
+        Map<String, Object> ctx = new HashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.CONFIG, new WorkflowConfig());
+
+        ProblemNormalizationNode node = new ProblemNormalizationNode();
+        node.prep(ctx);
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> node.exec(source));
+
+        assertTrue(error.getMessage().contains("did not look like a ProblemBundle"));
+        assertEquals(2, aiClient.toolCallCount);
     }
 
     private static final class ToolPayloadAiClient implements AiClient {

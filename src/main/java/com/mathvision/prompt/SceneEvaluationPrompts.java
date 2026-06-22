@@ -1,7 +1,6 @@
 package com.mathvision.prompt;
 
 import com.mathvision.model.ProblemBundle;
-import com.mathvision.util.ProblemBundleContextBuilder;
 
 import java.util.List;
 
@@ -21,7 +20,7 @@ public final class SceneEvaluationPrompts {
                     + "Use the rendered geometry report as authority for observed layout problems, and use storyboard object_registry dependency facts as semantic authority for how affected geometry must be constructed.\n"
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + "Prefer adjusting positioning, scaling, grouping, and spacing over deleting explanatory content.\n"
-                    + "For offscreen world-coordinate geometry, first expand the Manim `Axes`/`NumberPlane` `x_range`/`y_range` and keep placements mapped through `axes.c2p(...)`; use translation/recentering or uniform scaling only when the element is a fixed overlay or the coordinate view would become unreadable.\n"
+                    + "For offscreen world-coordinate geometry, first expand the Manim `Axes`/`NumberPlane` `x_range`/`y_range` and keep placements mapped through `axes.c2p(...)`; preserve one uniform x/y unit scale, and keep storyboard radii/metric lengths converted through that same scale. Use translation/recentering or uniform scaling only when the element is a fixed overlay or the coordinate view would become unreadable.\n"
                     + "If a reported element is dependency-driven or derived, do not fix it by assigning direct coordinates copied from rendered bounds or storyboard placement; adjust upstream dependency objects, the whole constrained group, camera/layout, or the attachment expression so the dependency remains true.\n"
                     + "Also correct semantically wrong geometric attachments you notice, especially angle markers that are drawn on the wrong side or detached from their true vertex.\n"
                     + "Preserve valid voiceover structure and Chinese learner-facing strings while fixing layout issues.\n\n"
@@ -59,7 +58,7 @@ public final class SceneEvaluationPrompts {
                     + "1. First identify the affected command/script region, reported elements, and any storyboard_dependency_context supplied in the evaluation report.\n"
                     + "2. Fix text overlap through label repositioning, coordinate spacing, or `SetCaption`/`ShowLabel` adjustments.\n"
                     + "3. Fix offscreen, underfilled, or clustered layouts inside the current code viewport; do not rely on user zooming or panning.\n"
-                    + "4. For GeoGebra offscreen issues, prefer expanding `SetCoordSystem(x_min, x_max, y_min, y_max)` before moving construction objects. For Manim offscreen issues, prefer expanding the `Axes`/`NumberPlane` `x_range`/`y_range` used for storyboard coordinates before moving objects; the render frame remains fixed x[-7,7], y[-4,4].\n"
+                    + "4. For GeoGebra offscreen issues, prefer expanding `SetCoordSystem(x_min, x_max, y_min, y_max)` before moving construction objects. For Manim offscreen issues, prefer expanding the `Axes`/`NumberPlane` `x_range`/`y_range` used for storyboard coordinates before moving objects; keep x/y world units equal in screen scale, keep storyboard radii/metric lengths converted through that same scale, and remember the render frame remains fixed x[-7,7], y[-4,4].\n"
                     + "5. Keep implemented reflections, symmetry, intersections, equal distances, and dependency chains internally consistent.\n"
                     + "Audit the entire command script for similar layout issues, not just the reported elements. The reported issues indicate structural patterns that may appear elsewhere.\n\n"
                     + SystemPrompts.GEOGEBRA_CODE_OUTPUT_FORMAT;
@@ -76,14 +75,22 @@ public final class SceneEvaluationPrompts {
     public static String buildLayoutFixFixedContextPrompt(ProblemBundle problemBundle,
                                                           String targetDescription,
                                                           String outputTarget) {
-        String fixedContext = SystemPrompts.buildWorkflowPrefix(
-                "Stage 8 / Scene Evaluation Fix",
-                "Revise " + ("geogebra".equalsIgnoreCase(outputTarget) ? "GeoGebra commands" : "Manim code")
-                        + " after geometry-based scene evaluation",
-                ProblemBundleContextBuilder.displayTitle(problemBundle),
-                targetDescription,
-                outputTarget)
-                + "\n" + ProblemBundleContextBuilder.buildProblemBundleAuthorityContext(problemBundle);
+        return buildLayoutFixFixedContextPrompt(outputTarget);
+    }
+
+    public static String buildLayoutFixFixedContextPrompt(String outputTarget) {
+        boolean geogebra = "geogebra".equalsIgnoreCase(outputTarget);
+        String workflowLabel = geogebra
+                ? "multi-stage GeoGebra construction generation workflow"
+                : "multi-stage Manim animation generation workflow";
+        String fixedContext = "You are working inside a " + workflowLabel + ".\n"
+                + "Current workflow stage: Stage 8 / Scene Evaluation Fix\n"
+                + "Current substep: Revise " + (geogebra ? "GeoGebra commands" : "Manim code")
+                + " after geometry-based scene evaluation\n"
+                + "Output target: " + (geogebra ? "geogebra" : "manim") + "\n"
+                + "Use only the current scene-evaluation repair request, supplied code, storyboard excerpt, "
+                + "and geometry report excerpt as repair context.\n"
+                + "Keep this fixed context stable and task-scoped; do not rely on prior repair dialogue.\n";
         fixedContext = "geogebra".equalsIgnoreCase(outputTarget)
                 ? SystemPrompts.ensureGeoGebraSyntaxManual(fixedContext)
                 : SystemPrompts.ensureManimSyntaxManual(fixedContext);
@@ -93,10 +100,7 @@ public final class SceneEvaluationPrompts {
     public static String buildLayoutFixFixedContextPrompt(String legacyTargetConcept,
                                                           String targetDescription,
                                                           String outputTarget) {
-        return buildLayoutFixFixedContextPrompt(
-                ProblemBundleContextBuilder.legacyBundle(legacyTargetConcept),
-                targetDescription,
-                outputTarget);
+        return buildLayoutFixFixedContextPrompt(outputTarget);
     }
 
     public static String manimLayoutFixUserPrompt(String storyboardJson,

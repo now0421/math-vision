@@ -501,6 +501,10 @@ class PromptModulesTest {
         assertTrue(geogebraFixedContext.contains("GeoGebra syntax reference manual:"));
         assertTrue(manimFixedContext.contains("Current workflow stage: Stage 8 / Scene Evaluation Fix"));
         assertTrue(geogebraFixedContext.contains("Current workflow stage: Stage 8 / Scene Evaluation Fix"));
+        assertFalse(manimFixedContext.contains("ProblemBundle JSON"));
+        assertFalse(geogebraFixedContext.contains("ProblemBundle JSON"));
+        assertFalse(manimFixedContext.contains("Demo concept"));
+        assertFalse(manimFixedContext.contains("Demo description"));
         assertFalse(manimRules.contains("Manim syntax reference manual:"));
         assertFalse(geogebraRules.contains("GeoGebra syntax reference manual:"));
         assertTrue(manimRules.contains("storyboard `safe_area_plan` and `layout_goal` are useful hints"));
@@ -583,6 +587,8 @@ class PromptModulesTest {
 
         assertTrue(manimRenderRules.contains("Treat storyboard scene placement as preferred layout input"));
         assertTrue(manimRenderRules.contains("adjust it when needed to fix runtime failures"));
+        assertTrue(manimRenderRules.contains("one uniform screen scale"));
+        assertTrue(manimRenderRules.contains("convert storyboard radii/metric lengths"));
         assertTrue(geogebraRenderRules.contains("Treat storyboard scene placement as preferred layout input"));
         assertTrue(manimRenderUserPrompt.contains("preferred scene placement for non-derived objects"));
         assertTrue(manimRenderUserPrompt.contains("preferred scene placement"));
@@ -603,11 +609,15 @@ class PromptModulesTest {
         assertTrue(manimScenePrompt.contains("arc_sweep"));
         assertTrue(manimScenePrompt.contains("right_angle_at"));
         assertTrue(manimScenePrompt.contains("ordered boundary refs"));
+        assertTrue(manimScenePrompt.contains("self.world_radius(r)"));
+        assertTrue(manimScenePrompt.contains("uniform unit scale"));
         assertTrue(geogebraScenePrompt.contains("arc_sweep"));
         assertTrue(geogebraScenePrompt.contains("right_angle_at"));
         assertTrue(geogebraScenePrompt.contains("sector, direction, and side"));
         assertTrue(manimReviewPrompt.contains("right_angle_at"));
         assertTrue(manimReviewPrompt.contains("arc_sweep"));
+        assertTrue(manimReviewPrompt.contains("uniform x/y unit scale"));
+        assertTrue(manimReviewPrompt.contains("Circle(radius=...)"));
         assertTrue(geogebraReviewPrompt.contains("right_angle_at"));
         assertTrue(geogebraReviewPrompt.contains("arc_sweep"));
     }

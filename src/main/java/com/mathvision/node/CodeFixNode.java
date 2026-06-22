@@ -169,6 +169,12 @@ public class CodeFixNode extends PocketFlow.Node<CodeFixRequest, CodeFixResult, 
             result.setPostFixStaticAuditSummary(summarizeIssues(postFixIssues));
             if (postFixIssues.isEmpty()) {
                 result.setOutcome(CodeFixResult.FixOutcome.FIXED);
+            } else if (!isGeoGebraTarget(request)
+                    && ManimCodeUtils.hasCoordinateScaleContractViolation(postFixIssues)) {
+                result.setApplied(false);
+                result.setFailureReason("Code fix rejected because it violates the Manim coordinate scale contract: "
+                        + result.getPostFixStaticAuditSummary());
+                result.setOutcome(CodeFixResult.FixOutcome.FAILED);
             } else {
                 result.setOutcome(CodeFixResult.FixOutcome.APPLIED_WITH_ISSUES);
             }

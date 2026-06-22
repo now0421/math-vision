@@ -120,7 +120,9 @@ class CodeGenerationNodeRoutingTest {
         assertNotNull(aiClient.lastUserMessage);
         assertTrue(aiClient.lastUserMessage.contains("Coordinate bounds implementation contract"));
         assertTrue(aiClient.lastUserMessage.contains("coordinate_bounds x=[-4, 4], y=[-2, 3]"));
-        assertTrue(aiClient.lastUserMessage.contains("axes.c2p(...)"));
+        assertTrue(aiClient.lastUserMessage.contains("uniform x/y unit scale"));
+        assertTrue(aiClient.lastUserMessage.contains("same uniform unit scale"));
+        assertTrue(aiClient.lastUserMessage.contains("storyboard radius directly as raw Manim frame units"));
     }
 
     @Test

@@ -111,7 +111,7 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
                 NodeSupport.buildAiRequest(context, userPrompt, ToolSchemas.PROBLEM_BUNDLE),
                 AiRequestUtils.JsonRequestOptions.of(() -> apiCalls.incrementAndGet())
         ).join();
-        return result.getPayload();
+        return requireProblemBundlePayload(result, "ProblemBundle text normalization");
     }
 
     private JsonNode requestMultimodal(ProblemSource source, String rawText) {
@@ -135,7 +135,7 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
                 AiRequest.withTools(messages, ToolSchemas.PROBLEM_BUNDLE),
                 AiRequestUtils.JsonRequestOptions.of(() -> apiCalls.incrementAndGet())
         ).join();
-        return result.getPayload();
+        return requireProblemBundlePayload(result, "ProblemBundle multimodal normalization");
     }
 
     private ProblemBundle reviewProblemBundle(ProblemSource source,
@@ -143,14 +143,14 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
                                               ProblemBundle generatedBundle,
                                               boolean hasAssets) {
         if (generatedBundle == null) {
-            return buildFallbackBundle(source);
+            throw new IllegalStateException("ProblemBundle normalization produced no bundle to review");
         }
 
         log.info("Reviewing normalized ProblemBundle against original source");
         JsonNode payload = hasAssets
                 ? requestMultimodalReview(source, rawText, generatedBundle)
                 : requestTextOnlyReview(rawText, generatedBundle);
-        ProblemBundle reviewedBundle = parseProblemBundle(payload, source, generatedBundle);
+        ProblemBundle reviewedBundle = parseProblemBundle(payload, source);
         log.info("ProblemBundle review complete: id={}, mode={}, diagram.present={}",
                 reviewedBundle.getId(), reviewedBundle.getInputMode(),
                 reviewedBundle.getDiagram() != null && reviewedBundle.getDiagram().isPresent());
@@ -179,7 +179,7 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
                 NodeSupport.buildAiRequest(context, userPrompt, ToolSchemas.PROBLEM_BUNDLE),
                 AiRequestUtils.JsonRequestOptions.of(() -> apiCalls.incrementAndGet())
         ).join();
-        return result.getPayload();
+        return requireProblemBundlePayload(result, "ProblemBundle review");
     }
 
     private JsonNode requestMultimodalReview(ProblemSource source, String rawText, ProblemBundle generatedBundle) {
@@ -207,7 +207,7 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
                 AiRequest.withTools(messages, ToolSchemas.PROBLEM_BUNDLE),
                 AiRequestUtils.JsonRequestOptions.of(() -> apiCalls.incrementAndGet())
         ).join();
-        return result.getPayload();
+        return requireProblemBundlePayload(result, "ProblemBundle multimodal review");
     }
 
     private ImageAttachmentPayload buildImageAttachmentPayload(ProblemSource source) {
@@ -250,24 +250,11 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
     }
 
     private ProblemBundle parseProblemBundle(JsonNode payload, ProblemSource source) {
-        return parseProblemBundle(payload, source, null);
-    }
-
-    private ProblemBundle parseProblemBundle(JsonNode payload, ProblemSource source, ProblemBundle fallbackBundle) {
         if (payload == null || payload.isEmpty()) {
-            if (fallbackBundle != null) {
-                log.warn("ProblemBundle review returned no usable payload, keeping generated bundle");
-                return fallbackBundle;
-            }
-            return buildFallbackBundle(source);
+            throw new IllegalStateException("ProblemBundle LLM response contained no usable payload");
         }
         if (!looksLikeProblemBundlePayload(payload)) {
-            if (fallbackBundle != null) {
-                log.warn("ProblemBundle review returned a non-bundle payload, keeping generated bundle");
-                return fallbackBundle;
-            }
-            log.warn("Normalization response did not look like a ProblemBundle, using fallback");
-            return buildFallbackBundle(source);
+            throw new IllegalStateException("ProblemBundle LLM response did not look like a ProblemBundle");
         }
         try {
             ProblemBundle bundle = JsonUtils.mapper().treeToValue(payload, ProblemBundle.class);
@@ -281,12 +268,7 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
             migrateLegacyDiagramPayload(bundle, payload);
             return bundle;
         } catch (Exception e) {
-            if (fallbackBundle != null) {
-                log.warn("Failed to parse reviewed ProblemBundle, keeping generated bundle: {}", e.getMessage());
-                return fallbackBundle;
-            }
-            log.warn("Failed to parse ProblemBundle from LLM response, using fallback: {}", e.getMessage());
-            return buildFallbackBundle(source);
+            throw new IllegalStateException("Failed to parse ProblemBundle from LLM response: " + e.getMessage(), e);
         }
     }
 
@@ -300,15 +282,12 @@ public class ProblemNormalizationNode extends PocketFlow.Node<ProblemSource, Pro
                 || payload.has("scene_mode");
     }
 
-    private ProblemBundle buildFallbackBundle(ProblemSource source) {
-        ProblemBundle bundle = new ProblemBundle();
-        bundle.setId("fallback");
-        bundle.setTitle(source.getRawText() != null && source.getRawText().length() > 50
-                ? source.getRawText().substring(0, 50) : source.getRawText());
-        bundle.setStatement(source.getRawText());
-        bundle.setInputMode(WorkflowConfig.INPUT_MODE_PROBLEM);
-        bundle.setSceneMode(SceneModeUtils.MODE_2D);
-        return bundle;
+    private JsonNode requireProblemBundlePayload(AiRequestUtils.JsonObjectResult result, String phase) {
+        if (result != null && result.getPayload() != null) {
+            return result.getPayload();
+        }
+        String reason = result != null ? result.getFailureReason() : "AI response was null";
+        throw new IllegalStateException(phase + " did not return usable ProblemBundle JSON: " + reason);
     }
 
     private void migrateLegacyDiagramPayload(ProblemBundle bundle, JsonNode payload) {

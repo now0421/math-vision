@@ -141,7 +141,7 @@ from manim import *
 from manim_voiceover import VoiceoverScene
 from manim_voiceover.services.gtts import GTTSService
 
-VOICEOVER_SPEED = 1.35
+VOICEOVER_SPEED = 1.5
 
 class MainScene(VoiceoverScene):
     def construct(self):

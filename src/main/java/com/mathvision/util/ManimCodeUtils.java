@@ -15,6 +15,8 @@ public final class ManimCodeUtils {
     private ManimCodeUtils() {}
 
     public static final String EXPECTED_SCENE_NAME = "MainScene";
+    private static final String COORDINATE_SCALE_CONTRACT_PREFIX =
+            "Static rule violation: Manim coordinate scale contract";
 
     private static final Pattern MAIN_SCENE_CLASS = Pattern.compile(
             "class\\s+MainScene\\s*\\([^)]*\\b(?:[A-Za-z_][A-Za-z0-9_]*)?Scene\\b[^)]*\\)");
@@ -39,6 +41,15 @@ public final class ManimCodeUtils {
 
     private static final Pattern UNSAFE_SET_POINTS_CALL = Pattern.compile(
             "\\.set_points\\s*\\(");
+
+    private static final Pattern COORDINATE_AXIS_LENGTH_ASSIGNMENT = Pattern.compile(
+            "\\b[xyz]_length\\s*=\\s*[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)\\b");
+    private static final Pattern UNIFORM_X_LENGTH_ASSIGNMENT = Pattern.compile(
+            "\\bx_length\\s*=\\s*self\\._mv_x_length\\b");
+    private static final Pattern UNIFORM_Y_LENGTH_ASSIGNMENT = Pattern.compile(
+            "\\by_length\\s*=\\s*self\\._mv_y_length\\b");
+    private static final Pattern RAW_STORYBOARD_RADIUS_PATTERN = Pattern.compile(
+            "\\b(Circle|Arc)\\s*\\([^\\n#]*\\bradius\\s*=\\s*([-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))\\b");
 
     private static final Pattern TEXT_CONSTRUCTOR_PATTERN = Pattern.compile(
             "\\b(Text|Tex|MathTex)\\s*\\(\\s*(?:r|rf|fr)?([\"'])(.*?)\\2",
@@ -310,7 +321,21 @@ public final class ManimCodeUtils {
                     + " (" + evidence + ")");
         }
 
+        violations.addAll(validateCoordinateScaleContract(manimCode));
+
         return violations;
+    }
+
+    public static boolean hasCoordinateScaleContractViolation(List<String> issues) {
+        if (issues == null || issues.isEmpty()) {
+            return false;
+        }
+        for (String issue : issues) {
+            if (issue != null && issue.startsWith(COORDINATE_SCALE_CONTRACT_PREFIX)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static List<String> validateManimApiWhitelistWarnings(String manimCode) {
@@ -407,6 +432,117 @@ public final class ManimCodeUtils {
             if (UNSAFE_SET_POINTS_CALL.matcher(line).find()) {
                 String fragment = trimmed.length() > 80 ? trimmed.substring(0, 80) + "..." : trimmed;
                 evidences.add("line " + (i + 1) + ": " + fragment);
+            }
+        }
+        return evidences;
+    }
+
+    private static List<String> validateCoordinateScaleContract(String manimCode) {
+        List<String> violations = new ArrayList<>();
+        if (!hasGeneratedCoordinateSkeleton(manimCode)) {
+            return violations;
+        }
+
+        if (!manimCode.contains("self._mv_unit_scale = min(scale_candidates)")) {
+            violations.add(COORDINATE_SCALE_CONTRACT_PREFIX
+                    + ": generated coordinate skeleton must derive one uniform `_mv_unit_scale` from storyboard bounds");
+        }
+        if (!UNIFORM_X_LENGTH_ASSIGNMENT.matcher(manimCode).find()
+                || !UNIFORM_Y_LENGTH_ASSIGNMENT.matcher(manimCode).find()) {
+            violations.add(COORDINATE_SCALE_CONTRACT_PREFIX
+                    + ": generated coordinate skeleton must pass `x_length=self._mv_x_length`"
+                    + " and `y_length=self._mv_y_length` to shared Axes/ThreeDAxes");
+        }
+        if (!manimCode.contains("def world_radius(self, radius):")) {
+            violations.add(COORDINATE_SCALE_CONTRACT_PREFIX
+                    + ": generated coordinate skeleton must keep `world_radius(...)` for storyboard metric lengths");
+        }
+        if (!manimCode.contains("def world_circle(self, x, y, radius, **kwargs):")
+                || !manimCode.contains("def world_arc(self, x, y, radius, start_angle=0.0, angle=TAU, **kwargs):")) {
+            violations.add(COORDINATE_SCALE_CONTRACT_PREFIX
+                    + ": generated coordinate skeleton must keep `world_circle(...)` and `world_arc(...)` helpers");
+        }
+
+        for (String evidence : findSharedAxesRawLengthAssignments(manimCode)) {
+            violations.add(COORDINATE_SCALE_CONTRACT_PREFIX
+                    + ": shared storyboard Axes/ThreeDAxes must not use raw numeric axis lengths"
+                    + " (" + evidence + ")");
+        }
+        for (String evidence : findRawStoryboardRadiusAssignments(manimCode)) {
+            violations.add(COORDINATE_SCALE_CONTRACT_PREFIX
+                    + ": storyboard-scale Circle/Arc radius must use `self.world_radius(...)`,"
+                    + " `self.world_circle(...)`, or `self.world_arc(...)`"
+                    + " (" + evidence + ")");
+        }
+
+        return violations;
+    }
+
+    private static boolean hasGeneratedCoordinateSkeleton(String manimCode) {
+        return manimCode != null
+                && manimCode.contains("self._mv_x_range")
+                && manimCode.contains("self._mv_y_range")
+                && manimCode.contains("self._mv_axes");
+    }
+
+    private static List<String> findSharedAxesRawLengthAssignments(String manimCode) {
+        List<String> evidences = new ArrayList<>();
+        if (manimCode == null || manimCode.isBlank()) {
+            return evidences;
+        }
+        String[] lines = manimCode.split("\\R", -1);
+        boolean inSharedAxesBlock = false;
+        int axesIndent = -1;
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i] != null ? lines[i] : "";
+            String trimmed = line.trim();
+            if (trimmed.startsWith("#") || trimmed.isBlank()) {
+                continue;
+            }
+            if (trimmed.startsWith("self.axes = ")
+                    && (trimmed.contains("Axes(") || trimmed.contains("ThreeDAxes("))) {
+                inSharedAxesBlock = true;
+                axesIndent = countLeadingSpaces(line);
+                continue;
+            }
+            if (inSharedAxesBlock) {
+                int indent = countLeadingSpaces(line);
+                if (indent <= axesIndent && !trimmed.startsWith(".")) {
+                    inSharedAxesBlock = false;
+                    axesIndent = -1;
+                }
+            }
+            if (inSharedAxesBlock && COORDINATE_AXIS_LENGTH_ASSIGNMENT.matcher(trimmed).find()) {
+                evidences.add("line " + (i + 1) + ": " + summarizeSnippet(trimmed));
+            }
+        }
+        return evidences;
+    }
+
+    private static List<String> findRawStoryboardRadiusAssignments(String manimCode) {
+        List<String> evidences = new ArrayList<>();
+        if (manimCode == null || manimCode.isBlank()) {
+            return evidences;
+        }
+        String[] lines = manimCode.split("\\R", -1);
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i] != null ? lines[i] : "";
+            String trimmed = line.trim();
+            if (trimmed.startsWith("#") || trimmed.isBlank()) {
+                continue;
+            }
+            Matcher matcher = RAW_STORYBOARD_RADIUS_PATTERN.matcher(trimmed);
+            while (matcher.find()) {
+                double radius;
+                try {
+                    radius = Double.parseDouble(matcher.group(2));
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+                if (Math.abs(radius) >= 1.0) {
+                    evidences.add("line " + (i + 1) + ": " + summarizeSnippet(trimmed));
+                    break;
+                }
             }
         }
         return evidences;

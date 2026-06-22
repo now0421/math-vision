@@ -352,7 +352,7 @@ public final class SystemPrompts {
 
     /** Manim-specific layout and readability budget. */
     public static final String MANIM_LAYOUT_FRAME_RULES =
-            "Use storyboard `coordinate_bounds` for storyboard world-coordinate geometry, mapping it into the Manim render frame with Axes/NumberPlane helpers instead of treating large world values as raw scene coordinates.\n"
+            "Use storyboard `coordinate_bounds` for storyboard world-coordinate geometry, mapping it into the Manim render frame with Axes/NumberPlane helpers instead of treating large world values as raw scene coordinates. Keep x/y storyboard world units on one uniform screen scale so equal lengths render equally, and convert storyboard radii/metric lengths through that same scale before passing them to Circle, Arc, sectors, braces, or similar geometry.\n"
                     + "Reserve a readable top title band and a bottom note band instead of packing the whole frame.\n"
                     + "Keep simultaneously active foreground elements around 6 to 8 when possible; brief bursts up to about 10 are acceptable when staging and hierarchy stay clear.\n"
                     + "If a scene would have more than 12 simultaneously visible foreground elements, decide which objects still support upcoming reasoning: dim context objects, group or scale supporting elements, or exit completed elements rather than showing everything at full strength.\n"
@@ -610,7 +610,7 @@ public final class SystemPrompts {
                     + "- If ProblemBundle scene_mode is 3d, use `ThreeDScene`, follow `camera_plan`, and judge layout in projected screen space.\n"
                     + "- Use `screen_overlay_plan` with `add_fixed_in_frame_mobjects` for fixed explanatory text.\n"
                     + "- Respect `safe_area_plan` and dynamic attachment for labels on moving objects.\n"
-                    + "- Use storyboard `coordinate_bounds` as the world-coordinate range for Axes/NumberPlane helpers, and place absolute storyboard objects with `axes.c2p(x, y)` or an equivalent mapping.\n"
+                    + "- Use storyboard `coordinate_bounds` as the world-coordinate range for Axes/NumberPlane helpers, keep x/y storyboard units at one uniform screen scale, place absolute storyboard objects with `axes.c2p(x, y)` or an equivalent mapping, and convert storyboard radii/metric lengths through the same scale.\n"
                     + "- Read structured attachment constraints such as `label_for`, `anchored_to`, and `fixed_offset_from` literally: if an object follows a moving anchor, implement it with `always_redraw(...)` or an updater.\n"
                     + "- Preserve scene beats, scene exits, and overlay zones from the storyboard instead of compressing everything into one crowded final frame.\n"
                     + MANIM_MANUAL_ONLY_RULES
