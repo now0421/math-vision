@@ -99,6 +99,16 @@ class PromptModulesTest {
     }
 
     @Test
+    void codeEvaluationRevisionPromptUsesTargetedManimEdits() {
+        String revisionRules = CodeEvaluationPrompts.buildRevisionRulesPrompt("manim");
+
+        assertFalse(revisionRules.contains("Rewrite the full code."));
+        assertTrue(revisionRules.contains("Apply the smallest necessary corrections to the current code"));
+        assertTrue(revisionRules.contains("preserve unrelated code"));
+        assertTrue(revisionRules.contains("return the complete corrected file after making only those targeted edits"));
+    }
+
+    @Test
     void codeFixPromptsPreserveOriginalManimSceneBaseClass() {
         String revisionRules = CodeEvaluationPrompts.buildRevisionRulesPrompt("manim");
         String renderRules = RenderFixPrompts.buildRulesPrompt("manim");

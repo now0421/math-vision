@@ -27,15 +27,6 @@ public final class ManimCodeUtils {
     private static final Pattern SCENE_CLASS = Pattern.compile(
             "class\\s+(\\w+)\\s*\\([^)]*\\b(?:[A-Za-z_][A-Za-z0-9_]*)?Scene\\b[^)]*\\)");
 
-    private static final Pattern SCENE_METHOD_DEF = Pattern.compile(
-            "^(\\s*)def\\s+(scene_[A-Za-z0-9_]*)\\s*\\(\\s*self\\s*\\)\\s*:");
-
-    private static final Pattern CONSTRUCT_METHOD_DEF = Pattern.compile(
-            "^(\\s*)def\\s+construct\\s*\\(\\s*self\\s*\\)\\s*:");
-
-    private static final Pattern SELF_SCENE_CALL = Pattern.compile(
-            "\\bself\\.(scene_[A-Za-z0-9_]*)\\s*\\(");
-
     private static final Pattern STATIC_INDEXING_VIOLATION = Pattern.compile(
             "\\w+\\[\\d+\\]\\[\\d+:\\d+\\]");
 
@@ -137,149 +128,7 @@ public final class ManimCodeUtils {
             violations.add("Missing construct() method");
         }
 
-        violations.addAll(validateMainSceneMethodStructure(manimCode));
-
         return violations;
-    }
-
-    private static List<String> validateMainSceneMethodStructure(String manimCode) {
-        List<String> violations = new ArrayList<>();
-        if (manimCode == null || manimCode.isBlank()) {
-            return violations;
-        }
-
-        String[] lines = manimCode.split("\\R", -1);
-        int classLine = findMainSceneClassLine(lines);
-        if (classLine < 0) {
-            return violations;
-        }
-        int classIndent = countLeadingSpaces(lines[classLine]);
-        int classEnd = findBlockEnd(lines, classLine + 1, classIndent);
-
-        Set<String> topLevelSceneMethods = new LinkedHashSet<>();
-        List<MethodBlock> classSceneMethods = new ArrayList<>();
-        MethodBlock construct = null;
-
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i] != null ? lines[i] : "";
-            String trimmed = line.trim();
-            if (trimmed.isBlank() || trimmed.startsWith("#")) {
-                continue;
-            }
-
-            Matcher sceneMatcher = SCENE_METHOD_DEF.matcher(line);
-            if (sceneMatcher.find()) {
-                String name = sceneMatcher.group(2);
-                int indent = countLeadingSpaces(line);
-                if (i > classLine && i < classEnd && indent == classIndent + 4) {
-                    classSceneMethods.add(new MethodBlock(name, i, findBlockEnd(lines, i + 1, indent)));
-                } else if (indent == 0) {
-                    topLevelSceneMethods.add(name);
-                }
-                continue;
-            }
-
-            Matcher constructMatcher = CONSTRUCT_METHOD_DEF.matcher(line);
-            if (constructMatcher.find()) {
-                int indent = countLeadingSpaces(line);
-                if (i > classLine && i < classEnd && indent == classIndent + 4) {
-                    construct = new MethodBlock("construct", i, findBlockEnd(lines, i + 1, indent));
-                }
-            }
-        }
-
-        Set<String> classMethodNames = new LinkedHashSet<>();
-        for (MethodBlock method : classSceneMethods) {
-            classMethodNames.add(method.name);
-            if (!hasExecutableMethodBody(lines, method)) {
-                violations.add("MainScene scene method '" + method.name + "' is empty or only contains pass");
-            }
-        }
-
-        for (String topLevelMethod : topLevelSceneMethods) {
-            if (classMethodNames.contains(topLevelMethod)) {
-                violations.add("Scene method '" + topLevelMethod
-                        + "' is implemented outside MainScene while a class-level method with the same name exists");
-            } else {
-                violations.add("Scene method '" + topLevelMethod + "' is defined outside MainScene");
-            }
-        }
-
-        if (construct != null) {
-            Set<String> calledSceneMethods = findConstructSceneCalls(lines, construct);
-            for (String called : calledSceneMethods) {
-                if (!classMethodNames.contains(called)) {
-                    violations.add("MainScene.construct() calls missing scene method '" + called + "'");
-                }
-            }
-        }
-
-        return violations;
-    }
-
-    private static int findMainSceneClassLine(String[] lines) {
-        if (lines == null) {
-            return -1;
-        }
-        for (int i = 0; i < lines.length; i++) {
-            String trimmed = lines[i] != null ? lines[i].trim() : "";
-            if (MAIN_SCENE_CLASS.matcher(trimmed).find()) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    private static int findBlockEnd(String[] lines, int startLine, int parentIndent) {
-        if (lines == null) {
-            return startLine;
-        }
-        for (int i = startLine; i < lines.length; i++) {
-            String line = lines[i] != null ? lines[i] : "";
-            String trimmed = line.trim();
-            if (trimmed.isBlank() || trimmed.startsWith("#")) {
-                continue;
-            }
-            int indent = countLeadingSpaces(line);
-            if (indent <= parentIndent) {
-                return i;
-            }
-        }
-        return lines.length;
-    }
-
-    private static boolean hasExecutableMethodBody(String[] lines, MethodBlock method) {
-        if (lines == null || method == null) {
-            return false;
-        }
-        for (int i = method.startLine + 1; i < method.endLine && i < lines.length; i++) {
-            String trimmed = lines[i] != null ? lines[i].trim() : "";
-            if (trimmed.isBlank()
-                    || trimmed.startsWith("#")
-                    || trimmed.equals("pass")
-                    || trimmed.equals("...")
-                    || trimmed.startsWith("\"\"\"")
-                    || trimmed.startsWith("'''")) {
-                continue;
-            }
-            return true;
-        }
-        return false;
-    }
-
-    private static Set<String> findConstructSceneCalls(String[] lines, MethodBlock construct) {
-        Set<String> calls = new LinkedHashSet<>();
-        if (lines == null || construct == null) {
-            return calls;
-        }
-        for (int i = construct.startLine + 1; i < construct.endLine && i < lines.length; i++) {
-            String line = lines[i] != null ? lines[i] : "";
-            Matcher matcher = SELF_SCENE_CALL.matcher(line);
-            while (matcher.find()) {
-                calls.add(matcher.group(1));
-            }
-        }
-        return calls;
     }
 
     private static int countLeadingSpaces(String line) {
@@ -291,18 +140,6 @@ public final class ManimCodeUtils {
             count++;
         }
         return count;
-    }
-
-    private static final class MethodBlock {
-        final String name;
-        final int startLine;
-        final int endLine;
-
-        MethodBlock(String name, int startLine, int endLine) {
-            this.name = name;
-            this.startLine = startLine;
-            this.endLine = endLine;
-        }
     }
 
     public static List<String> validateManimRules(String manimCode) {

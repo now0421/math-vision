@@ -83,11 +83,8 @@ public final class NodeSupport {
                                            String userPrompt,
                                            String toolsJson) {
         List<NodeConversationContext.Message> snapshot = context != null
-                ? context.snapshotWithUserMessage(userPrompt)
+                ? context.snapshotWithUserMessage(userPrompt, toolsJson)
                 : List.of(new NodeConversationContext.Message("user", userPrompt));
-        if (context != null) {
-            NodeConversationContext.trimSnapshotToFitBudget(snapshot, context.getPromptInputBudgetTokens());
-        }
         return AiRequest.withTools(toAiMessages(snapshot), toolsJson);
     }
 
@@ -100,7 +97,7 @@ public final class NodeSupport {
             requestSnapshot.addAll(snapshot);
         }
         requestSnapshot.add(new NodeConversationContext.Message("user", userPrompt));
-        NodeConversationContext.trimSnapshotToFitBudget(requestSnapshot, maxInputTokens);
+        NodeConversationContext.trimSnapshotToFitBudget(requestSnapshot, maxInputTokens, toolsJson);
         return AiRequest.withTools(toAiMessages(requestSnapshot), toolsJson);
     }
 

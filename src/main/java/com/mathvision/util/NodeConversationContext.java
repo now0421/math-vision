@@ -171,6 +171,18 @@ public class NodeConversationContext {
         return snapshot;
     }
 
+    /**
+     * Creates a snapshot for a concrete outgoing request and trims it against
+     * the full request payload budget, including non-message payload such as
+     * tool schemas.
+     */
+    public synchronized List<Message> snapshotWithUserMessage(String userContent,
+                                                              String requestPayloadBudgetText) {
+        List<Message> snapshot = snapshotWithUserMessage(userContent);
+        trimSnapshotToFitBudget(snapshot, maxInputTokens, requestPayloadBudgetText);
+        return snapshot;
+    }
+
     public synchronized TurnReservation reserveTurn(String userContent) {
         return new TurnReservation(nextTurnSequence++, snapshotWithUserMessage(userContent));
     }
@@ -371,8 +383,15 @@ public class NodeConversationContext {
      * the last user message.
      */
     public static void trimSnapshotToFitBudget(List<Message> snapshot, int maxInputTokens) {
+        trimSnapshotToFitBudget(snapshot, maxInputTokens, "");
+    }
+
+    public static void trimSnapshotToFitBudget(List<Message> snapshot,
+                                               int maxInputTokens,
+                                               String requestPayloadBudgetText) {
         int effectiveBudget = (int) (maxInputTokens * SAFETY_MARGIN);
-        if (estimateTokens(snapshot) <= effectiveBudget) {
+        int requestPayloadTokens = TokenEstimator.estimateTokens(requestPayloadBudgetText);
+        if (estimateTokens(snapshot) + requestPayloadTokens <= effectiveBudget) {
             return;
         }
 
@@ -382,7 +401,7 @@ public class NodeConversationContext {
             firstNonSystem++;
         }
 
-        while (estimateTokens(snapshot) > effectiveBudget) {
+        while (estimateTokens(snapshot) + requestPayloadTokens > effectiveBudget) {
             int nonSystemCount = snapshot.size() - firstNonSystem;
             if (nonSystemCount <= 1) {
                 break;
@@ -394,13 +413,15 @@ public class NodeConversationContext {
             }
         }
 
-        int totalTokens = estimateTokens(snapshot);
+        int messageTokens = estimateTokens(snapshot);
+        int totalTokens = messageTokens + requestPayloadTokens;
         if (totalTokens > effectiveBudget) {
             throw new IllegalStateException(String.format(
                     "Prompt snapshot exceeds input budget after rolling context trim: ~%d tokens > budget %d. "
                             + "Refusing to truncate the current user prompt; reduce fixed context, scene payload, "
-                            + "manual size, or configured output token reserve.",
-                    totalTokens, effectiveBudget));
+                            + "tool schema size, manual size, or configured output token reserve. "
+                            + "(messages ~%d, request payload ~%d)",
+                    totalTokens, effectiveBudget, messageTokens, requestPayloadTokens));
         }
     }
 

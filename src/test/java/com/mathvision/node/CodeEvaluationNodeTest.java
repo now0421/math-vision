@@ -131,6 +131,45 @@ class CodeEvaluationNodeTest {
     }
 
     @Test
+    void codeOnlyThreeDObjectReferenceDoesNotCreateStaticThreeDSceneFinding() {
+        QueueAiClient aiClient = new QueueAiClient();
+        aiClient.toolResponses.add(reviewResponse(true, 8, 8, 8, 2, 1,
+                "The inactive 3D branch does not block this 2D voiceover scene.",
+                "None.",
+                "Proceed to render."));
+
+        Map<String, Object> ctx = buildContext(
+                aiClient,
+                String.join("\n",
+                        "from manim import *",
+                        "from manim_voiceover import VoiceoverScene",
+                        "",
+                        "class MainScene(VoiceoverScene):",
+                        "    def construct(self):",
+                        "        self._mv_is_3d = False",
+                        "        if self._mv_is_3d:",
+                        "            axes = ThreeDAxes()",
+                        "        else:",
+                        "            axes = Axes(x_range=[-1, 1, 1], y_range=[-1, 1, 1], tips=False)",
+                        "        self.add(axes)"),
+                buildNarrative()
+        );
+
+        CodeEvaluationNode node = new CodeEvaluationNode();
+        CodeEvaluationNode.CodeEvaluationInput input = node.prep(ctx);
+        CodeEvaluationResult result = node.exec(input);
+
+        assertTrue(result.isApprovedForRender());
+        assertNotNull(aiClient.lastUserMessage);
+        assertEquals(1, result.getInitialStaticAnalysis().getThreeDObjectCount());
+        assertFalse(result.getInitialStaticAnalysis().getFindings().stream()
+                .anyMatch(finding -> "three_d_scene_required".equals(finding.getRuleId())));
+        assertFalse(result.getInitialStaticAnalysis().getFindings().stream()
+                .anyMatch(finding -> finding.getSummary().contains(
+                        "The code creates 3D objects but does not declare a `ThreeDScene`.")));
+    }
+
+    @Test
     void fallbackReviewAllowsMovingThreeDSceneWithoutOverlayFinding() {
         Map<String, Object> ctx = buildContext(
                 new FailingReviewAiClient(),

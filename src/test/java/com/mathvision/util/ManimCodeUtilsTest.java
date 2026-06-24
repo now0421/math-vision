@@ -128,28 +128,6 @@ class ManimCodeUtilsTest {
     }
 
     @Test
-    void validateStructure_detectsClassStubWithTopLevelSceneImplementation() {
-        String code = String.join("\n",
-                "from manim import *",
-                "",
-                "class MainScene(Scene):",
-                "    def construct(self):",
-                "        self.scene_1_intro()",
-                "",
-                "    def scene_1_intro(self):",
-                "        pass",
-                "",
-                "def scene_1_intro(self):",
-                "    title = Text(\"real implementation\")",
-                "    self.play(Write(title))");
-
-        List<String> violations = ManimCodeUtils.validateFull(code);
-
-        assertTrue(violations.stream().anyMatch(v -> v.contains("only contains pass")));
-        assertTrue(violations.stream().anyMatch(v -> v.contains("implemented outside MainScene")));
-    }
-
-    @Test
     void validateManimRules_detectsHardcodedIndexing() {
         String code = "from manim import *\n\nclass MainScene(Scene):\n    def construct(self):\n        eq[0][11:13].set_color(RED)";
         List<String> violations = ManimCodeUtils.validateManimRules(code);

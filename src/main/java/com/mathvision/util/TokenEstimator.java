@@ -3,14 +3,17 @@ package com.mathvision.util;
 /**
  * Heuristic token estimator for input budget management.
  *
- * Uses a simple character-based heuristic: ASCII non-whitespace characters
- * count as ~0.25 tokens, non-ASCII non-whitespace characters count as ~0.5 tokens.
+ * Uses a conservative character-based heuristic for provider-side token limits.
+ * This intentionally overestimates mixed Chinese/JSON/tool-schema prompts,
+ * because underestimation causes provider-side "prompt too long" failures.
  */
 public final class TokenEstimator {
 
     private static final int TOKEN_UNIT_DIVISOR = 4;
-    private static final int ASCII_TOKEN_UNITS = 1;
-    private static final int NON_ASCII_TOKEN_UNITS = 2;
+    private static final int WHITESPACE_TOKEN_UNITS = 1;
+    private static final int ASCII_TEXT_TOKEN_UNITS = 2;
+    private static final int ASCII_SYMBOL_TOKEN_UNITS = 3;
+    private static final int NON_ASCII_TOKEN_UNITS = 4;
 
     private TokenEstimator() {}
 
@@ -22,11 +25,29 @@ public final class TokenEstimator {
         int units = 0;
         for (int i = 0; i < text.length();) {
             int codePoint = text.codePointAt(i);
-            if (!Character.isWhitespace(codePoint)) {
-                units += codePoint <= 0x7F ? ASCII_TOKEN_UNITS : NON_ASCII_TOKEN_UNITS;
-            }
+            units += tokenUnits(codePoint);
             i += Character.charCount(codePoint);
         }
         return (units + TOKEN_UNIT_DIVISOR - 1) / TOKEN_UNIT_DIVISOR;
+    }
+
+    private static int tokenUnits(int codePoint) {
+        if (Character.isWhitespace(codePoint)) {
+            return WHITESPACE_TOKEN_UNITS;
+        }
+        if (codePoint > 0x7F) {
+            return NON_ASCII_TOKEN_UNITS;
+        }
+        return isAsciiText(codePoint)
+                ? ASCII_TEXT_TOKEN_UNITS
+                : ASCII_SYMBOL_TOKEN_UNITS;
+    }
+
+    private static boolean isAsciiText(int codePoint) {
+        return (codePoint >= 'a' && codePoint <= 'z')
+                || (codePoint >= 'A' && codePoint <= 'Z')
+                || (codePoint >= '0' && codePoint <= '9')
+                || codePoint == '_'
+                || codePoint == '-';
     }
 }

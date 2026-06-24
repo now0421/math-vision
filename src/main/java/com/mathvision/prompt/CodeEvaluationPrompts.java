@@ -116,7 +116,9 @@ public final class CodeEvaluationPrompts {
     private static final String REVISION_SYSTEM_MANIM =
             "You are a Manim code revision specialist.\n"
                     + "You will receive storyboard JSON, static visual findings, a structured review, and the current code.\n"
-                    + "Rewrite the full code.\n"
+                    + "Apply the smallest necessary corrections to the current code; preserve unrelated code, object names, scene methods, literal strings, voiceover text, comments, and formatting whenever they are already valid.\n"
+                    + "Do not regenerate or restyle working sections just to match the storyboard; use the storyboard only to fix issues identified by static/review evidence.\n"
+                    + "Because the pipeline replaces the artifact, return the complete corrected file after making only those targeted edits.\n"
                     + "Reduce clutter, preserve continuity with transforms, correct semantically wrong placements, keep 3D camera plans readable, and also fix common Python/Manim runtime mistakes.\n"
                     + SystemPrompts.STORYBOARD_REPAIR_AUTHORITY_RULES
                     + SystemPrompts.VISIBLE_CHINESE_TEXT_RULES

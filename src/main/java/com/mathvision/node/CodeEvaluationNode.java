@@ -297,9 +297,6 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
             }
         }
 
-        if (!geoGebraTarget) {
-            addCodeDrivenFindings(analysis);
-        }
         addStaticValidationFindings(analysis, generatedCode);
         return analysis;
     }
@@ -591,14 +588,6 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
             String trimmed = warning.trim();
             addFinding(analysis, "api_whitelist_warning", "warn", trimmed, trimmed);
         }
-    }
-
-    private boolean hasRule(StaticAnalysis analysis, String ruleId) {
-        if (analysis == null || analysis.getFindings() == null) {
-            return false;
-        }
-        return analysis.getFindings().stream()
-                .anyMatch(finding -> ruleId.equalsIgnoreCase(finding.getRuleId()));
     }
 
     private boolean hasFailedRuleChecks(ReviewSnapshot review) {
@@ -934,21 +923,6 @@ public class CodeEvaluationNode extends PocketFlow.Node<CodeEvaluationNode.CodeE
                     String.format(Locale.ROOT,
                             "continuity_scenes=%d, transform_like=%d, fade_in_out=%d",
                             continuityScenes, transformLike, fadeCycles));
-        }
-    }
-
-    private void addCodeDrivenFindings(StaticAnalysis analysis) {
-        if (NodeSupport.isGeoGebraTarget(workflowConfig)) {
-            return;
-        }
-
-        if (analysis.getThreeDObjectCount() > 0 && !analysis.isThreeDScene()
-                && !hasRule(analysis, "three_d_scene_required")) {
-            addFinding(analysis, "three_d_scene_required", "fail",
-                    "The code creates 3D objects but does not declare a `ThreeDScene`.",
-                    String.format(Locale.ROOT,
-                            "three_d_objects=%d, code_uses_threedscene=%s",
-                            analysis.getThreeDObjectCount(), analysis.isThreeDScene()));
         }
     }
 
