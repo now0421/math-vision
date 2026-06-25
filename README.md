@@ -80,16 +80,17 @@ mathvision [target-input] [options]
 | `--asset FILE` | Alias for `--image`. |
 | `--from-graph FILE or DIR` | Resume from stage 2 by loading `01_knowledge_graph.json` or its parent directory. Writes later outputs beside the graph. |
 | `--from-code FILE or DIR` | Resume from stage 6 by loading generated Manim/GeoGebra code or its parent directory. Writes later outputs beside the code. |
+| `--from-artifact FILE or DIR` | Detect a `00..08` workflow artifact stage, load same-directory prior artifacts, and continue with the next stage. Aliases: `--resume-from`, `--continue-from`. |
 | `--normalize-only` | Run stage 0 only. Aliases: `--normalization-only`, `--problem-normalization-only`. |
 | `--exploration-only` | Run stages 0-1 and stop after `01_knowledge_graph.json`. |
 | `--to-visual-design` | Run stages 0-3 and stop after visual design. |
 | `--to-storyboard-validation` | Run stages 0-4 and stop after storyboard validation. |
 | `--workflow-config FILE` | Load workflow settings from a JSON file instead of the classpath default. |
 | `--model-config FILE` | Load model catalog/provider settings from a JSON file instead of the classpath default. |
-| `--output DIR` | Write outputs to a specific directory. Ignored with `--from-graph` and `--from-code`. |
+| `--output DIR` | Write outputs to a specific directory. Ignored with `--from-graph`, `--from-code`, and `--from-artifact`. |
 | `-h`, `--help` | Show CLI help. |
 
-Only one partial-run option can be used at a time. `--from-graph` and `--from-code` are mutually exclusive.
+Only one partial-run option can be used at a time. `--from-graph`, `--from-code`, and `--from-artifact` are mutually exclusive. `--from-artifact` also cannot be combined with partial-run options.
 
 ## Configuration
 

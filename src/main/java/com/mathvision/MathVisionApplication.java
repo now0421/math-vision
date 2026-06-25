@@ -7,6 +7,7 @@ import com.mathvision.model.CodeResult;
 import com.mathvision.model.CodeFixTraceEntry;
 import com.mathvision.model.CodeFixTraceReport;
 import com.mathvision.model.KnowledgeGraph;
+import com.mathvision.model.Narrative;
 import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.ProblemDiagram;
 import com.mathvision.model.ProblemSource;
@@ -92,6 +93,8 @@ public class MathVisionApplication {
         String outputDirOverride = null;
         String fromGraphPath = null;
         String fromCodePath = null;
+        String fromArtifactPath = null;
+        ArtifactResume artifactResume = null;
         ProblemInput problemInput = null;
         boolean normalizeOnly = false;
         boolean explorationOnly = false;
@@ -116,6 +119,11 @@ public class MathVisionApplication {
                     break;
                 case "--from-code":
                     fromCodePath = requireOptionValue(args, ++i, "--from-code");
+                    break;
+                case "--from-artifact":
+                case "--resume-from":
+                case "--continue-from":
+                    fromArtifactPath = requireOptionValue(args, ++i, args[i - 1]);
                     break;
                 case "--problem-file":
                     problemFilePath = requireOptionValue(args, ++i, "--problem-file");
@@ -162,8 +170,18 @@ public class MathVisionApplication {
             return;
         }
 
-        if (normalizeOnly && (fromGraphPath != null || fromCodePath != null)) {
-            log.error("--normalize-only cannot be combined with --from-graph or --from-code.");
+        int resumeFlagCount = (fromGraphPath != null ? 1 : 0)
+                + (fromCodePath != null ? 1 : 0)
+                + (fromArtifactPath != null ? 1 : 0);
+        if (resumeFlagCount > 1) {
+            log.error("Use only one resume option: --from-graph, --from-code, or --from-artifact.");
+            printUsage();
+            System.exit(1);
+            return;
+        }
+
+        if (fromArtifactPath != null && partialRunFlagCount > 0) {
+            log.error("--from-artifact cannot be combined with partial-run options.");
             printUsage();
             System.exit(1);
             return;
@@ -172,13 +190,6 @@ public class MathVisionApplication {
         if (problemFilePath != null) {
             problemInput = loadProblemInputFromFile(problemFilePath);
             rawInput = problemInput.rawText;
-        }
-
-        if (fromGraphPath != null && fromCodePath != null) {
-            log.error("Use either --from-graph or --from-code, not both.");
-            printUsage();
-            System.exit(1);
-            return;
         }
 
         // Load pre-built knowledge graph if --from-graph is specified
@@ -225,8 +236,21 @@ public class MathVisionApplication {
             }
         }
 
+        if (fromArtifactPath != null) {
+            try {
+                artifactResume = loadArtifactResume(fromArtifactPath);
+            } catch (RuntimeException e) {
+                log.error("{}", e.getMessage());
+                System.exit(1);
+                return;
+            }
+            if (rawInput == null) {
+                rawInput = artifactResume.rawInput();
+            }
+        }
+
         if (rawInput == null) {
-            log.error("No target input provided. Specify a target input, use --problem-file, or use --from-graph/--from-code.");
+            log.error("No target input provided. Specify a target input, use --problem-file, or use --from-graph/--from-code/--from-artifact.");
             printUsage();
             System.exit(1);
             return;
@@ -245,6 +269,9 @@ public class MathVisionApplication {
         } else if (preloadedCodeResult != null) {
             // Always write outputs alongside the supplied code
             outputDir = codeOutputDir;
+        } else if (artifactResume != null) {
+            // Always write resumed outputs alongside the supplied artifact.
+            outputDir = artifactResume.outputDir();
         } else if (outputDirOverride != null) {
             outputDir = Path.of(outputDirOverride);
         } else {
@@ -270,6 +297,13 @@ public class MathVisionApplication {
         }
         if (preloadedCodeResult != null) {
             log.info("  Stage 0-5: [skipped - loaded from {}]", fromCodePath);
+        }
+        if (artifactResume != null) {
+            log.info("  {}: [skipped - loaded from {}]",
+                    artifactResume.skippedStagesLabel(),
+                    artifactResume.artifactPath());
+            log.info("  Resume:   continue after {}",
+                    artifactResume.completedStageLabel());
         }
         log.info("  Mode:     {}", config.getInputMode());
         log.info("  Target:   {}", config.getOutputTarget());
@@ -325,6 +359,9 @@ public class MathVisionApplication {
                     ? preloadedProblemBundle
                     : buildDegradedBundle(rawInput, config, true));
         }
+        if (artifactResume != null) {
+            artifactResume.applyTo(ctx, config);
+        }
 
         // Create and run workflow
         PocketFlow.Flow<?> flow;
@@ -344,6 +381,14 @@ public class MathVisionApplication {
             flow = config.isRenderEnabled()
                     ? WorkflowFlow.createFromCode()
                     : WorkflowFlow.createFromCodeWithoutRender();
+        } else if (artifactResume != null) {
+            try {
+                flow = WorkflowFlow.createAfterStage(artifactResume.completedStage(), config);
+            } catch (IllegalArgumentException e) {
+                log.error("{}", e.getMessage());
+                System.exit(1);
+                return;
+            }
         } else if (config.isRenderEnabled()) {
             flow = WorkflowFlow.create(config);
         } else {
@@ -624,6 +669,405 @@ public class MathVisionApplication {
         breakdown.put("render_related_code_fix", renderStageCalls);
         breakdown.put("scene_evaluation", sceneEvaluationCalls);
         return breakdown;
+    }
+
+    private static ArtifactResume loadArtifactResume(String fromArtifactPath) {
+        Path artifactPath = resolveResumeArtifactPath(fromArtifactPath);
+        ArtifactKind kind = identifyArtifactKind(artifactPath);
+        if (kind.completedStage() >= 8) {
+            throw new IllegalArgumentException("Artifact " + artifactPath.getFileName()
+                    + " is a stage 8 output; no downstream workflow stage remains to run.");
+        }
+
+        Path outputDir = artifactPath.toAbsolutePath().normalize().getParent();
+        ArtifactResume resume = new ArtifactResume(artifactPath, outputDir, kind);
+
+        resume.problemSource = FileOutputService.loadProblemSource(outputDir);
+        resume.problemBundle = FileOutputService.loadProblemBundle(outputDir);
+        if (kind.completedStage() <= 4 && resume.problemBundle == null) {
+            throw new IllegalArgumentException("Cannot resume after " + kind.stageLabel()
+                    + " without " + FileOutputService.PROBLEM_BUNDLE_FILE
+                    + " in " + outputDir);
+        }
+
+        loadResumeGraph(resume);
+        loadResumeNarrative(resume);
+        loadResumeCode(resume);
+        loadResumeCodeEvaluation(resume);
+        loadResumeRenderResult(resume);
+        return resume;
+    }
+
+    private static Path resolveResumeArtifactPath(String fromArtifactPath) {
+        Path path = Path.of(fromArtifactPath).toAbsolutePath().normalize();
+        if (!Files.exists(path)) {
+            throw new IllegalArgumentException("Artifact not found: " + path);
+        }
+        if (Files.isDirectory(path)) {
+            Path artifact = firstExistingOptionalPath(path,
+                    FileOutputService.SCENE_EVALUATION_FILE,
+                    FileOutputService.RENDER_RESULT_FILE,
+                    FileOutputService.GEOGEBRA_FINAL_COMMANDS_FILE,
+                    FileOutputService.MANIM_FINAL_CODE_FILE,
+                    FileOutputService.LEGACY_GEOGEBRA_FINAL_COMMANDS_FILE,
+                    FileOutputService.LEGACY_MANIM_FINAL_CODE_FILE,
+                    FileOutputService.CODE_EVALUATION_FILE,
+                    FileOutputService.GEOGEBRA_REVIEWED_COMMANDS_FILE,
+                    FileOutputService.MANIM_REVIEWED_CODE_FILE,
+                    FileOutputService.CODE_RESULT_FILE,
+                    FileOutputService.GEOGEBRA_COMMANDS_FILE,
+                    FileOutputService.MANIM_CODE_FILE,
+                    FileOutputService.LEGACY_GEOGEBRA_COMMANDS_FILE,
+                    FileOutputService.LEGACY_MANIM_CODE_FILE,
+                    FileOutputService.VALIDATED_STORYBOARD_FILE,
+                    FileOutputService.STORYBOARD_VALIDATION_REPORT_FILE,
+                    FileOutputService.VISUAL_NARRATIVE_FILE,
+                    FileOutputService.MATH_ENRICHED_GRAPH_FILE,
+                    FileOutputService.KNOWLEDGE_GRAPH_FILE,
+                    FileOutputService.LEGACY_KNOWLEDGE_GRAPH_FILE,
+                    FileOutputService.PROBLEM_BUNDLE_FILE,
+                    FileOutputService.PROBLEM_SOURCE_FILE);
+            if (artifact == null) {
+                throw new IllegalArgumentException("No resumable MathVision artifact found in directory: " + path);
+            }
+            return artifact;
+        }
+        if (!Files.isRegularFile(path)) {
+            throw new IllegalArgumentException("Artifact is not a regular file: " + path);
+        }
+        return path;
+    }
+
+    private static ArtifactKind identifyArtifactKind(Path artifactPath) {
+        String name = lowerFileName(artifactPath);
+        if (equalsAny(name, FileOutputService.PROBLEM_SOURCE_FILE, FileOutputService.PROBLEM_BUNDLE_FILE)) {
+            return new ArtifactKind(0, "Stage 0 Problem Normalization");
+        }
+        if (equalsAny(name,
+                FileOutputService.KNOWLEDGE_GRAPH_FILE,
+                FileOutputService.KNOWLEDGE_GRAPH_PRETTY_FILE,
+                FileOutputService.LEGACY_KNOWLEDGE_GRAPH_FILE)) {
+            return new ArtifactKind(1, "Stage 1 Exploration");
+        }
+        if (equalsAny(name, FileOutputService.MATH_ENRICHED_GRAPH_FILE)) {
+            return new ArtifactKind(2, "Stage 2 Mathematical Enrichment");
+        }
+        if (equalsAny(name, FileOutputService.VISUAL_NARRATIVE_FILE)) {
+            return new ArtifactKind(3, "Stage 3 Visual Design");
+        }
+        if (equalsAny(name,
+                FileOutputService.VALIDATED_STORYBOARD_FILE,
+                FileOutputService.STORYBOARD_VALIDATION_REPORT_FILE)) {
+            return new ArtifactKind(4, "Stage 4 Storyboard Validation");
+        }
+        if (equalsAny(name,
+                FileOutputService.CODE_RESULT_FILE,
+                FileOutputService.MANIM_CODE_FILE,
+                FileOutputService.GEOGEBRA_COMMANDS_FILE,
+                FileOutputService.LEGACY_MANIM_CODE_FILE,
+                FileOutputService.LEGACY_GEOGEBRA_COMMANDS_FILE)) {
+            return new ArtifactKind(5, "Stage 5 Code Generation");
+        }
+        if (equalsAny(name,
+                FileOutputService.CODE_EVALUATION_FILE,
+                FileOutputService.MANIM_REVIEWED_CODE_FILE,
+                FileOutputService.GEOGEBRA_REVIEWED_COMMANDS_FILE)) {
+            return new ArtifactKind(6, "Stage 6 Code Evaluation");
+        }
+        if (equalsAny(name,
+                FileOutputService.RENDER_RESULT_FILE,
+                FileOutputService.MANIM_FINAL_CODE_FILE,
+                FileOutputService.GEOGEBRA_FINAL_COMMANDS_FILE,
+                FileOutputService.LEGACY_MANIM_FINAL_CODE_FILE,
+                FileOutputService.LEGACY_GEOGEBRA_FINAL_COMMANDS_FILE)) {
+            return new ArtifactKind(7, "Stage 7 Code Rendering");
+        }
+        if (equalsAny(name, FileOutputService.SCENE_EVALUATION_FILE)) {
+            return new ArtifactKind(8, "Stage 8 Scene Evaluation");
+        }
+        throw new IllegalArgumentException("Unsupported resume artifact filename: " + artifactPath.getFileName());
+    }
+
+    private static void loadResumeGraph(ArtifactResume resume) {
+        int completedStage = resume.completedStage();
+        if (completedStage < 1) {
+            return;
+        }
+
+        Path graphPath = null;
+        if (completedStage >= 2) {
+            graphPath = isNamed(resume.artifactPath(), FileOutputService.MATH_ENRICHED_GRAPH_FILE)
+                    ? resume.artifactPath()
+                    : firstExistingOptionalPath(resume.outputDir(), FileOutputService.MATH_ENRICHED_GRAPH_FILE);
+        }
+        if (graphPath == null && completedStage == 1
+                && isNamed(resume.artifactPath(), FileOutputService.KNOWLEDGE_GRAPH_FILE,
+                        FileOutputService.LEGACY_KNOWLEDGE_GRAPH_FILE)) {
+            graphPath = resume.artifactPath();
+        }
+        if (graphPath == null) {
+            graphPath = firstExistingOptionalPath(resume.outputDir(),
+                    FileOutputService.KNOWLEDGE_GRAPH_FILE,
+                    FileOutputService.LEGACY_KNOWLEDGE_GRAPH_FILE);
+        }
+
+        boolean graphRequired = completedStage <= 3;
+        if (graphPath == null) {
+            if (graphRequired) {
+                throw new IllegalArgumentException("Cannot resume after " + resume.completedStageLabel()
+                        + " without a knowledge graph artifact in " + resume.outputDir());
+            }
+            return;
+        }
+        resume.knowledgeGraph = FileOutputService.loadKnowledgeGraph(graphPath);
+    }
+
+    private static void loadResumeNarrative(ArtifactResume resume) {
+        int completedStage = resume.completedStage();
+        if (completedStage < 3) {
+            return;
+        }
+
+        Path narrativePath = isNamed(resume.artifactPath(), FileOutputService.VISUAL_NARRATIVE_FILE)
+                ? resume.artifactPath()
+                : firstExistingOptionalPath(resume.outputDir(), FileOutputService.VISUAL_NARRATIVE_FILE);
+        if (narrativePath != null) {
+            resume.narrative = FileOutputService.loadNarrative(narrativePath);
+        } else if (completedStage == 3) {
+            throw new IllegalArgumentException("Cannot resume after " + resume.completedStageLabel()
+                    + " without " + FileOutputService.VISUAL_NARRATIVE_FILE
+                    + " in " + resume.outputDir());
+        }
+
+        Path storyboardPath = null;
+        if (completedStage >= 4) {
+            storyboardPath = isNamed(resume.artifactPath(), FileOutputService.VALIDATED_STORYBOARD_FILE)
+                    ? resume.artifactPath()
+                    : firstExistingOptionalPath(resume.outputDir(), FileOutputService.VALIDATED_STORYBOARD_FILE);
+            if (storyboardPath == null && completedStage == 4) {
+                throw new IllegalArgumentException("Cannot resume after " + resume.completedStageLabel()
+                        + " without " + FileOutputService.VALIDATED_STORYBOARD_FILE
+                        + " in " + resume.outputDir());
+            }
+        }
+
+        if (storyboardPath != null) {
+            if (resume.narrative == null) {
+                resume.narrative = new Narrative();
+                resume.narrative.setTargetDescription(TextUtils.firstNonBlank(
+                        resume.problemBundle != null ? resume.problemBundle.getStatement() : null,
+                        resume.problemBundle != null ? resume.problemBundle.getTitle() : null,
+                        ""));
+            }
+            resume.narrative.setStoryboard(FileOutputService.loadStoryboard(storyboardPath));
+        }
+    }
+
+    private static void loadResumeCode(ArtifactResume resume) {
+        if (resume.completedStage() < 5) {
+            return;
+        }
+
+        Path codePath = resolveCodeArtifactForResume(resume);
+        if (codePath == null) {
+            throw new IllegalArgumentException("Cannot resume after " + resume.completedStageLabel()
+                    + " without a code artifact in " + resume.outputDir());
+        }
+        resume.codeResult = FileOutputService.loadCodeResult(codePath);
+    }
+
+    private static void loadResumeCodeEvaluation(ArtifactResume resume) {
+        if (resume.completedStage() < 6) {
+            return;
+        }
+        Path codeEvaluationPath = isNamed(resume.artifactPath(), FileOutputService.CODE_EVALUATION_FILE)
+                ? resume.artifactPath()
+                : firstExistingOptionalPath(resume.outputDir(), FileOutputService.CODE_EVALUATION_FILE);
+        if (codeEvaluationPath != null) {
+            resume.codeEvaluationResult = FileOutputService.loadCodeEvaluation(codeEvaluationPath);
+            resume.codeEvaluationResult.setToolCalls(0);
+        }
+    }
+
+    private static void loadResumeRenderResult(ArtifactResume resume) {
+        if (resume.completedStage() < 7) {
+            return;
+        }
+        Path renderResultPath = isNamed(resume.artifactPath(), FileOutputService.RENDER_RESULT_FILE)
+                ? resume.artifactPath()
+                : firstExistingOptionalPath(resume.outputDir(), FileOutputService.RENDER_RESULT_FILE);
+        if (renderResultPath == null) {
+            throw new IllegalArgumentException("Cannot resume after " + resume.completedStageLabel()
+                    + " without " + FileOutputService.RENDER_RESULT_FILE
+                    + " in " + resume.outputDir());
+        }
+        resume.renderResult = FileOutputService.loadRenderResult(renderResultPath);
+        resume.renderResult.setToolCalls(0);
+    }
+
+    private static Path resolveCodeArtifactForResume(ArtifactResume resume) {
+        if (isCodeTextArtifact(resume.artifactPath())) {
+            return resume.artifactPath();
+        }
+        if (resume.completedStage() >= 7) {
+            Path path = firstExistingOptionalPath(resume.outputDir(),
+                    FileOutputService.GEOGEBRA_FINAL_COMMANDS_FILE,
+                    FileOutputService.MANIM_FINAL_CODE_FILE,
+                    FileOutputService.LEGACY_GEOGEBRA_FINAL_COMMANDS_FILE,
+                    FileOutputService.LEGACY_MANIM_FINAL_CODE_FILE);
+            if (path != null) {
+                return path;
+            }
+        }
+        if (resume.completedStage() >= 6) {
+            Path path = firstExistingOptionalPath(resume.outputDir(),
+                    FileOutputService.GEOGEBRA_REVIEWED_COMMANDS_FILE,
+                    FileOutputService.MANIM_REVIEWED_CODE_FILE);
+            if (path != null) {
+                return path;
+            }
+        }
+        return firstExistingOptionalPath(resume.outputDir(),
+                FileOutputService.GEOGEBRA_COMMANDS_FILE,
+                FileOutputService.MANIM_CODE_FILE,
+                FileOutputService.LEGACY_GEOGEBRA_COMMANDS_FILE,
+                FileOutputService.LEGACY_MANIM_CODE_FILE);
+    }
+
+    private static boolean isCodeTextArtifact(Path path) {
+        return isNamed(path,
+                FileOutputService.MANIM_CODE_FILE,
+                FileOutputService.GEOGEBRA_COMMANDS_FILE,
+                FileOutputService.LEGACY_MANIM_CODE_FILE,
+                FileOutputService.LEGACY_GEOGEBRA_COMMANDS_FILE,
+                FileOutputService.MANIM_REVIEWED_CODE_FILE,
+                FileOutputService.GEOGEBRA_REVIEWED_COMMANDS_FILE,
+                FileOutputService.MANIM_FINAL_CODE_FILE,
+                FileOutputService.GEOGEBRA_FINAL_COMMANDS_FILE,
+                FileOutputService.LEGACY_MANIM_FINAL_CODE_FILE,
+                FileOutputService.LEGACY_GEOGEBRA_FINAL_COMMANDS_FILE);
+    }
+
+    private static Path firstExistingOptionalPath(Path parentDir, String... fileNames) {
+        if (parentDir == null || fileNames == null) {
+            return null;
+        }
+        for (String fileName : fileNames) {
+            Path candidate = parentDir.resolve(fileName);
+            if (Files.exists(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isNamed(Path path, String... fileNames) {
+        if (path == null || path.getFileName() == null || fileNames == null) {
+            return false;
+        }
+        return equalsAny(path.getFileName().toString().toLowerCase(), fileNames);
+    }
+
+    private static boolean equalsAny(String lowerFileName, String... fileNames) {
+        if (lowerFileName == null || fileNames == null) {
+            return false;
+        }
+        for (String fileName : fileNames) {
+            if (fileName != null && lowerFileName.equals(fileName.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String lowerFileName(Path path) {
+        return path.getFileName() != null
+                ? path.getFileName().toString().toLowerCase()
+                : "";
+    }
+
+    private static final class ArtifactKind {
+        private final int completedStage;
+        private final String stageLabel;
+
+        private ArtifactKind(int completedStage, String stageLabel) {
+            this.completedStage = completedStage;
+            this.stageLabel = stageLabel;
+        }
+
+        private int completedStage() { return completedStage; }
+        private String stageLabel() { return stageLabel; }
+    }
+
+    private static final class ArtifactResume {
+        private final Path artifactPath;
+        private final Path outputDir;
+        private final ArtifactKind kind;
+        private ProblemSource problemSource;
+        private ProblemBundle problemBundle;
+        private KnowledgeGraph knowledgeGraph;
+        private Narrative narrative;
+        private CodeResult codeResult;
+        private CodeEvaluationResult codeEvaluationResult;
+        private RenderResult renderResult;
+
+        private ArtifactResume(Path artifactPath, Path outputDir, ArtifactKind kind) {
+            this.artifactPath = artifactPath;
+            this.outputDir = outputDir;
+            this.kind = kind;
+        }
+
+        private Path artifactPath() { return artifactPath; }
+        private Path outputDir() { return outputDir; }
+        private int completedStage() { return kind.completedStage(); }
+        private String completedStageLabel() { return kind.stageLabel(); }
+
+        private String skippedStagesLabel() {
+            return kind.completedStage() == 0
+                    ? "Stage 0"
+                    : "Stage 0-" + kind.completedStage();
+        }
+
+        private String rawInput() {
+            return TextUtils.firstNonBlank(
+                    problemBundle != null ? problemBundle.getStatement() : null,
+                    problemBundle != null ? problemBundle.getTitle() : null,
+                    problemBundle != null ? problemBundle.getId() : null,
+                    problemSource != null ? problemSource.getRawText() : null,
+                    codeResult != null ? codeResult.getTargetDescription() : null,
+                    codeResult != null ? codeResult.getSceneName() : null,
+                    artifactPath.getFileName() != null ? artifactPath.getFileName().toString() : "");
+        }
+
+        private void applyTo(Map<String, Object> ctx, WorkflowConfig config) {
+            if (problemSource != null) {
+                ctx.put(WorkflowKeys.PROBLEM_SOURCE, problemSource);
+            }
+            if (problemBundle != null) {
+                ctx.put(WorkflowKeys.PROBLEM_BUNDLE, problemBundle);
+            } else if (codeResult != null) {
+                ctx.put(WorkflowKeys.PROBLEM_BUNDLE, buildDegradedBundle(rawInput(), config, true));
+            }
+            if (knowledgeGraph != null) {
+                ctx.put(WorkflowKeys.KNOWLEDGE_GRAPH, knowledgeGraph);
+                ctx.put(WorkflowKeys.EXPLORATION_API_CALLS, 0);
+            }
+            if (narrative != null) {
+                ctx.put(WorkflowKeys.NARRATIVE, narrative);
+            }
+            if (codeResult != null) {
+                ctx.put(WorkflowKeys.CODE_RESULT, codeResult);
+            }
+            if (codeEvaluationResult != null) {
+                ctx.put(WorkflowKeys.CODE_EVALUATION_RESULT, codeEvaluationResult);
+            }
+            if (renderResult != null) {
+                ctx.put(WorkflowKeys.RENDER_RESULT, renderResult);
+                if (renderResult.isSuccess()) {
+                    ctx.put(WorkflowKeys.RENDER_EVER_SUCCEEDED, true);
+                }
+            }
+        }
     }
 
     private static Path resolveGraphPath(String fromGraphPath) {
@@ -923,7 +1367,7 @@ public class MathVisionApplication {
                 + "Arguments:\n"
                 + "  PROBLEM.md                 Markdown problem file; local Markdown images are attached automatically\n"
                 + "  target-input               Concept or problem to animate"
-                + " (required unless --problem-file/--from-graph/--from-code is used)\n"
+                + " (required unless --problem-file/--from-graph/--from-code/--from-artifact is used)\n"
                 + "\n"
                 + "Options:\n"
                 + "  --problem-file FILE        Read the full problem statement from a Markdown file\n"
@@ -937,6 +1381,10 @@ public class MathVisionApplication {
                 + "                             (accepts 05_manim_code.py, 05_geogebra_commands.txt,\n"
                 + "                             or their parent directory).\n"
                 + "                             Outputs are written to the same directory as the code.\n"
+                + "  --from-artifact FILE|DIR   Detect the artifact stage, load same-directory prior artifacts,\n"
+                + "                             and continue with the next stage. Accepts 00..08 workflow artifacts.\n"
+                + "                             Aliases: --resume-from, --continue-from.\n"
+                + "                             Outputs are written to the same directory as the artifact.\n"
                 + "  --normalize-only           Run only stage 0 (ProblemNormalization), stop after saving the problem bundle\n"
                 + "  --exploration-only         Run stages 0-1, stop after generating knowledge graph\n"
                 + "  --to-visual-design          Run stages 0-3, stop after visual design\n"
@@ -944,7 +1392,7 @@ public class MathVisionApplication {
                 + "  --workflow-config FILE     Workflow JSON config path\n"
                 + "  --model-config FILE        Model JSON config path\n"
                 + "  --output DIR               Output directory"
-                + " (ignored when --from-graph/--from-code is used)\n"
+                + " (ignored when --from-graph/--from-code/--from-artifact is used)\n"
                 + "                             default: ./output/<target>/<target_input_timestamp>\n"
                 + "  -h, --help                 Show this help\n"
                 + "\n"

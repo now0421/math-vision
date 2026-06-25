@@ -236,6 +236,40 @@ public class WorkflowFlow {
     }
 
     /**
+     * Creates a workflow that starts immediately after an already completed
+     * stage. The caller is responsible for loading the required upstream
+     * artifacts into the shared context before running the flow.
+     */
+    public static PocketFlow.Flow<?> createAfterStage(int completedStage, WorkflowConfig config) {
+        boolean renderEnabled = config == null || config.isRenderEnabled();
+        switch (completedStage) {
+            case 0:
+                return createFromProblemBundle(config, renderEnabled);
+            case 1:
+                return renderEnabled ? createFromGraph(config) : createFromGraphWithoutRender(config);
+            case 2:
+                return createFromEnrichedGraph(config, renderEnabled);
+            case 3:
+                return createFromNarrative(config, renderEnabled);
+            case 4:
+                return createFromValidatedStoryboard(config, renderEnabled);
+            case 5:
+                return renderEnabled ? createFromCode() : createFromCodeWithoutRender();
+            case 6:
+                if (!renderEnabled) {
+                    throw new IllegalArgumentException(
+                            "No downstream stage remains after stage 6 when rendering is disabled");
+                }
+                return createFromCodeEvaluation();
+            case 7:
+                return createFromRenderResult();
+            default:
+                throw new IllegalArgumentException("Cannot resume after stage " + completedStage
+                        + "; expected a completed stage from 0 through 7");
+        }
+    }
+
+    /**
      * Creates a workflow that only runs the ProblemNormalization stage (Stage 0).
      */
     public static PocketFlow.Flow<?> createProblemNormalizationOnly() {
@@ -301,5 +335,149 @@ public class WorkflowFlow {
     private static CodeGenerationNode createCodeGenerationNode(WorkflowConfig config) {
         int maxRetries = config != null ? config.getCodeGenMaxRetries() : 2;
         return new CodeGenerationNode(maxRetries);
+    }
+
+    private static PocketFlow.Flow<?> createFromProblemBundle(WorkflowConfig config, boolean renderEnabled) {
+        ExplorationNode exploration = new ExplorationNode();
+        MathEnrichmentNode mathEnrich = new MathEnrichmentNode();
+        VisualDesignNode visualDesign = new VisualDesignNode();
+        StoryboardValidationNode storyboardValidation = new StoryboardValidationNode();
+        CodeGenerationNode codeGen = createCodeGenerationNode(config);
+        CodeEvaluationNode codeEvaluation = new CodeEvaluationNode();
+        CodeFixNode codeFix = new CodeFixNode();
+
+        exploration.next(mathEnrich);
+        mathEnrich.next(visualDesign);
+        visualDesign.next(storyboardValidation);
+        storyboardValidation.next(codeGen);
+        wireCodeGenerationToEvaluation(codeGen, codeEvaluation, codeFix);
+        if (renderEnabled) {
+            wireEvaluationToRender(codeEvaluation, codeFix);
+        } else {
+            wireEvaluationWithoutRender(codeEvaluation, codeFix);
+        }
+
+        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(exploration);
+        log.info("Workflow assembled (after stage 0): Exploration -> MathEnrichment -> VisualDesign -> StoryboardValidation -> CodeGeneration -> CodeEvaluation{}",
+                renderEnabled ? " -> Render -> SceneEvaluation with routed CodeFixNode" : " with routed CodeFixNode");
+        return flow;
+    }
+
+    private static PocketFlow.Flow<?> createFromEnrichedGraph(WorkflowConfig config, boolean renderEnabled) {
+        VisualDesignNode visualDesign = new VisualDesignNode();
+        StoryboardValidationNode storyboardValidation = new StoryboardValidationNode();
+        CodeGenerationNode codeGen = createCodeGenerationNode(config);
+        CodeEvaluationNode codeEvaluation = new CodeEvaluationNode();
+        CodeFixNode codeFix = new CodeFixNode();
+
+        visualDesign.next(storyboardValidation);
+        storyboardValidation.next(codeGen);
+        wireCodeGenerationToEvaluation(codeGen, codeEvaluation, codeFix);
+        if (renderEnabled) {
+            wireEvaluationToRender(codeEvaluation, codeFix);
+        } else {
+            wireEvaluationWithoutRender(codeEvaluation, codeFix);
+        }
+
+        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(visualDesign);
+        log.info("Workflow assembled (after stage 2): VisualDesign -> StoryboardValidation -> CodeGeneration -> CodeEvaluation{}",
+                renderEnabled ? " -> Render -> SceneEvaluation with routed CodeFixNode" : " with routed CodeFixNode");
+        return flow;
+    }
+
+    private static PocketFlow.Flow<?> createFromNarrative(WorkflowConfig config, boolean renderEnabled) {
+        StoryboardValidationNode storyboardValidation = new StoryboardValidationNode();
+        CodeGenerationNode codeGen = createCodeGenerationNode(config);
+        CodeEvaluationNode codeEvaluation = new CodeEvaluationNode();
+        CodeFixNode codeFix = new CodeFixNode();
+
+        storyboardValidation.next(codeGen);
+        wireCodeGenerationToEvaluation(codeGen, codeEvaluation, codeFix);
+        if (renderEnabled) {
+            wireEvaluationToRender(codeEvaluation, codeFix);
+        } else {
+            wireEvaluationWithoutRender(codeEvaluation, codeFix);
+        }
+
+        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(storyboardValidation);
+        log.info("Workflow assembled (after stage 3): StoryboardValidation -> CodeGeneration -> CodeEvaluation{}",
+                renderEnabled ? " -> Render -> SceneEvaluation with routed CodeFixNode" : " with routed CodeFixNode");
+        return flow;
+    }
+
+    private static PocketFlow.Flow<?> createFromValidatedStoryboard(WorkflowConfig config, boolean renderEnabled) {
+        CodeGenerationNode codeGen = createCodeGenerationNode(config);
+        CodeEvaluationNode codeEvaluation = new CodeEvaluationNode();
+        CodeFixNode codeFix = new CodeFixNode();
+
+        wireCodeGenerationToEvaluation(codeGen, codeEvaluation, codeFix);
+        if (renderEnabled) {
+            wireEvaluationToRender(codeEvaluation, codeFix);
+        } else {
+            wireEvaluationWithoutRender(codeEvaluation, codeFix);
+        }
+
+        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(codeGen);
+        log.info("Workflow assembled (after stage 4): CodeGeneration -> CodeEvaluation{}",
+                renderEnabled ? " -> Render -> SceneEvaluation with routed CodeFixNode" : " with routed CodeFixNode");
+        return flow;
+    }
+
+    private static PocketFlow.Flow<?> createFromCodeEvaluation() {
+        RenderNode render = new RenderNode();
+        SceneEvaluationNode sceneEvaluation = new SceneEvaluationNode();
+        CodeFixNode codeFix = new CodeFixNode();
+
+        render.next(sceneEvaluation);
+        render.next(codeFix, WorkflowActions.FIX_CODE);
+        sceneEvaluation.next(codeFix, WorkflowActions.FIX_CODE);
+
+        codeFix.next(render, WorkflowActions.RETRY_RENDER);
+
+        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(render);
+        log.info("Workflow assembled (after stage 6): Render -> SceneEvaluation with routed CodeFixNode");
+        return flow;
+    }
+
+    private static PocketFlow.Flow<?> createFromRenderResult() {
+        SceneEvaluationNode sceneEvaluation = new SceneEvaluationNode();
+        CodeFixNode codeFix = new CodeFixNode();
+        RenderNode render = new RenderNode();
+
+        sceneEvaluation.next(codeFix, WorkflowActions.FIX_CODE);
+        codeFix.next(render, WorkflowActions.RETRY_RENDER);
+        render.next(sceneEvaluation);
+        render.next(codeFix, WorkflowActions.FIX_CODE);
+
+        PocketFlow.Flow<?> flow = new PocketFlow.Flow<>(sceneEvaluation);
+        log.info("Workflow assembled (after stage 7): SceneEvaluation with routed CodeFixNode");
+        return flow;
+    }
+
+    private static void wireCodeGenerationToEvaluation(CodeGenerationNode codeGen,
+                                                       CodeEvaluationNode codeEvaluation,
+                                                       CodeFixNode codeFix) {
+        codeGen.next(codeEvaluation);
+        codeGen.next(codeFix, WorkflowActions.FIX_CODE);
+        codeFix.next(codeGen, WorkflowActions.RETRY_CODE_GENERATION);
+    }
+
+    private static void wireEvaluationToRender(CodeEvaluationNode codeEvaluation, CodeFixNode codeFix) {
+        RenderNode render = new RenderNode();
+        SceneEvaluationNode sceneEvaluation = new SceneEvaluationNode();
+
+        codeEvaluation.next(render);
+        codeEvaluation.next(codeFix, WorkflowActions.FIX_CODE);
+        render.next(sceneEvaluation);
+        render.next(codeFix, WorkflowActions.FIX_CODE);
+        sceneEvaluation.next(codeFix, WorkflowActions.FIX_CODE);
+
+        codeFix.next(codeEvaluation, WorkflowActions.RETRY_CODE_EVALUATION);
+        codeFix.next(render, WorkflowActions.RETRY_RENDER);
+    }
+
+    private static void wireEvaluationWithoutRender(CodeEvaluationNode codeEvaluation, CodeFixNode codeFix) {
+        codeEvaluation.next(codeFix, WorkflowActions.FIX_CODE);
+        codeFix.next(codeEvaluation, WorkflowActions.RETRY_CODE_EVALUATION);
     }
 }

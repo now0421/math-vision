@@ -5,12 +5,15 @@ import com.mathvision.config.WorkflowConfig;
 import com.mathvision.model.CodeFixTraceReport;
 import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.KnowledgeNode;
+import com.mathvision.model.Narrative;
 import com.mathvision.model.ProblemBundle;
 import com.mathvision.model.RenderResult;
 import com.mathvision.model.WorkflowKeys;
+import com.mathvision.service.FileOutputService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -24,6 +27,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MathVisionApplicationTest {
@@ -124,6 +128,48 @@ class MathVisionApplicationTest {
         assertNotNull(WorkflowFlow.createProblemNormalizationOnly());
     }
 
+    @Test
+    void artifactResumeFromValidatedStoryboardLoadsPriorContextAndValidatedStoryboard() throws Exception {
+        WorkflowConfig config = ConfigLoader.load(null, null);
+        FileOutputService.saveProblemBundle(tempDir,
+                problemBundle("Given A and B, find the shortest path.", WorkflowConfig.INPUT_MODE_PROBLEM));
+        FileOutputService.saveEnrichedGraph(tempDir, problemGraph());
+
+        Narrative narrative = new Narrative("Draft target", storyboard("draft scene"));
+        FileOutputService.saveNarrative(tempDir, narrative);
+        Narrative.Storyboard validatedStoryboard = storyboard("validated scene");
+        FileOutputService.saveValidatedStoryboard(tempDir, validatedStoryboard);
+
+        Object resume = loadArtifactResume(tempDir.resolve(FileOutputService.VALIDATED_STORYBOARD_FILE));
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        applyArtifactResume(resume, ctx, config);
+
+        assertEquals(4, invokeInt(resume, "completedStage"));
+        assertEquals("Given A and B, find the shortest path.", invokeString(resume, "rawInput"));
+        assertEquals(WorkflowConfig.INPUT_MODE_PROBLEM,
+                ((ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE)).getInputMode());
+        Narrative restoredNarrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
+        assertEquals("validated scene", restoredNarrative.getStoryboard().getScenes().get(0).getTitle());
+    }
+
+    @Test
+    void artifactResumeRejectsTerminalSceneEvaluationArtifact() throws Exception {
+        Path sceneEvaluation = tempDir.resolve(FileOutputService.SCENE_EVALUATION_FILE);
+        Files.writeString(sceneEvaluation, "{}", StandardCharsets.UTF_8);
+
+        InvocationTargetException thrown = assertThrows(
+                InvocationTargetException.class,
+                () -> loadArtifactResume(sceneEvaluation));
+
+        assertTrue(thrown.getCause().getMessage().contains("no downstream workflow stage remains"));
+    }
+
+    @Test
+    void createsResumeFlowAfterValidatedStoryboard() {
+        WorkflowConfig config = ConfigLoader.load(null, null);
+        assertNotNull(WorkflowFlow.createAfterStage(4, config));
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> buildSummary(Map<String, Object> ctx) throws Exception {
         Method method = MathVisionApplication.class.getDeclaredMethod(
@@ -161,9 +207,43 @@ class MathVisionApplicationTest {
         return method.invoke(null, path.toString());
     }
 
+    private Object loadArtifactResume(Path path) throws Exception {
+        Method method = MathVisionApplication.class.getDeclaredMethod("loadArtifactResume", String.class);
+        method.setAccessible(true);
+        return method.invoke(null, path.toString());
+    }
+
+    private void applyArtifactResume(Object resume, Map<String, Object> ctx, WorkflowConfig config) throws Exception {
+        Method method = resume.getClass().getDeclaredMethod("applyTo", Map.class, WorkflowConfig.class);
+        method.setAccessible(true);
+        method.invoke(resume, ctx, config);
+    }
+
+    private int invokeInt(Object target, String methodName) throws Exception {
+        Method method = target.getClass().getDeclaredMethod(methodName);
+        method.setAccessible(true);
+        return (Integer) method.invoke(target);
+    }
+
+    private String invokeString(Object target, String methodName) throws Exception {
+        Method method = target.getClass().getDeclaredMethod(methodName);
+        method.setAccessible(true);
+        return (String) method.invoke(target);
+    }
+
     private Object readField(Object target, String fieldName) throws Exception {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.get(target);
+    }
+
+    private Narrative.Storyboard storyboard(String sceneTitle) {
+        Narrative.Storyboard storyboard = new Narrative.Storyboard();
+        Narrative.StoryboardScene scene = new Narrative.StoryboardScene();
+        scene.setSceneId("scene_1");
+        scene.setTitle(sceneTitle);
+        scene.setGoal("Show the construction");
+        storyboard.setScenes(List.of(scene));
+        return storyboard;
     }
 }

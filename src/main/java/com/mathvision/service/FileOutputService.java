@@ -6,6 +6,7 @@ import com.mathvision.model.CodeFixTraceReport;
 import com.mathvision.model.KnowledgeGraph;
 import com.mathvision.model.Narrative;
 import com.mathvision.model.ProblemBundle;
+import com.mathvision.model.ProblemSource;
 import com.mathvision.model.RenderResult;
 import com.mathvision.model.CodeEvaluationResult;
 import com.mathvision.model.SceneEvaluationResult;
@@ -113,12 +114,18 @@ public class FileOutputService {
     }
 
     public static KnowledgeGraph loadKnowledgeGraph(Path path) {
-        try {
-            log.info("[Load] knowledge graph <- {}", path);
-            return mapper.readValue(path.toFile(), KnowledgeGraph.class);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load knowledge graph from: " + path, e);
+        return readJson(path, KnowledgeGraph.class, "knowledge graph");
+    }
+
+    public static ProblemSource loadProblemSource(Path outputDir) {
+        if (outputDir == null) {
+            return null;
         }
+        Path path = outputDir.resolve(PROBLEM_SOURCE_FILE);
+        if (!Files.exists(path)) {
+            return null;
+        }
+        return readJson(path, ProblemSource.class, "problem source");
     }
 
     public static ProblemBundle loadProblemBundle(Path outputDir) {
@@ -129,12 +136,7 @@ public class FileOutputService {
         if (!Files.exists(path)) {
             return null;
         }
-        try {
-            log.info("[Load] problem bundle <- {}", path);
-            return mapper.readValue(path.toFile(), ProblemBundle.class);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load problem bundle from: " + path, e);
-        }
+        return readJson(path, ProblemBundle.class, "problem bundle");
     }
 
     public static CodeResult loadCodeResult(Path path) {
@@ -177,6 +179,14 @@ public class FileOutputService {
         writeJson(outputDir.resolve(MATH_ENRICHED_GRAPH_FILE), graph, "enriched graph");
     }
 
+    public static Narrative loadNarrative(Path path) {
+        return readJson(path, Narrative.class, "narrative");
+    }
+
+    public static Narrative.Storyboard loadStoryboard(Path path) {
+        return readJson(path, Narrative.Storyboard.class, "storyboard");
+    }
+
     public static void saveNarrative(Path outputDir, Narrative narrative) {
         writeJson(outputDir.resolve(VISUAL_NARRATIVE_FILE), narrative, "narrative (JSON)");
     }
@@ -189,6 +199,10 @@ public class FileOutputService {
                                                 StoryboardValidationReport storyboardValidationReport) {
         writeJson(outputDir.resolve(STORYBOARD_VALIDATION_REPORT_FILE),
                 storyboardValidationReport, "storyboard validation");
+    }
+
+    public static StoryboardValidationReport loadStoryboardValidation(Path path) {
+        return readJson(path, StoryboardValidationReport.class, "storyboard validation");
     }
 
     public static void saveCodeResult(Path outputDir, CodeResult codeResult) {
@@ -223,6 +237,10 @@ public class FileOutputService {
         }
     }
 
+    public static CodeEvaluationResult loadCodeEvaluation(Path path) {
+        return readJson(path, CodeEvaluationResult.class, "code evaluation");
+    }
+
     public static void saveRenderResult(Path outputDir, RenderResult renderResult) {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("success", renderResult.isSuccess());
@@ -245,9 +263,38 @@ public class FileOutputService {
         }
     }
 
+    public static RenderResult loadRenderResult(Path path) {
+        try {
+            log.info("[Load] render result <- {}", path);
+            JsonNode meta = mapper.readTree(path.toFile());
+            RenderResult renderResult = new RenderResult();
+            renderResult.setSuccess(meta.path("success").asBoolean(false));
+            renderResult.setSceneName(readTextField(meta, "scene_name"));
+            renderResult.setVideoPath(readTextField(meta, "video_path"));
+            renderResult.setArtifactPath(readTextField(meta, "artifact_path"));
+            String outputTarget = readTextField(meta, "output_target");
+            if (!outputTarget.isBlank()) {
+                renderResult.setOutputTarget(outputTarget);
+            }
+            renderResult.setArtifactType(readTextField(meta, "artifact_type"));
+            renderResult.setGeometryPath(readTextField(meta, "geometry_path"));
+            renderResult.setAttempts(meta.path("attempts").asInt(0));
+            renderResult.setLastError(readTextField(meta, "last_error"));
+            renderResult.setToolCalls(meta.path("tool_calls").asInt(0));
+            renderResult.setExecutionTimeSeconds(meta.path("execution_time_seconds").asDouble(0.0));
+            return renderResult;
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load render result from: " + path, e);
+        }
+    }
+
     public static void saveSceneEvaluation(Path outputDir, SceneEvaluationResult sceneEvaluationResult) {
         writeJson(outputDir.resolve(SCENE_EVALUATION_FILE),
                 sceneEvaluationResult, "scene evaluation");
+    }
+
+    public static SceneEvaluationResult loadSceneEvaluation(Path path) {
+        return readJson(path, SceneEvaluationResult.class, "scene evaluation");
     }
 
     public static void saveCodeFixTrace(Path outputDir, CodeFixTraceReport codeFixTraceReport) {
@@ -266,6 +313,15 @@ public class FileOutputService {
             log.info("[Save] {} -> {}", description, path.getFileName());
         } catch (IOException e) {
             log.error("Failed to write {}: {}", description, e.getMessage());
+        }
+    }
+
+    private static <T> T readJson(Path path, Class<T> type, String description) {
+        try {
+            log.info("[Load] {} <- {}", description, path);
+            return mapper.readValue(path.toFile(), type);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load " + description + " from: " + path, e);
         }
     }
 
