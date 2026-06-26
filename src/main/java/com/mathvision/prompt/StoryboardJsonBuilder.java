@@ -29,11 +29,16 @@ public final class StoryboardJsonBuilder {
         private final boolean includeSceneFixFields;
         private final boolean includePlacement;
         private final boolean includeVoiceoverFields;
+        private final boolean prettyPrint;
 
-        private BuildOptions(boolean includeSceneFixFields, boolean includePlacement, boolean includeVoiceoverFields) {
+        private BuildOptions(boolean includeSceneFixFields,
+                             boolean includePlacement,
+                             boolean includeVoiceoverFields,
+                             boolean prettyPrint) {
             this.includeSceneFixFields = includeSceneFixFields;
             this.includePlacement = includePlacement;
             this.includeVoiceoverFields = includeVoiceoverFields;
+            this.prettyPrint = prettyPrint;
         }
     }
 
@@ -47,7 +52,7 @@ public final class StoryboardJsonBuilder {
     }
 
     public static String buildForCodegen(Storyboard storyboard, String outputTarget) {
-        return build(storyboard, new BuildOptions(true, true, includeVoiceoverFields(outputTarget)));
+        return build(storyboard, new BuildOptions(true, true, includeVoiceoverFields(outputTarget), true));
     }
 
     /**
@@ -60,13 +65,13 @@ public final class StoryboardJsonBuilder {
     }
 
     public static String buildForSceneEvaluationFix(Storyboard storyboard, String outputTarget) {
-        return build(storyboard, new BuildOptions(true, false, includeVoiceoverFields(outputTarget)));
+        return build(storyboard, new BuildOptions(true, false, includeVoiceoverFields(outputTarget), false));
     }
 
     public static String buildSceneForCodegen(StoryboardScene scene, String outputTarget) {
         ObjectNode root = JsonUtils.mapper().createObjectNode();
         ArrayNode scenesArray = root.putArray("scenes");
-        addSceneNode(scenesArray, scene, new BuildOptions(true, true, includeVoiceoverFields(outputTarget)));
+        addSceneNode(scenesArray, scene, new BuildOptions(true, true, includeVoiceoverFields(outputTarget), true));
         return scenesArray.isEmpty() ? "{}" : JsonUtils.toPrettyJson(scenesArray.get(0));
     }
 
@@ -78,7 +83,7 @@ public final class StoryboardJsonBuilder {
         ObjectNode root = JsonUtils.mapper().createObjectNode();
         if (storyboard == null) {
             root.putArray("scenes");
-            return JsonUtils.toPrettyJson(root);
+            return serialize(root, options);
         }
 
         putNonBlank(root, "continuity_plan", storyboard.getContinuityPlan());
@@ -99,7 +104,11 @@ public final class StoryboardJsonBuilder {
             addRegistryObjectArray(root, "object_registry", storyboard.getObjectRegistry());
         }
 
-        return JsonUtils.toPrettyJson(root);
+        return serialize(root, options);
+    }
+
+    private static String serialize(ObjectNode root, BuildOptions options) {
+        return options.prettyPrint ? JsonUtils.toPrettyJson(root) : JsonUtils.toJson(root);
     }
 
     private static void addCoordinateBounds(ObjectNode root, StoryboardCoordinateBounds bounds) {

@@ -9,12 +9,12 @@ class TokenEstimatorTest {
 
     @Test
     void estimatesAsciiTextConservatively() {
-        assertEquals(4, TokenEstimator.estimateTokens("abcdefgh"));
+        assertEquals(3, TokenEstimator.estimateTokens("abcdefgh"));
     }
 
     @Test
-    void estimatesNonAsciiNearOneTokenPerCharacter() {
-        assertEquals(6, TokenEstimator.estimateTokens("如图求最小值"));
+    void estimatesCjkBelowOneTokenPerCharacterButConservatively() {
+        assertEquals(5, TokenEstimator.estimateTokens("如图求最小值"));
     }
 
     @Test

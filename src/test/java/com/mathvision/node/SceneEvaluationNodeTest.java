@@ -242,11 +242,22 @@ class SceneEvaluationNodeTest {
         CodeFixRequest request = (CodeFixRequest) ctx.get(WorkflowKeys.CODE_FIX_REQUEST);
         assertNotNull(request);
         String sceneEvaluationJson = request.getSceneEvaluationJson();
-        assertTrue(sceneEvaluationJson.contains("\"storyboard_dependency_context\""));
-        assertTrue(sceneEvaluationJson.contains("\"full_dependency_chain\""));
-        assertTrue(sceneEvaluationJson.contains("\"point_Bprime\""));
+        JsonNode fixReport = JsonUtils.mapper().readTree(sceneEvaluationJson);
+        JsonNode dependencyContexts = fixReport.get("storyboard_dependency_context_by_object_id");
+        assertNotNull(dependencyContexts);
+        assertTrue(fixReport.has("dependency_repair_rule"));
+        assertTrue(dependencyContexts.has("point_Bprime"));
+        JsonNode dependencyChain = dependencyContexts.get("point_Bprime").get("full_dependency_chain");
+        assertNotNull(dependencyChain);
+        assertTrue(dependencyChain.isArray());
+        assertTrue(dependencyChain.get(0).isTextual());
+        assertFalse(dependencyChain.get(0).isObject());
         assertTrue(sceneEvaluationJson.contains("\"point_B\""));
         assertTrue(sceneEvaluationJson.contains("\"line_l\""));
+        assertFalse(sceneEvaluationJson.contains("\n  \""));
+        JsonNode issue = fixReport.get("issue_samples").get(0).get("issues").get(0);
+        assertTrue(issue.has("storyboard_dependency_refs"));
+        assertFalse(issue.has("storyboard_dependency_context"));
         assertFalse(sceneEvaluationJson.contains("\"derived_placement_omitted\""));
     }
 

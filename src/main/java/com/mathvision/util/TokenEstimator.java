@@ -3,17 +3,20 @@ package com.mathvision.util;
 /**
  * Heuristic token estimator for input budget management.
  *
- * Uses a conservative character-based heuristic for provider-side token limits.
- * This intentionally overestimates mixed Chinese/JSON/tool-schema prompts,
- * because underestimation causes provider-side "prompt too long" failures.
+ * Provider tokenizers are model-specific, and several providers expose a
+ * count-tokens endpoint or tokenizer as the only exact answer. This estimator
+ * intentionally stays heuristic, but tracks common public guidance more closely
+ * than a flat character divisor:
+ * English text is roughly 3-4 characters per token, CJK text is usually below
+ * one token per character, while JSON/tool punctuation is relatively expensive.
  */
 public final class TokenEstimator {
 
-    private static final int TOKEN_UNIT_DIVISOR = 4;
-    private static final int WHITESPACE_TOKEN_UNITS = 1;
-    private static final int ASCII_TEXT_TOKEN_UNITS = 2;
-    private static final int ASCII_SYMBOL_TOKEN_UNITS = 3;
-    private static final int NON_ASCII_TOKEN_UNITS = 4;
+    private static final double ASCII_TEXT_TOKENS_PER_CHAR = 0.34;
+    private static final double WHITESPACE_TOKENS_PER_CHAR = 0.25;
+    private static final double ASCII_SYMBOL_TOKENS_PER_CHAR = 0.75;
+    private static final double CJK_TOKENS_PER_CHAR = 0.70;
+    private static final double NON_ASCII_TOKENS_PER_CHAR = 1.00;
 
     private TokenEstimator() {}
 
@@ -22,25 +25,40 @@ public final class TokenEstimator {
             return 0;
         }
 
-        int units = 0;
+        double tokens = 0.0;
+        int asciiTextRun = 0;
         for (int i = 0; i < text.length();) {
             int codePoint = text.codePointAt(i);
-            units += tokenUnits(codePoint);
+            if (isAsciiText(codePoint)) {
+                asciiTextRun++;
+            } else {
+                tokens += asciiTextRunTokens(asciiTextRun);
+                asciiTextRun = 0;
+                tokens += tokenCost(codePoint);
+            }
             i += Character.charCount(codePoint);
         }
-        return (units + TOKEN_UNIT_DIVISOR - 1) / TOKEN_UNIT_DIVISOR;
+        tokens += asciiTextRunTokens(asciiTextRun);
+        return (int) Math.ceil(tokens);
     }
 
-    private static int tokenUnits(int codePoint) {
+    private static double asciiTextRunTokens(int length) {
+        if (length <= 0) {
+            return 0.0;
+        }
+        return Math.max(1.0, Math.ceil(length * ASCII_TEXT_TOKENS_PER_CHAR));
+    }
+
+    private static double tokenCost(int codePoint) {
         if (Character.isWhitespace(codePoint)) {
-            return WHITESPACE_TOKEN_UNITS;
+            return WHITESPACE_TOKENS_PER_CHAR;
         }
         if (codePoint > 0x7F) {
-            return NON_ASCII_TOKEN_UNITS;
+            return isCjkLike(codePoint)
+                    ? CJK_TOKENS_PER_CHAR
+                    : NON_ASCII_TOKENS_PER_CHAR;
         }
-        return isAsciiText(codePoint)
-                ? ASCII_TEXT_TOKEN_UNITS
-                : ASCII_SYMBOL_TOKEN_UNITS;
+        return ASCII_SYMBOL_TOKENS_PER_CHAR;
     }
 
     private static boolean isAsciiText(int codePoint) {
@@ -49,5 +67,13 @@ public final class TokenEstimator {
                 || (codePoint >= '0' && codePoint <= '9')
                 || codePoint == '_'
                 || codePoint == '-';
+    }
+
+    private static boolean isCjkLike(int codePoint) {
+        Character.UnicodeScript script = Character.UnicodeScript.of(codePoint);
+        return script == Character.UnicodeScript.HAN
+                || script == Character.UnicodeScript.HIRAGANA
+                || script == Character.UnicodeScript.KATAKANA
+                || script == Character.UnicodeScript.HANGUL;
     }
 }

@@ -60,6 +60,7 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     private static final Logger log = LoggerFactory.getLogger(SceneEvaluationNode.class);
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
+    private static final ObjectMapper COMPACT_MAPPER = new ObjectMapper();
     private static final double MANIM_FRAME_MIN_X = -7.0;
     private static final double MANIM_FRAME_MAX_X = 7.0;
     private static final double MANIM_FRAME_MIN_Y = -4.0;
@@ -76,6 +77,11 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
     private static final int DEFAULT_MAX_FIX_ATTEMPTS = 2;
     private static final int MAX_FIX_REPORT_SAMPLES = 12;
     private static final int MAX_ISSUES_PER_SAMPLE_IN_FIX_REPORT = 6;
+    private static final String DEPENDENCY_REPAIR_RULE =
+            "For constrained or derived objects, keep structured constraints true; "
+                    + "fix layout by moving/scaling upstream source objects, the whole constrained group, "
+                    + "camera/view, or attachment offset instead of directly assigning coordinates "
+                    + "to the derived object.";
 
     public SceneEvaluationNode() {
         super(1, 0);
@@ -1517,8 +1523,10 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                             + "and Manim against fixed render-frame bounds x[-7,7], y[-4,4].");
         }
         Map<String, StoryboardObject> storyboardObjects = buildStoryboardObjectMap(storyboard);
+        Map<String, Object> sharedDependencyContexts = new LinkedHashMap<>();
 
         List<Map<String, Object>> samples = new ArrayList<>();
+        Set<String> includedIssueKeys = new LinkedHashSet<>();
         int addedSamples = 0;
         for (SampleEvaluation sample : result.getSamples()) {
             if (!sample.isHasIssues()) {
@@ -1535,8 +1543,14 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
             sampleMap.put("blocking_issue_count", sample.getBlockingIssueCount());
 
             List<Map<String, Object>> issues = new ArrayList<>();
-            for (int i = 0; i < Math.min(sample.getIssues().size(), MAX_ISSUES_PER_SAMPLE_IN_FIX_REPORT); i++) {
-                LayoutIssue issue = sample.getIssues().get(i);
+            for (LayoutIssue issue : sample.getIssues()) {
+                if (issues.size() >= MAX_ISSUES_PER_SAMPLE_IN_FIX_REPORT) {
+                    break;
+                }
+                String issueKey = fixReportIssueKey(issue);
+                if (!includedIssueKeys.add(issueKey)) {
+                    continue;
+                }
                 Map<String, Object> issueMap = new LinkedHashMap<>();
                 issueMap.put("type", issue.getType());
                 issueMap.put("message", issue.getMessage());
@@ -1548,9 +1562,10 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 if (issue.getSecondaryElement() != null) {
                     issueMap.put("secondary_element", elementRefMap(issue.getSecondaryElement()));
                 }
-                Map<String, Object> dependencyContext = dependencyContextMap(issue, storyboardObjects);
-                if (!dependencyContext.isEmpty()) {
-                    issueMap.put("storyboard_dependency_context", dependencyContext);
+                Map<String, Object> dependencyRefs = dependencyContextRefs(
+                        issue, storyboardObjects, sharedDependencyContexts);
+                if (!dependencyRefs.isEmpty()) {
+                    issueMap.put("storyboard_dependency_refs", dependencyRefs);
                 }
                 if (issue.getOverflow() != null) {
                     issueMap.put("overflow", overflowMap(issue.getOverflow()));
@@ -1563,6 +1578,9 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 }
                 issues.add(issueMap);
             }
+            if (issues.isEmpty()) {
+                continue;
+            }
             sampleMap.put("issues", issues);
             samples.add(sampleMap);
             addedSamples++;
@@ -1570,12 +1588,44 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
                 break;
             }
         }
+        if (!sharedDependencyContexts.isEmpty()) {
+            payload.put("storyboard_dependency_context_by_object_id", sharedDependencyContexts);
+            payload.put("dependency_repair_rule", DEPENDENCY_REPAIR_RULE);
+        }
         payload.put("issue_samples", samples);
         try {
-            return MAPPER.writeValueAsString(payload);
+            return COMPACT_MAPPER.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
             return buildFallbackFixJson(result);
         }
+    }
+
+    private String fixReportIssueKey(LayoutIssue issue) {
+        if (issue == null) {
+            return "";
+        }
+        List<String> elementKeys = new ArrayList<>();
+        addIssueElementKey(elementKeys, issue.getPrimaryElement());
+        addIssueElementKey(elementKeys, issue.getSecondaryElement());
+        elementKeys.sort(String::compareTo);
+        return String.join("|",
+                compactKeyPart(issue.getType()),
+                compactKeyPart(issue.getReasonCode()),
+                String.join("~", elementKeys));
+    }
+
+    private void addIssueElementKey(List<String> keys, ElementRef ref) {
+        if (ref == null) {
+            return;
+        }
+        String key = TextUtils.firstNonBlank(ref.getSemanticName(), ref.getStableId(), ref.getClassName());
+        if (key != null && !key.isBlank()) {
+            keys.add(compactKeyPart(key));
+        }
+    }
+
+    private String compactKeyPart(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
     private Storyboard storyboardFrom(Narrative narrative) {
@@ -1623,34 +1673,40 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         }
     }
 
-    private Map<String, Object> dependencyContextMap(LayoutIssue issue,
-                                                     Map<String, StoryboardObject> storyboardObjects) {
-        Map<String, Object> context = new LinkedHashMap<>();
+    private Map<String, Object> dependencyContextRefs(LayoutIssue issue,
+                                                      Map<String, StoryboardObject> storyboardObjects,
+                                                      Map<String, Object> sharedDependencyContexts) {
+        Map<String, Object> refs = new LinkedHashMap<>();
         if (issue == null || storyboardObjects == null || storyboardObjects.isEmpty()) {
-            return context;
+            return refs;
         }
-        Map<String, Object> primary = dependencyContextForElement(
-                "primary", issue.getPrimaryElement(), storyboardObjects);
-        if (!primary.isEmpty()) {
-            context.put("primary", primary);
-        }
-        Map<String, Object> secondary = dependencyContextForElement(
-                "secondary", issue.getSecondaryElement(), storyboardObjects);
-        if (!secondary.isEmpty()) {
-            context.put("secondary", secondary);
-        }
-        if (!context.isEmpty()) {
-            context.put("repair_rule",
-                    "For constrained or derived objects, keep structured constraints true; fix layout by moving/scaling upstream source objects, the whole constrained group, camera/view, or attachment offset instead of directly assigning coordinates to the derived object.");
-        }
-        return context;
+        addDependencyContextRef(refs, "primary", issue.getPrimaryElement(), storyboardObjects, sharedDependencyContexts);
+        addDependencyContextRef(refs, "secondary", issue.getSecondaryElement(), storyboardObjects, sharedDependencyContexts);
+        return refs;
     }
 
-    private Map<String, Object> dependencyContextForElement(String role,
-                                                            ElementRef element,
-                                                            Map<String, StoryboardObject> storyboardObjects) {
-        Map<String, Object> context = new LinkedHashMap<>();
+    private void addDependencyContextRef(Map<String, Object> refs,
+                                         String role,
+                                         ElementRef element,
+                                         Map<String, StoryboardObject> storyboardObjects,
+                                         Map<String, Object> sharedDependencyContexts) {
         String objectId = resolveStoryboardObjectId(element, storyboardObjects);
+        if (objectId == null) {
+            return;
+        }
+        if (!sharedDependencyContexts.containsKey(objectId)) {
+            Map<String, Object> context = dependencyContextForObject(objectId, storyboardObjects);
+            if (context.isEmpty()) {
+                return;
+            }
+            sharedDependencyContexts.put(objectId, context);
+        }
+        refs.put(role, objectId);
+    }
+
+    private Map<String, Object> dependencyContextForObject(String objectId,
+                                                           Map<String, StoryboardObject> storyboardObjects) {
+        Map<String, Object> context = new LinkedHashMap<>();
         if (objectId == null) {
             return context;
         }
@@ -1658,7 +1714,6 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         if (object == null) {
             return context;
         }
-        context.put("reported_role", role);
         context.put("object_id", objectId);
         putNonBlank(context, "kind", object.getKind());
         if (object.getConstraints() != null && !object.getConstraints().isEmpty()) {
@@ -1668,47 +1723,29 @@ public class SceneEvaluationNode extends PocketFlow.Node<SceneEvaluationNode.Sce
         if (!dependencies.isEmpty()) {
             context.put("constraint_dependency_ids", dependencies);
         }
-        List<Map<String, Object>> chain = new ArrayList<>();
-        appendDependencyChain(objectId, storyboardObjects, new LinkedHashSet<>(), chain);
+        List<String> chain = new ArrayList<>();
+        appendDependencyChainIds(objectId, storyboardObjects, new LinkedHashSet<>(), chain);
         if (!chain.isEmpty()) {
             context.put("full_dependency_chain", chain);
         }
         return context;
     }
 
-    private void appendDependencyChain(String objectId,
-                                       Map<String, StoryboardObject> storyboardObjects,
-                                       LinkedHashSet<String> visited,
-                                       List<Map<String, Object>> chain) {
+    private void appendDependencyChainIds(String objectId,
+                                          Map<String, StoryboardObject> storyboardObjects,
+                                          LinkedHashSet<String> visited,
+                                          List<String> chain) {
         if (objectId == null || !visited.add(objectId)) {
             return;
         }
+        chain.add(objectId);
         StoryboardObject object = storyboardObjects.get(objectId);
         if (object == null) {
-            Map<String, Object> missing = new LinkedHashMap<>();
-            missing.put("object_id", objectId);
-            missing.put("available", false);
-            chain.add(missing);
             return;
         }
-        chain.add(storyboardObjectDependencyMap(objectId, object));
         for (String dependencyId : constraintDependencyIds(object)) {
-            appendDependencyChain(dependencyId, storyboardObjects, visited, chain);
+            appendDependencyChainIds(dependencyId, storyboardObjects, visited, chain);
         }
-    }
-
-    private Map<String, Object> storyboardObjectDependencyMap(String objectId, StoryboardObject object) {
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("object_id", objectId);
-        putNonBlank(map, "kind", object.getKind());
-        List<String> dependencies = constraintDependencyIds(object);
-        if (!dependencies.isEmpty()) {
-            map.put("constraint_dependency_ids", dependencies);
-        }
-        if (object.getConstraints() != null && !object.getConstraints().isEmpty()) {
-            map.put("constraints", object.getConstraints());
-        }
-        return map;
     }
 
     private List<String> constraintDependencyIds(StoryboardObject object) {

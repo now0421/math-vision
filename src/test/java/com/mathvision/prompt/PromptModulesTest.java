@@ -495,7 +495,7 @@ class PromptModulesTest {
     }
 
     @Test
-    void sceneEvaluationPromptsPutSyntaxManualInFixedContext() {
+    void sceneEvaluationPromptsOmitSyntaxManualsInFixedContext() {
         String manimFixedContext = SceneEvaluationPrompts.buildLayoutFixFixedContextPrompt(
                 "Demo concept",
                 "Demo description",
@@ -507,8 +507,8 @@ class PromptModulesTest {
         String manimRules = SceneEvaluationPrompts.buildLayoutFixRulesPrompt("manim");
         String geogebraRules = SceneEvaluationPrompts.buildLayoutFixRulesPrompt("geogebra");
 
-        assertTrue(manimFixedContext.contains("Manim syntax reference manual:"));
-        assertTrue(geogebraFixedContext.contains("GeoGebra syntax reference manual:"));
+        assertFalse(manimFixedContext.contains("Manim syntax reference manual:"));
+        assertFalse(geogebraFixedContext.contains("GeoGebra syntax reference manual:"));
         assertTrue(manimFixedContext.contains("Current workflow stage: Stage 8 / Scene Evaluation Fix"));
         assertTrue(geogebraFixedContext.contains("Current workflow stage: Stage 8 / Scene Evaluation Fix"));
         assertFalse(manimFixedContext.contains("ProblemBundle JSON"));
@@ -516,8 +516,16 @@ class PromptModulesTest {
         assertFalse(manimFixedContext.contains("Demo concept"));
         assertFalse(manimFixedContext.contains("Demo description"));
         assertFalse(manimRules.contains("Manim syntax reference manual:"));
+        assertTrue(manimRules.contains("The full Manim syntax manual is intentionally not attached"));
         assertFalse(geogebraRules.contains("GeoGebra syntax reference manual:"));
+        assertTrue(geogebraRules.contains("The full GeoGebra syntax manual is intentionally not attached"));
         assertTrue(manimRules.contains("storyboard `safe_area_plan` and `layout_goal` are useful hints"));
+        assertTrue(manimRules.contains("`storyboard_dependency_refs`"));
+        assertTrue(manimRules.contains("`storyboard_dependency_context_by_object_id`"));
+        assertTrue(geogebraRules.contains("`storyboard_dependency_refs`"));
+        assertTrue(geogebraRules.contains("`storyboard_dependency_context_by_object_id`"));
+        assertFalse(manimRules.contains("any storyboard_dependency_context supplied"));
+        assertFalse(geogebraRules.contains("any storyboard_dependency_context supplied"));
     }
 
     @Test

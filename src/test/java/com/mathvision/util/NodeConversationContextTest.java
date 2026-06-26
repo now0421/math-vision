@@ -9,8 +9,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class NodeConversationContextTest {
 
@@ -61,7 +59,7 @@ class NodeConversationContextTest {
                 new NodeConversationContext.Message("assistant", "a".repeat(80)),
                 new NodeConversationContext.Message("user", "current")));
 
-        NodeConversationContext.trimSnapshotToFitBudget(snapshot, 160, "t".repeat(220));
+        NodeConversationContext.trimSnapshotToFitBudget(snapshot, 100, "t".repeat(220));
 
         assertEquals(List.of("system", "user"), roles(snapshot));
         assertEquals("current", snapshot.get(1).getContent());
@@ -69,7 +67,7 @@ class NodeConversationContextTest {
 
     @Test
     void nodeSupportBuildAiRequestTrimsAgainstToolSchema() {
-        NodeConversationContext context = new NodeConversationContext(160, 0);
+        NodeConversationContext context = new NodeConversationContext(100, 0);
         context.setSystemMessage("rules");
         context.appendTurn("u".repeat(80), "a".repeat(80));
 
@@ -82,16 +80,16 @@ class NodeConversationContextTest {
     }
 
     @Test
-    void trimSnapshotFailsWhenCurrentUserMessageStillExceedsBudget() {
+    void trimSnapshotWarnsAndKeepsCurrentUserMessageWhenStillOverBudget() {
         String longUserPrompt = "head-" + "x".repeat(400) + "-tail";
         List<NodeConversationContext.Message> snapshot = List.of(
                 new NodeConversationContext.Message("system", "rules"),
                 new NodeConversationContext.Message("user", longUserPrompt));
 
-        IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> NodeConversationContext.trimSnapshotToFitBudget(snapshot, 80));
+        NodeConversationContext.trimSnapshotToFitBudget(snapshot, 80);
 
-        assertTrue(error.getMessage().contains("Refusing to truncate the current user prompt"));
+        assertEquals(2, snapshot.size());
+        assertEquals(longUserPrompt, snapshot.get(1).getContent());
     }
 
     private static List<String> roles(List<NodeConversationContext.Message> messages) {

@@ -416,12 +416,11 @@ public class NodeConversationContext {
         int messageTokens = estimateTokens(snapshot);
         int totalTokens = messageTokens + requestPayloadTokens;
         if (totalTokens > effectiveBudget) {
-            throw new IllegalStateException(String.format(
-                    "Prompt snapshot exceeds input budget after rolling context trim: ~%d tokens > budget %d. "
-                            + "Refusing to truncate the current user prompt; reduce fixed context, scene payload, "
-                            + "tool schema size, manual size, or configured output token reserve. "
-                            + "(messages ~%d, request payload ~%d)",
-                    totalTokens, effectiveBudget, messageTokens, requestPayloadTokens));
+            log.warn("Prompt snapshot exceeds input budget after rolling context trim: ~{} tokens > budget {}. "
+                            + "Proceeding without truncating pinned context or the current user prompt; the provider may still accept the request "
+                            + "because local token estimation is heuristic. If the provider rejects it, reduce fixed context, scene payload, "
+                            + "tool schema size, manual size, or configured output token reserve. (messages ~{}, request payload ~{})",
+                    totalTokens, effectiveBudget, messageTokens, requestPayloadTokens);
         }
     }
 

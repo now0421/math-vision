@@ -57,7 +57,9 @@ class StoryboardJsonBuilderTest {
         assertFalse(pminPatch.has("content"));
         assertFalse(pminPatch.has("constraints"));
 
-        JsonNode sceneFix = JsonUtils.mapper().readTree(StoryboardJsonBuilder.buildForSceneEvaluationFix(storyboard));
+        String sceneFixJson = StoryboardJsonBuilder.buildForSceneEvaluationFix(storyboard);
+        JsonNode sceneFix = JsonUtils.mapper().readTree(sceneFixJson);
+        assertFalse(sceneFixJson.contains("\n"));
         assertFalse(sceneFix.toString().contains("\"placement\""));
     }
 
