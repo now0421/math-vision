@@ -787,26 +787,30 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
     }
 
     private String buildEnrichmentContext(KnowledgeNode node) {
+        boolean hasEquations = node.getEquations() != null && !node.getEquations().isEmpty();
+        boolean hasDefinitions = node.getDefinitions() != null && !node.getDefinitions().isEmpty();
+        boolean hasInterpretation = node.getInterpretation() != null && !node.getInterpretation().isBlank();
+        boolean hasExamples = node.getExamples() != null && !node.getExamples().isEmpty();
+        if (!hasEquations && !hasDefinitions && !hasInterpretation && !hasExamples) {
+            return "";
+        }
         StringBuilder sb = new StringBuilder();
-        if (node.getEquations() != null && !node.getEquations().isEmpty()) {
-            sb.append("Mathematical enrichment for this node:\n");
+        sb.append("Mathematical enrichment for this node (Stage 2 supplemental fields):\n");
+        if (hasEquations) {
             sb.append("Equations:\n");
             for (String eq : node.getEquations()) {
                 sb.append("- ").append(eq).append("\n");
             }
         }
-        if (node.getDefinitions() != null && !node.getDefinitions().isEmpty()) {
-            if (sb.length() == 0) {
-                sb.append("Mathematical enrichment for this node:\n");
-            }
+        if (hasDefinitions) {
             sb.append("Definitions:\n");
             node.getDefinitions().forEach((symbol, definition) ->
                     sb.append("- ").append(symbol).append(": ").append(definition).append("\n"));
         }
-        if (node.getInterpretation() != null && !node.getInterpretation().isBlank()) {
+        if (hasInterpretation) {
             sb.append("Interpretation: ").append(node.getInterpretation()).append("\n");
         }
-        if (node.getExamples() != null && !node.getExamples().isEmpty()) {
+        if (hasExamples) {
             sb.append("Examples:\n");
             for (String example : node.getExamples()) {
                 sb.append("- ").append(example).append("\n");
@@ -972,10 +976,16 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
         }
         if (graph != null) {
             List<KnowledgeNode> prerequisites = graph.getPrerequisites(node.getId());
-            if (!prerequisites.isEmpty()) {
-                sb.append("Direct prerequisite steps:\n");
-                for (KnowledgeNode prerequisite : prerequisites) {
-                    sb.append("- ").append(prerequisite.getStep()).append("\n");
+            List<KnowledgeNode> dependents = graph.getDependents(node.getId());
+            if (!prerequisites.isEmpty() || !dependents.isEmpty()) {
+                sb.append("Graph-neighbor context (navigation only, not mathematical authority):\n");
+                if (!prerequisites.isEmpty()) {
+                    sb.append("- Direct prerequisite scene count: ").append(prerequisites.size())
+                            .append("; use conversation history and the object registry for continuity instead of copying neighbor step text into this request.\n");
+                }
+                if (!dependents.isEmpty()) {
+                    sb.append("- Direct downstream scene count: ").append(dependents.size())
+                            .append("; use this only to avoid premature exits or reveals, not to introduce downstream claims early.\n");
                 }
             }
             if (prerequisites.size() > 1) {
@@ -983,13 +993,7 @@ public class VisualDesignNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeG
                 sb.append("- This scene merges multiple prerequisite branches.\n");
                 sb.append("- Reuse established object ids, color meanings, and continuity anchors.\n");
                 sb.append("- Integrate the upstream conclusions in one scene instead of replaying each branch.\n");
-            }
-            List<KnowledgeNode> dependents = graph.getDependents(node.getId());
-            if (!dependents.isEmpty()) {
-                sb.append("Direct downstream steps:\n");
-                for (KnowledgeNode dependent : dependents) {
-                    sb.append("- ").append(dependent.getStep()).append("\n");
-                }
+                sb.append("- If branch context conflicts with the ProblemBundle, keep the ProblemBundle-consistent meaning.\n");
             }
         }
         return sb.toString().trim();

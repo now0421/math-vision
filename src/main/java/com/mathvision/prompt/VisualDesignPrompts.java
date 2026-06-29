@@ -101,7 +101,7 @@ public final class VisualDesignPrompts {
                     + "- For merge scenes, combine upstream conclusions into one coherent scene and decide which branch evidence should remain as support, which should be dimmed, and which has finished its role.\n"
                     + "- Keep the storyboard lean through judgment, not blanket removal: prefer moving, transforming, dragging, sweeping, or restyling existing elements over adding explanatory text; dim or exit objects when they have finished their role.\n"
                     + "- Include an object in `exiting_objects` when its role is complete, it will not support upcoming reasoning, or keeping it would distract from the next idea; keep or dim it when it remains useful as evidence, an anchor, a comparison target, or learner orientation.\n"
-                    + "- Use enrichment fields only when they sharpen the explanation.\n"
+                    + "- Use enrichment fields only when their equations, definitions, interpretation, or examples make the visual explanation clearer.\n"
                     + "- Narrative must not be constrained by a fixed word count.\n"
                     + "- Duration estimation reference: title card 3-5s, concept introduction 10-20s, equation reveal 15-25s, algorithm step 5-10s, aha-moment beat 15-30s, conclusion 5-10s. Use these ranges when setting `duration_seconds`.\n"
                     + "- Keep object ids concise and non-redundant since `kind` already carries the type. Good ids: `AB`, `P`, `l`; bad ids: `segmentAB`, `LineAB`, `PointP`. Follow only the naming rules for the active backend.\n"
@@ -150,6 +150,7 @@ public final class VisualDesignPrompts {
                     + "- Manim does not auto-label objects. When an object's name or value helps the learner understand the current beat, explicitly declare a companion `kind: text` or `kind: equation` label in `new_objects`, include it in the scene patch, and attach it through an `attachment/label_for` constraint. Omit labels that are redundant or do not improve understanding.\n"
                     + "- Do not use `style.label_visible` to request a visible Manim label; labels must be explicit companion objects with attachment constraints.\n"
                     + StoryboardSchemaPrompts.MANIM_COMPANION_LABEL_EXAMPLE
+                    + "- For stroke-only Manim geometry such as `kind=arc`, `arc_marker`, `angle_marker`, `right_angle_marker`, `segment`, `line`, `ray`, `vector`, or `trace`, express transparency with `style.stroke_opacity` rather than `style.opacity` in both object definitions and scene patches. Reserve fill styling for explicitly filled regions, sectors, polygons, cards, or intentionally filled shapes; do not imply an interior fill for circular arcs or angle markers.\n"
                     + "- Use `screen_overlay_plan` only for true viewport-fixed explanatory overlays, not as a vague place to hide layout conflicts.\n"
                     + SCENE_STYLE_LAYOUT_RULES
                     + SystemPrompts.VISUAL_PLANNING_RULES
@@ -283,7 +284,16 @@ public final class VisualDesignPrompts {
         } else {
             sb.append("\n\n").append(SystemPrompts.ensureManimStyleReference(""));
         }
+        appendFinalAuthorityReminder(sb);
         return SystemPrompts.buildFixedContextSection(sb.toString());
+    }
+
+    private static void appendFinalAuthorityReminder(StringBuilder sb) {
+        sb.append("\n\nFinal visual-design authority reminder:\n");
+        sb.append("- The solution-step chain above, current-request graph neighbors, conversation history, and object registry are workflow or continuity context, not source authority.\n");
+        sb.append("- If any semantic claim in that context conflicts with the ProblemBundle, trust the ProblemBundle and design the scene from the ProblemBundle-consistent interpretation.\n");
+        sb.append("- Treat MathEnrichment fields as supplemental Stage 2 fields such as equations, definitions, interpretation, and examples; use them for visual clarity without making them a separate authority over the ProblemBundle.\n");
+        sb.append("- Correcting a graph branch to match the ProblemBundle is required and is not inventing an unsupported alternative solution branch.");
     }
 
     private static void appendInitialDiagramContract(StringBuilder sb, ProblemBundle problemBundle) {

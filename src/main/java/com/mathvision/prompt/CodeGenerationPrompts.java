@@ -53,6 +53,7 @@ public final class CodeGenerationPrompts {
                     + "- Follow the storyboard's lifecycle decisions: persistent objects may remain visible, dimmed, transformed, or repositioned as the scene requires; exiting objects should leave cleanly unless that would break continuity or a hard constraint. Do not add extra exits merely to reduce density.\n\n"
                     + SystemPrompts.OBJECT_LIFECYCLE_RULES
                     + SystemPrompts.GEOMETRY_CONSTRAINT_RULES + "\n"
+                    + SystemPrompts.MANIM_OPACITY_API_RULES
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + "- Implement the visual plan with documented Manim constructs and no hidden assumptions.\n"
                     + "- " + SystemPrompts.MANIM_TEXT_CONSTRUCTOR_MAPPING
@@ -106,6 +107,7 @@ public final class CodeGenerationPrompts {
                     + SystemPrompts.MANIM_VOICEOVER_RULES
                     + SystemPrompts.MANIM_CHINESE_TEXT_RENDERING_RULES
                     + "- Do not treat `style.label_visible` as permission to create a label. Render labels only when the storyboard declares explicit text/equation label objects.\n"
+                    + SystemPrompts.MANIM_OPACITY_API_RULES
                     + SystemPrompts.MANIM_MANUAL_ONLY_RULES
                     + SystemPrompts.MANIM_CODE_HYGIENE_RULES
                     + SystemPrompts.COMMON_RENDER_FAILURE_GUARDRAILS

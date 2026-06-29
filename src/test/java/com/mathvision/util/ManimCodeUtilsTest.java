@@ -176,6 +176,59 @@ class ManimCodeUtilsTest {
     }
 
     @Test
+    void validateManimRules_detectsConstructorOpacityKeyword() {
+        String code = String.join("\n",
+                "from manim import *",
+                "",
+                "class MainScene(Scene):",
+                "    def construct(self):",
+                "        seg = Line(LEFT, RIGHT, color=BLUE, opacity=0.6)",
+                "        arc = Arc(",
+                "            radius=1.5,",
+                "            start_angle=0,",
+                "            angle=PI,",
+                "            opacity=0.8,",
+                "        )",
+                "        dot = Dot(color=RED)",
+                "        dot.set_opacity(0.5)",
+                "        seg.set_stroke(opacity=0.4)",
+                "        label = Text(\"opacity=0.9 is only prose\")");
+
+        List<String> violations = ManimCodeUtils.validateManimRules(code);
+
+        assertTrue(violations.stream().anyMatch(v -> v.contains("constructor opacity keyword")
+                && v.contains("Line(...)")), () -> String.join("\n", violations));
+        assertTrue(violations.stream().anyMatch(v -> v.contains("constructor opacity keyword")
+                && v.contains("Arc(...)")), () -> String.join("\n", violations));
+        assertTrue(violations.stream().noneMatch(v -> v.contains("set_opacity")),
+                () -> String.join("\n", violations));
+        assertTrue(violations.stream().noneMatch(v -> v.contains("set_stroke")),
+                () -> String.join("\n", violations));
+        assertTrue(violations.stream().noneMatch(v -> v.contains("only prose")),
+                () -> String.join("\n", violations));
+    }
+
+    @Test
+    void validateManimRules_allowsDocumentedOpacityStyling() {
+        String code = String.join("\n",
+                "from manim import *",
+                "",
+                "class MainScene(Scene):",
+                "    def construct(self):",
+                "        circle = Circle(radius=1.2, color=BLUE, fill_opacity=0.25)",
+                "        card = BackgroundRectangle(circle, fill_opacity=0.8, buff=0.2)",
+                "        curve = VMobject()",
+                "        curve.set_stroke(BLUE, width=2, opacity=0.5)",
+                "        circle.set_fill(BLUE, opacity=0.3)",
+                "        circle.set_opacity(0.7)");
+
+        List<String> violations = ManimCodeUtils.validateManimRules(code);
+
+        assertTrue(violations.stream().noneMatch(v -> v.contains("constructor opacity keyword")),
+                () -> String.join("\n", violations));
+    }
+
+    @Test
     void validateFullDetectsGeneratedCoordinateScaleRegression() {
         String code = String.join("\n",
                 "from manim import *",

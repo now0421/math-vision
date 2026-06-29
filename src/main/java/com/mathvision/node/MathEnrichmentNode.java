@@ -11,10 +11,7 @@ import com.mathvision.prompt.SystemPrompts;
 import com.mathvision.prompt.ToolSchemas;
 import com.mathvision.service.AiClient;
 import com.mathvision.util.AiRequestUtils;
-import com.mathvision.util.ConceptUtils;
-import com.mathvision.util.ConcurrencyUtils;
 import com.mathvision.util.NodeConversationContext;
-import com.mathvision.util.ProblemBundleContextBuilder;
 import com.mathvision.util.TargetDescriptionBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.github.the_pocket.PocketFlow;
@@ -25,10 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -38,17 +32,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, KnowledgeGraph, String> {
 
     private static final Logger log = LoggerFactory.getLogger(MathEnrichmentNode.class);
+    private static final int ROLLING_CONTEXT_ROUNDS = 10;
 
     private AiClient aiClient;
     private WorkflowConfig workflowConfig;
     private final AtomicInteger toolCalls = new AtomicInteger(0);
-    private boolean parallelEnabled = true;
-    private int maxConcurrent = 4;
     private String outputTarget = WorkflowConfig.OUTPUT_TARGET_MANIM;
-    private final Map<String, CompletableFuture<EnrichmentRequestResult>> cache = new ConcurrentHashMap<>();
-    private ConcurrencyUtils.AsyncLimiter aiCallLimiter;
     private NodeConversationContext conversationContext;
-    private KnowledgeGraph graph;
     private ProblemBundle problemBundle;
 
     public MathEnrichmentNode() {
@@ -61,8 +51,6 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         this.workflowConfig = (WorkflowConfig) ctx.get(WorkflowKeys.CONFIG);
         this.problemBundle = (ProblemBundle) ctx.get(WorkflowKeys.PROBLEM_BUNDLE);
         if (workflowConfig != null) {
-            this.parallelEnabled = workflowConfig.isParallelMathEnrichment();
-            this.maxConcurrent = workflowConfig.getMaxConcurrent();
             this.outputTarget = workflowConfig.getOutputTarget();
         }
         return (KnowledgeGraph) ctx.get(WorkflowKeys.KNOWLEDGE_GRAPH);
@@ -70,16 +58,12 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
 
     @Override
     public KnowledgeGraph exec(KnowledgeGraph graph) {
-        int concurrency = parallelEnabled ? maxConcurrent : 1;
-        log.info("=== Stage 2: Mathematical Enrichment (output_target={}, parallel={}, concurrency={}) ===",
-                outputTarget, parallelEnabled, concurrency);
+        log.info("=== Stage 2: Mathematical Enrichment (output_target={}, order=teaching_order, rolling_rounds={}) ===",
+                outputTarget, ROLLING_CONTEXT_ROUNDS);
         toolCalls.set(0);
-        cache.clear();
-        aiCallLimiter = new ConcurrencyUtils.AsyncLimiter(concurrency);
-        this.graph = graph;
 
         int maxInputTokens = TargetDescriptionBuilder.resolvePromptInputBudgetTokens(workflowConfig);
-        this.conversationContext = new NodeConversationContext(maxInputTokens);
+        this.conversationContext = new NodeConversationContext(maxInputTokens, ROLLING_CONTEXT_ROUNDS);
         String solutionChain = TargetDescriptionBuilder.buildSolutionChain(graph, null);
         this.conversationContext.setSystemMessage(EnrichmentPrompts.buildRulesPrompt());
         this.conversationContext.setFixedContextMessage(EnrichmentPrompts.buildFixedContextPrompt(
@@ -90,8 +74,7 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         try {
             return enrichGraph(graph);
         } finally {
-            aiCallLimiter = null;
-            this.graph = null;
+            this.conversationContext = null;
         }
     }
 
@@ -104,147 +87,80 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
     }
 
     private KnowledgeGraph enrichGraph(KnowledgeGraph graph) {
-        List<List<KnowledgeNode>> executionBatches = graph.executionBatches();
-
-        try {
-            for (int batchIndex = 0; batchIndex < executionBatches.size(); batchIndex++) {
-                List<KnowledgeNode> nodes = new ArrayList<>();
-                for (KnowledgeNode node : executionBatches.get(batchIndex)) {
-                    if (shouldEnrichNode(node)) {
-                        nodes.add(node);
-                    }
-                }
-                if (nodes.isEmpty()) {
-                    log.info("  Skipping batch {} (no eligible nodes)", batchIndex + 1);
-                    continue;
-                }
-                log.info("  Enriching batch {} ({} nodes{})", batchIndex + 1, nodes.size(),
-                        parallelEnabled && nodes.size() > 1 ? ", parallel" : "");
-                enrichExecutionBatch(nodes);
-            }
-        } catch (CompletionException e) {
-            Throwable cause = ConcurrencyUtils.unwrapCompletionException(e);
-            throw new RuntimeException("Math enrichment failed: " + cause.getMessage(), cause);
+        if (graph == null) {
+            return null;
         }
 
-        log.info("Mathematical enrichment complete: {} API calls, {} cache entries",
-                toolCalls.get(), cache.size());
+        List<KnowledgeNode> teachingOrder = graph.teachingOrderNodes();
+        int enrichedCount = 0;
+        int skippedCount = 0;
+
+        for (int index = 0; index < teachingOrder.size(); index++) {
+            KnowledgeNode node = teachingOrder.get(index);
+            if (!shouldEnrichNode(node)) {
+                skippedCount++;
+                continue;
+            }
+            log.info("  Enriching step {} of {}: {}", index + 1, teachingOrder.size(), node.getStep());
+            if (enrichNode(node)) {
+                enrichedCount++;
+            } else {
+                skippedCount++;
+            }
+        }
+
+        log.info("Mathematical enrichment complete: {} API calls, {} steps enriched, {} skipped",
+                toolCalls.get(), enrichedCount, skippedCount);
         return graph;
     }
 
-    private void enrichExecutionBatch(List<KnowledgeNode> nodes) {
-        List<NodeConversationContext.Message> batchConversationSnapshot = conversationContext.getMessages();
-        List<CompletableFuture<EnrichmentNodeResult>> tasks = new ArrayList<>();
-        for (KnowledgeNode node : nodes) {
-            tasks.add(enrichNodeAsync(node, batchConversationSnapshot));
-        }
-
-        CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).join();
-
-        List<EnrichmentNodeResult> results = new ArrayList<>();
-        for (CompletableFuture<EnrichmentNodeResult> task : tasks) {
-            EnrichmentNodeResult result = task.join();
-            if (result != null) {
-                results.add(result);
-            }
-        }
-        commitBatchConversation(results);
-    }
-
-    private CompletableFuture<EnrichmentNodeResult> enrichNodeAsync(KnowledgeNode node,
-                                                                    List<NodeConversationContext.Message> batchConversationSnapshot) {
+    private boolean enrichNode(KnowledgeNode node) {
         if (node.isEnriched()) {
             log.debug("  Skipping already-enriched node: {}", node.getStep());
-            return CompletableFuture.completedFuture(EnrichmentNodeResult.skipped(node));
+            return false;
         }
 
         String userPrompt = buildCurrentStepPrompt(node);
-        return getCachedContentAsync(node, userPrompt, batchConversationSnapshot)
-                .thenApply(result -> {
-                    if (result != null && result.payload != null) {
-                        applyContent(node, result.payload);
-                    }
-                    return new EnrichmentNodeResult(node, result);
-                })
-                .exceptionally(error -> {
-                    Throwable cause = ConcurrencyUtils.unwrapCompletionException(error);
-                    log.warn("  Math enrichment failed for '{}': {}", node.getStep(), cause.getMessage());
-                    return EnrichmentNodeResult.failed(node);
-                });
-    }
-
-    private CompletableFuture<EnrichmentRequestResult> getCachedContentAsync(
-            KnowledgeNode node,
-            String userPrompt,
-            List<NodeConversationContext.Message> batchConversationSnapshot) {
-        String cacheKey = buildCacheKey(node);
-        CompletableFuture<EnrichmentRequestResult> existing = cache.get(cacheKey);
-        if (existing != null) {
-            return existing;
-        }
-
-        CompletableFuture<EnrichmentRequestResult> created = fetchMathContentAsync(
-                node, userPrompt, batchConversationSnapshot, cacheKey);
-        CompletableFuture<EnrichmentRequestResult> prior = cache.putIfAbsent(cacheKey, created);
-        if (prior != null) {
-            return prior;
-        }
-
-        created.whenComplete((ignored, error) -> {
-            if (error != null) {
-                cache.remove(cacheKey, created);
+        try {
+            EnrichmentRequestResult result = fetchMathContent(node, userPrompt);
+            if (result != null && result.payload != null) {
+                applyContent(node, result.payload);
             }
-        });
-        return created;
+            appendConversationTurn(result);
+            return true;
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            log.warn("  Math enrichment failed for '{}': {}", node.getStep(), cause.getMessage());
+            return false;
+        } catch (RuntimeException e) {
+            log.warn("  Math enrichment failed for '{}': {}", node.getStep(), e.getMessage());
+            return false;
+        }
     }
 
-    private CompletableFuture<EnrichmentRequestResult> fetchMathContentAsync(
-            KnowledgeNode node,
-            String userPrompt,
-            List<NodeConversationContext.Message> batchConversationSnapshot,
-            String cacheKey) {
-        return aiCallLimiter.submit(() -> AiRequestUtils.requestJsonAsync(
+    private EnrichmentRequestResult fetchMathContent(KnowledgeNode node, String userPrompt) {
+        AiRequestUtils.JsonObjectResult result = AiRequestUtils.requestJsonAsync(
                 aiClient,
                 log,
                 node.getStep(),
-                NodeSupport.buildAiRequest(
-                        batchConversationSnapshot,
-                        conversationContext.getPromptInputBudgetTokens(),
-                        userPrompt,
-                        ToolSchemas.MATH_ENRICHMENT),
+                NodeSupport.buildAiRequest(conversationContext, userPrompt, ToolSchemas.MATH_ENRICHMENT),
                 AiRequestUtils.JsonRequestOptions.of(() -> toolCalls.incrementAndGet())
-        )).thenApply(result -> new EnrichmentRequestResult(
-                cacheKey,
+        ).join();
+
+        return new EnrichmentRequestResult(
                 userPrompt,
                 result != null ? result.getPayload() : null,
                 result != null ? result.getAssistantTranscript() : ""
-        ));
-    }
-
-    private String buildCacheKey(KnowledgeNode node) {
-        String stepKey = ConceptUtils.normalizeConcept(node.getStep());
-        String reasonKey = node.getReason() == null
-                ? ""
-                : node.getReason().trim().toLowerCase();
-        return stepKey + "||" + reasonKey;
+        );
     }
 
     private boolean shouldEnrichNode(KnowledgeNode node) {
         return node != null;
     }
 
-    private void commitBatchConversation(List<EnrichmentNodeResult> results) {
-        for (EnrichmentNodeResult result : results) {
-            if (result == null || result.requestResult == null) {
-                continue;
-            }
-            EnrichmentRequestResult requestResult = result.requestResult;
-            if (requestResult.markConversationCommitted()) {
-                conversationContext.appendTurn(
-                        requestResult.userPrompt,
-                        requestResult.assistantTranscript
-                );
-            }
+    private void appendConversationTurn(EnrichmentRequestResult result) {
+        if (result != null && !result.assistantTranscript.isBlank()) {
+            conversationContext.appendTurn(result.userPrompt, result.assistantTranscript);
         }
     }
 
@@ -254,47 +170,6 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
         sb.append("- step: ").append(node.getStep()).append("\n");
         sb.append("- node_role: ").append(
                 node.getNodeType() != null ? node.getNodeType() : "concept").append("\n");
-
-        if (graph != null) {
-            List<KnowledgeNode> prerequisites = graph.getPrerequisites(node.getId());
-            if (!prerequisites.isEmpty()) {
-                sb.append("[DIRECT_PREREQUISITES]\n");
-                for (KnowledgeNode prerequisite : prerequisites) {
-                    sb.append("- prerequisite: ").append(prerequisite.getStep());
-                    if (prerequisite.isEnriched()) {
-                        if (prerequisite.getInterpretation() != null
-                                && !prerequisite.getInterpretation().isBlank()) {
-                            sb.append("\n  inherited takeaway: ").append(prerequisite.getInterpretation());
-                        }
-                        if (prerequisite.getEquations() != null
-                                && !prerequisite.getEquations().isEmpty()) {
-                            sb.append("\n  reusable equations: ").append(prerequisite.getEquations().get(0));
-                        }
-                        if (prerequisite.getDefinitions() != null
-                                && !prerequisite.getDefinitions().isEmpty()) {
-                            Map.Entry<String, String> firstDef = prerequisite.getDefinitions().entrySet().iterator().next();
-                            sb.append("\n  reusable definitions: ").append(firstDef.getKey()).append(": ").append(firstDef.getValue());
-                        }
-                    }
-                    sb.append("\n");
-                }
-            }
-            if (prerequisites.size() > 1) {
-                sb.append("[MERGE_GUIDANCE]\n");
-                sb.append("- This step merges multiple prerequisite branches.\n");
-                sb.append("- Integrate the prerequisite conclusions into one continuation.\n");
-                sb.append("- Preserve established naming instead of restarting the explanation.\n");
-            }
-
-            List<KnowledgeNode> dependents = graph.getDependents(node.getId());
-            if (!dependents.isEmpty()) {
-                sb.append("[DIRECT_DOWNSTREAM_USE]\n");
-                for (KnowledgeNode dependent : dependents) {
-                    sb.append("- downstream: ").append(dependent.getStep()).append("\n");
-                    sb.append("  this step should prepare: content needed by the above downstream step\n");
-                }
-            }
-        }
 
         sb.append("[RESPONSE_SCOPE]\n");
         sb.append("Return only the mathematical content needed for this step.\n");
@@ -388,45 +263,16 @@ public class MathEnrichmentNode extends PocketFlow.Node<KnowledgeGraph, Knowledg
     }
 
     private static final class EnrichmentRequestResult {
-        private final String cacheKey;
         private final String userPrompt;
         private final JsonNode payload;
         private final String assistantTranscript;
-        private final AtomicBoolean conversationCommitted = new AtomicBoolean(false);
 
-        private EnrichmentRequestResult(String cacheKey,
-                                        String userPrompt,
+        private EnrichmentRequestResult(String userPrompt,
                                         JsonNode payload,
                                         String assistantTranscript) {
-            this.cacheKey = cacheKey;
             this.userPrompt = userPrompt;
             this.payload = payload;
             this.assistantTranscript = assistantTranscript == null ? "" : assistantTranscript;
-        }
-
-        private boolean markConversationCommitted() {
-            if (assistantTranscript.isBlank()) {
-                return false;
-            }
-            return conversationCommitted.compareAndSet(false, true);
-        }
-    }
-
-    private static final class EnrichmentNodeResult {
-        private final KnowledgeNode node;
-        private final EnrichmentRequestResult requestResult;
-
-        private EnrichmentNodeResult(KnowledgeNode node, EnrichmentRequestResult requestResult) {
-            this.node = node;
-            this.requestResult = requestResult;
-        }
-
-        private static EnrichmentNodeResult skipped(KnowledgeNode node) {
-            return new EnrichmentNodeResult(node, null);
-        }
-
-        private static EnrichmentNodeResult failed(KnowledgeNode node) {
-            return new EnrichmentNodeResult(node, null);
         }
     }
 }

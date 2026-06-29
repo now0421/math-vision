@@ -69,10 +69,14 @@ class MathEnrichmentNodeTest {
 
         String currentPrompt = aiClient.findUserMessageContaining("- step: Reflect point A across line l");
         assertNotNull(currentPrompt);
-        assertTrue(currentPrompt.contains("[DIRECT_PREREQUISITES]"));
-        assertTrue(currentPrompt.contains("prerequisite: State the shortest-path problem"));
-        assertTrue(currentPrompt.contains("[DIRECT_DOWNSTREAM_USE]"));
-        assertTrue(currentPrompt.contains("downstream: Conclude the reflected route is shortest"));
+        assertTrue(currentPrompt.contains("[CURRENT_STEP]"));
+        assertTrue(currentPrompt.contains("- node_role: construction"));
+        assertTrue(currentPrompt.contains("[RESPONSE_SCOPE]"));
+        assertFalse(currentPrompt.contains("[DIRECT_PREREQUISITES]"));
+        assertFalse(currentPrompt.contains("prerequisite: State the shortest-path problem"));
+        assertFalse(currentPrompt.contains("[MERGE_GUIDANCE]"));
+        assertFalse(currentPrompt.contains("[DIRECT_DOWNSTREAM_USE]"));
+        assertFalse(currentPrompt.contains("downstream: Conclude the reflected route is shortest"));
         assertFalse(currentPrompt.contains("Target problem:"));
         assertFalse(currentPrompt.contains("- Node type:"));
         assertFalse(currentPrompt.contains("- Depth:"));
@@ -136,7 +140,7 @@ class MathEnrichmentNodeTest {
     }
 
     @Test
-    void executionBatchesFreezeConversationSnapshotsAndExposeMergeInputs() {
+    void teachingOrderExecutionCarriesRollingConversationHistory() {
         SnapshotRecordingAiClient aiClient = new SnapshotRecordingAiClient();
 
         KnowledgeNode start = node("start", "Start the explanation", KnowledgeNode.NODE_TYPE_CONCEPT);
@@ -165,6 +169,16 @@ class MathEnrichmentNodeTest {
 
         new MathEnrichmentNode().run(ctx);
 
+        assertEquals(
+                List.of(
+                        "Start the explanation",
+                        "Left branch insight",
+                        "Right branch insight",
+                        "Merge the two insights"
+                ),
+                aiClient.userMessageSteps()
+        );
+
         String leftSnapshot = aiClient.findSnapshotContaining("- step: Left branch insight");
         String rightSnapshot = aiClient.findSnapshotContaining("- step: Right branch insight");
         String mergeSnapshot = aiClient.findSnapshotContaining("- step: Merge the two insights");
@@ -175,15 +189,16 @@ class MathEnrichmentNodeTest {
         assertNotNull(mergeSnapshot);
         assertNotNull(mergePrompt);
 
-        assertTrue(leftSnapshot.contains("[tool_call]"));
-        assertTrue(rightSnapshot.contains("[tool_call]"));
-
-        assertTrue(mergeSnapshot.contains("Left branch insight"));
-        assertTrue(mergeSnapshot.contains("Right branch insight"));
-        assertTrue(mergePrompt.contains("[DIRECT_PREREQUISITES]"));
-        assertTrue(mergePrompt.contains("prerequisite: Left branch insight"));
-        assertTrue(mergePrompt.contains("prerequisite: Right branch insight"));
-        assertTrue(mergePrompt.contains("[MERGE_GUIDANCE]"));
+        assertTrue(leftSnapshot.contains("eq-start"));
+        assertTrue(rightSnapshot.contains("eq-start"));
+        assertTrue(rightSnapshot.contains("eq-left"));
+        assertTrue(mergeSnapshot.contains("eq-start"));
+        assertTrue(mergeSnapshot.contains("eq-left"));
+        assertTrue(mergeSnapshot.contains("eq-right"));
+        assertFalse(mergePrompt.contains("[DIRECT_PREREQUISITES]"));
+        assertFalse(mergePrompt.contains("prerequisite: Left branch insight"));
+        assertFalse(mergePrompt.contains("prerequisite: Right branch insight"));
+        assertFalse(mergePrompt.contains("[MERGE_GUIDANCE]"));
     }
 
     private void applyContent(MathEnrichmentNode enrichmentNode,
@@ -281,12 +296,6 @@ class MathEnrichmentNodeTest {
             }
             String currentUserMessage = userMessage;
             snapshotsByPrompt.put(currentUserMessage, snapshotSummary(snapshot));
-            System.err.println("[SNAP-" + snapshot.size() + "] lastUser=" + currentUserMessage.substring(0, Math.min(60, currentUserMessage.length())).replace('\n', '|') + " hasEqStart=" + snapshotSummary(snapshot).contains("eq-start") + " roles=" + snapshot.stream().map(m -> m.getRole().substring(0,3)).collect(java.util.stream.Collectors.joining(",")));
-            for (int i = 0; i < snapshot.size(); i++) {
-                String c = snapshot.get(i).getContent();
-                String preview = c.length() > 80 ? c.substring(0, 80).replace('\n', '|') : c.replace('\n', '|');
-                System.err.println("  [" + i + "] " + snapshot.get(i).getRole() + ": " + preview + (c.contains("eq-start") ? " ***HAS_EQ_START***" : ""));
-            }
             return CompletableFuture.completedFuture(
                     AiClientTestSupport.rawResponse(validEnrichmentResponseFor(currentUserMessage)));
         }
@@ -307,6 +316,24 @@ class MathEnrichmentNodeTest {
                 }
             }
             return null;
+        }
+
+        private List<String> userMessageSteps() {
+            List<String> steps = new ArrayList<>();
+            for (String userMessage : userMessages) {
+                if (userMessage == null) {
+                    continue;
+                }
+                String marker = "- step: ";
+                int start = userMessage.indexOf(marker);
+                if (start < 0) {
+                    continue;
+                }
+                int valueStart = start + marker.length();
+                int valueEnd = userMessage.indexOf('\n', valueStart);
+                steps.add(userMessage.substring(valueStart, valueEnd >= 0 ? valueEnd : userMessage.length()));
+            }
+            return steps;
         }
 
     }

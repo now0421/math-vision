@@ -78,7 +78,11 @@ class VisualDesignNodeTest {
         assertTrue(currentPrompt.contains("AP = A'P"));
         assertTrue(currentPrompt.contains("A': reflection of A across l"));
         assertTrue(currentPrompt.contains("Global visual context:"));
-        assertTrue(currentPrompt.contains("Direct downstream steps:\n- Conclude the reflected route is shortest"));
+        assertTrue(currentPrompt.contains("Mathematical enrichment for this node (Stage 2 supplemental fields):"));
+        assertTrue(currentPrompt.contains("Graph-neighbor context (navigation only, not mathematical authority):"));
+        assertTrue(currentPrompt.contains("Direct downstream scene count: 1"));
+        assertFalse(currentPrompt.contains("Direct downstream steps:"));
+        assertFalse(currentPrompt.contains("Conclude the reflected route is shortest"));
         assertFalse(currentPrompt.contains("gradually increase abstraction"));
         assertFalse(currentPrompt.contains("backend-neutral where possible"));
 
@@ -137,8 +141,11 @@ class VisualDesignNodeTest {
         assertTrue(mergePrompt.contains("rightObj"));
         assertTrue(mergePrompt.contains("LEFT_COLOR"));
         assertTrue(mergePrompt.contains("RIGHT_COLOR"));
-        assertTrue(mergePrompt.contains("Direct prerequisite steps:\n- Left scene\n- Right scene"));
+        assertTrue(mergePrompt.contains("Graph-neighbor context (navigation only, not mathematical authority):"));
+        assertTrue(mergePrompt.contains("Direct prerequisite scene count: 2"));
+        assertFalse(mergePrompt.contains("Direct prerequisite steps:"));
         assertTrue(mergePrompt.contains("Merge scene guidance:"));
+        assertTrue(mergePrompt.contains("keep the ProblemBundle-consistent meaning"));
 
         Narrative narrative = (Narrative) ctx.get(WorkflowKeys.NARRATIVE);
         assertNotNull(narrative);

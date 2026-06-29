@@ -594,6 +594,16 @@ meaning stays consistent.
 Use separate opacity arguments or style fields for transparency. Do not encode
 alpha in an 8-digit hex color.
 
+Do not pass a generic `opacity=` keyword to Manim mobject or animation
+constructors such as `Line(...)`, `Arc(...)`, `Dot(...)`, `Circle(...)`,
+`DashedLine(...)`, `Arrow(...)`, `Text(...)`, `MathTex(...)`,
+`VGroup(...)`, `Circumscribe(...)`, or `Indicate(...)`. Many Manim CE
+constructors forward unknown keywords to `Mobject.__init__` or
+`Animation.__init__`, which causes runtime `unexpected keyword argument
+'opacity'` errors. Create the object first, then call `set_opacity(...)`,
+`set_stroke(..., opacity=...)`, `set_stroke_opacity(...)`,
+`set_fill(..., opacity=...)`, or documented `fill_opacity=` where supported.
+
 #### Fill, Stroke, Opacity, Style
 
 Syntax:

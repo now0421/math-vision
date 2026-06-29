@@ -17,6 +17,8 @@ public final class ManimCodeUtils {
     public static final String EXPECTED_SCENE_NAME = "MainScene";
     private static final String COORDINATE_SCALE_CONTRACT_PREFIX =
             "Static rule violation: Manim coordinate scale contract";
+    private static final String CONSTRUCTOR_OPACITY_PREFIX =
+            "Static rule violation: unsupported Manim constructor opacity keyword";
 
     private static final Pattern MAIN_SCENE_CLASS = Pattern.compile(
             "class\\s+MainScene\\s*\\([^)]*\\b(?:[A-Za-z_][A-Za-z0-9_]*)?Scene\\b[^)]*\\)");
@@ -158,6 +160,11 @@ public final class ManimCodeUtils {
                     + " (" + evidence + ")");
         }
 
+        for (String evidence : findAllConstructorOpacityArguments(manimCode)) {
+            violations.add(CONSTRUCTOR_OPACITY_PREFIX
+                    + " (" + evidence + ")");
+        }
+
         violations.addAll(validateCoordinateScaleContract(manimCode));
 
         return violations;
@@ -272,6 +279,149 @@ public final class ManimCodeUtils {
             }
         }
         return evidences;
+    }
+
+    private static List<String> findAllConstructorOpacityArguments(String manimCode) {
+        List<String> evidences = new ArrayList<>();
+        if (manimCode == null || manimCode.isBlank()) {
+            return evidences;
+        }
+
+        String[] lines = manimCode.split("\\R", -1);
+        List<ConstructorContext> parenStack = new ArrayList<>();
+        Set<Integer> reportedLines = new LinkedHashSet<>();
+        for (int i = 0; i < lines.length; i++) {
+            String rawLine = lines[i] != null ? lines[i] : "";
+            String line = maskPythonStringsAndComments(rawLine);
+            int index = 0;
+            while (index < line.length()) {
+                char ch = line.charAt(index);
+                if (isIdentifierStart(ch)) {
+                    int start = index;
+                    int end = index + 1;
+                    while (end < line.length() && isIdentifierPart(line.charAt(end))) {
+                        end++;
+                    }
+                    String identifier = line.substring(start, end);
+                    int next = skipWhitespace(line, end);
+                    if (Character.isUpperCase(identifier.charAt(0))
+                            && next < line.length()
+                            && line.charAt(next) == '(') {
+                        parenStack.add(new ConstructorContext(identifier));
+                        index = next + 1;
+                        continue;
+                    }
+                    if ("opacity".equals(identifier)
+                            && next < line.length()
+                            && line.charAt(next) == '=') {
+                        ConstructorContext context = innermostConstructor(parenStack);
+                        if (context != null && reportedLines.add(i + 1)) {
+                            evidences.add("line " + (i + 1)
+                                    + ": " + context.name + "(...) receives unsupported `opacity=` keyword"
+                                    + " - " + summarizeSnippet(rawLine));
+                        }
+                    }
+                    index = end;
+                    continue;
+                }
+                if (ch == '(') {
+                    parenStack.add(null);
+                    index++;
+                    continue;
+                }
+                if (ch == ')') {
+                    if (!parenStack.isEmpty()) {
+                        parenStack.remove(parenStack.size() - 1);
+                    }
+                    index++;
+                    continue;
+                }
+                index++;
+            }
+        }
+        return evidences;
+    }
+
+    private static String maskPythonStringsAndComments(String line) {
+        if (line == null || line.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(line.length());
+        boolean inSingle = false;
+        boolean inDouble = false;
+        boolean escaped = false;
+        for (int i = 0; i < line.length(); i++) {
+            char ch = line.charAt(i);
+            if (inSingle || inDouble) {
+                sb.append(' ');
+                if (escaped) {
+                    escaped = false;
+                    continue;
+                }
+                if (ch == '\\') {
+                    escaped = true;
+                    continue;
+                }
+                if ((inSingle && ch == '\'') || (inDouble && ch == '"')) {
+                    inSingle = false;
+                    inDouble = false;
+                }
+                continue;
+            }
+            if (ch == '#') {
+                while (i < line.length()) {
+                    sb.append(' ');
+                    i++;
+                }
+                break;
+            }
+            if (ch == '\'') {
+                inSingle = true;
+                sb.append(' ');
+                continue;
+            }
+            if (ch == '"') {
+                inDouble = true;
+                sb.append(' ');
+                continue;
+            }
+            sb.append(ch);
+        }
+        return sb.toString();
+    }
+
+    private static boolean isIdentifierStart(char ch) {
+        return Character.isLetter(ch) || ch == '_';
+    }
+
+    private static boolean isIdentifierPart(char ch) {
+        return Character.isLetterOrDigit(ch) || ch == '_';
+    }
+
+    private static int skipWhitespace(String text, int index) {
+        int i = index;
+        while (i < text.length() && Character.isWhitespace(text.charAt(i))) {
+            i++;
+        }
+        return i;
+    }
+
+    private static ConstructorContext innermostConstructor(List<ConstructorContext> parenStack) {
+        for (int i = parenStack.size() - 1; i >= 0; i--) {
+            ConstructorContext context = parenStack.get(i);
+            if (context != null) {
+                return context;
+            }
+        }
+        return null;
+    }
+
+    private static final class ConstructorContext {
+        private final String name;
+
+        private ConstructorContext(String name) {
+            this.name = name;
+        }
     }
 
     private static List<String> validateCoordinateScaleContract(String manimCode) {

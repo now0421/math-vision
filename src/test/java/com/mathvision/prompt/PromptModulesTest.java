@@ -262,11 +262,14 @@ class PromptModulesTest {
         diagram.setNormalizationNotes(java.util.List.of("Build triangle ABC before showing altitude AD."));
         bundle.setDiagram(diagram);
 
+        String solutionChain = "Solution step chain:\n"
+                + "1. Draft graph step that may be wrong\n"
+                + "   -> Draft graph reason";
         String prompt = VisualDesignPrompts.buildFixedContextPrompt(
                 bundle,
                 "Design the setup",
                 "manim",
-                "");
+                solutionChain);
 
         assertTrue(prompt.contains("ProblemBundle JSON (authoritative workflow input):"));
         assertTrue(prompt.contains("\"id\" : \"triangle_setup\""));
@@ -278,6 +281,12 @@ class PromptModulesTest {
         assertTrue(prompt.contains("Translate it into `new_objects`"));
         assertTrue(prompt.contains("\"overall_shape\" : \"Triangle ABC with altitude AD.\""));
         assertTrue(prompt.contains("Build triangle ABC before showing altitude AD."));
+        assertTrue(prompt.contains("Final visual-design authority reminder:"));
+        assertTrue(prompt.indexOf("Solution step chain:") < prompt.indexOf("Final visual-design authority reminder:"));
+        assertTrue(prompt.indexOf("Manim style reference:") < prompt.indexOf("Final visual-design authority reminder:"));
+        assertTrue(prompt.contains("The solution-step chain above, current-request graph neighbors, conversation history, and object registry are workflow or continuity context"));
+        assertTrue(prompt.contains("supplemental Stage 2 fields such as equations, definitions, interpretation, and examples"));
+        assertFalse(prompt.contains("corrected scene math"));
     }
 
     @Test

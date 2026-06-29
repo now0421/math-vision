@@ -285,6 +285,12 @@ public final class SystemPrompts {
     public static final String MANIM_COLOR_RULES_BULLETS =
             "- " + MANIM_COLOR_RULES.replace("\n", "\n- ").trim() + "\n";
 
+    public static final String MANIM_OPACITY_API_RULES =
+            "Manim opacity API rules:\n"
+                    + "- Do not pass `opacity=` to Manim mobject or animation constructors such as `Line(...)`, `Arc(...)`, `Dot(...)`, `Circle(...)`, `DashedLine(...)`, `Arrow(...)`, `Text(...)`, `MathTex(...)`, `VGroup(...)`, `Circumscribe(...)`, or `Indicate(...)`; many CE constructors forward unknown keywords to `Mobject.__init__` or `Animation.__init__` and crash at render time.\n"
+                    + "- Construct the object first, then apply transparency with documented setters: `mob.set_opacity(...)` for whole-object opacity, `mob.set_stroke(..., opacity=...)` or `mob.set_stroke_opacity(...)` for outlines, and `mob.set_fill(..., opacity=...)` or documented `fill_opacity=` only for filled shapes/backgrounds.\n"
+                    + "- Preserve storyboard `style.opacity` semantics by translating them into those documented setter calls instead of copying the raw `opacity` style key into constructor arguments.\n";
+
     /** ASCII-only rules for backend identifiers, not learner-facing prose. */
     public static final String ASCII_TEXT_RULES =
             "Identifier ASCII rules:\n"

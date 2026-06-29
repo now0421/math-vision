@@ -126,6 +126,33 @@ class CodeGenerationNodeRoutingTest {
     }
 
     @Test
+    void codegenNodeSystemPromptIncludesOpacityApiRule() {
+        QueueAiClient aiClient = new QueueAiClient();
+        aiClient.toolResponses.add(codegenResponse(String.join("\n",
+                "from manim import *",
+                "",
+                "class MainScene(Scene):",
+                "    def construct(self):",
+                "        dot = Dot()",
+                "        dot.set_opacity(0.5)")));
+
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        ctx.put(WorkflowKeys.AI_CLIENT, aiClient);
+        ctx.put(WorkflowKeys.CONFIG, new WorkflowConfig());
+        ctx.put(WorkflowKeys.NARRATIVE, buildNarrative());
+
+        new CodeGenerationNode().run(ctx);
+
+        assertNotNull(aiClient.lastSystemPrompt);
+        assertTrue(aiClient.lastSystemPrompt.contains("Manim opacity API rules"));
+        assertTrue(aiClient.lastSystemPrompt.contains("Do not pass `opacity=`"));
+        assertTrue(aiClient.lastSystemPrompt.contains("Line(...)"));
+        assertTrue(aiClient.lastSystemPrompt.contains("set_opacity(...)"));
+        assertTrue(aiClient.lastSystemPrompt.indexOf("Manim opacity API rules")
+                < aiClient.lastSystemPrompt.indexOf("Manim syntax reference manual:"));
+    }
+
+    @Test
     void textOnlyToolResponseStillGeneratesCode() {
         QueueAiClient aiClient = new QueueAiClient();
         aiClient.toolResponses.add(textResponse(String.join("\n",
